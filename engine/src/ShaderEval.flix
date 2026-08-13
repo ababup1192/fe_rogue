@@ -39,7 +39,7 @@ mod ShaderEval {
                  evalFieldEnv(f#alpha, uv, t, env, texEnv))
         }
 
-    /// bindings（前から順）を「面の基準 uv で 1 回評価した値」の env に畳む。前の binding の値だけが
+    /// bindings（前から順）を「面の基準 uv で 1 回評価した値」の env にまとめる。前の binding の値だけが
     /// 後の binding から Ref できる（GL が main 先頭に sg_b_ 宣言を並べるのと同じ意味論）。
     /// out から参照されない binding もここで必ず評価する — 使わない shared は合法だが、その分は
     /// 黙って画素ごとの計算に乗る。
@@ -62,7 +62,7 @@ mod ShaderEval {
                 mixColor(r#lo, r#hi, phase)
             case ShaderDoc.Shade.Gradient(g) =>
                 // GLSL と同じ数式でなぞる: 係数 f を Ramp と同じ規約で作り、
-                // 先頭色から隣の区切りごとに smoothstep 重みで次の色へ寄せる。
+                // 先頭色から隣の区切りごとに smoothstep 重みで次の色へ近づける。
                 let field = evalFieldEnv(g#field, uv, t, env, texEnv);
                 let f = if (cycleRate == 0.0) clamp01(field)
                         else clamp01(triWave(field + cycleRate * t));
@@ -72,7 +72,7 @@ mod ShaderEval {
                 let tt = if (cycleRate == 0.0) field else field + cycleRate * t;
                 cosColor(cs#a, cs#b, cs#c, cs#d, tt)
             case ShaderDoc.Shade.Rgb(c) =>
-                // cycleRate は読まない（Shade.Rgb の doc の約束）。
+                // cycleRate は読まない（Shade.Rgb の doc の決まり）。
                 { r = colorF32(evalFieldEnv(c#r, uv, t, env, texEnv)),
                   g = colorF32(evalFieldEnv(c#g, uv, t, env, texEnv)),
                   b = colorF32(evalFieldEnv(c#b, uv, t, env, texEnv)) }

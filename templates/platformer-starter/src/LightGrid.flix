@@ -12,7 +12,7 @@ mod LightGrid {
 
     pub type alias Rgb = (Float64, Float64, Float64)
 
-    /// 洞窟の環境光(真っ暗にしない — 黒は使わない画風の約束)。
+    /// 洞窟の環境光(真っ暗にしない — 黒は使わない画風の決まり)。
     ///
     /// これは**地色に掛ける係数**であって明るさそのものではない。壁の地色
     /// wallCave は既に (58,62,82) と暗いので、0.3 台まで下げると壁が背景の
@@ -60,7 +60,7 @@ mod LightGrid {
         if (d > maxDist()) seen
         else {
             // 同じマスは 8 近傍のどこからでも同じ距離で入るので、バケツには
-            // 重複が溜まる。ここで潰さないと 1 段ごとに展開が数倍へ膨らみ、
+            // 重複が溜まる。ここで潰さないと 1 歩ごとに展開が数倍へ膨らみ、
             // 面が大きいほど破滅的に遅くなる(232×24 の洞窟で 72 秒かかっていた)。
             let cells = Map.get(d, buckets) |> Option.getWithDefault(Nil)
                 |> List.filter(c -> Map.get(c, seen) == None)

@@ -1,4 +1,4 @@
-// TestBezier — 曲線の平坦化と帯・塗りの部品数を具体値で固定する。
+// TestBezier — 曲線の平坦化とストリップ・塗りの部品数を具体値で固定する。
 mod TestBezier {
 
     @Test

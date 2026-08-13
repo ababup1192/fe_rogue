@@ -8,7 +8,7 @@ mod ThemeDoc {
 
     /// 場面の色票と雨の空気。bg = 部屋の闇（床・全体）、wall = 書斎の壁、
     /// window = 雨の窓、accent = 灯り・金（差し色）、ink = 本文・表紙の文字色、
-    /// rainCount = 窓の雨すじの本数、rainGlow = 雨すじの明るさ（0〜1。窓色を白に寄せる度合い）。
+    /// rainCount = 窓の雨すじの本数、rainGlow = 雨すじの明るさ（0〜1。窓色を白に近づける度合い）。
     /// accentLight は novel.theme.json ではなく assets/ui/palette.json の宣言色
     /// （スプライト legend の意味色キー。宣言が無ければ accent からの導出に倒れる）。
     pub type alias Doc = {
@@ -88,11 +88,11 @@ mod ThemeDoc {
 
     // ── 派生色と resolver ──
 
-    /// 白に寄せる（ハイライト・絵があった跡・窓枠などの派生色）。
+    /// 白に近づける（ハイライト・絵があった跡・窓枠などの派生色）。
     pub def lighten(c: Color, k: Float64): Color =
         Color.lighten(c, k)
 
-    /// 黒に寄せる（床など、同じ面より奥まって見せたい派生色）。
+    /// 黒に近づける（床など、同じ面より奥まって見せたい派生色）。
     pub def darken(c: Color, k: Float64): Color =
         Color.darken(c, k)
 

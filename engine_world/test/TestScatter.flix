@@ -59,7 +59,7 @@ mod TestScatter {
             expected = Some((1.8463446096617102, 8.344069677909662)),
             List.head(results))
 
-    // ── strip（帯 1 本の敷き詰め） ──
+    // ── strip（ストリップ 1 本の敷き詰め） ──
 
     def stripSpec(cm: Int32): {cell = Float64, salt = Int32, lane = Int32,
                                reach = Float64, cellsMax = Int32} =

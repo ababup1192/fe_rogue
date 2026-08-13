@@ -1,6 +1,6 @@
 // StoryDoc — novel.story.json（台本: 文章・分岐・結末の rows）の宣言ドキュメント層。
 // 文章と分岐先は全部この Doc にあり、書き換えれば別の事件になる。
-// 進め方の規則（どの拍を出すか・灯りをいつ消すか）はコード（World）側。
+// 進め方の規則（どのビートを出すか・灯りをいつ消すか）はコード（World）側。
 // fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod StoryDoc {
     use Util.Json.Json
@@ -9,10 +9,10 @@ mod StoryDoc {
     /// suspect = 「誰かを疑う」選択か（true なら館の灯りがひとつ消える）。
     pub type alias Choice = { label = String, goto = String, suspect = Bool }
 
-    /// 質問（選択肢を出す拍）。beats を読み終えた節がこれを出し、options から 1 つ選ばせる。
+    /// 質問（選択肢を出すビート）。beats を読み終えた節がこれを出し、options から 1 つ選ばせる。
     pub type alias Ask = { speaker = String, text = String, options = List[Choice] }
 
-    /// 地の文・セリフの 1 拍。speaker が空文字なら地の文。
+    /// 地の文・セリフの 1 ビート。speaker が空文字なら地の文。
     pub type alias Beat = { speaker = String, text = String }
 
     /// 台本の 1 節。beats を順に読み、読み終えたら ask（あれば）で分岐する。

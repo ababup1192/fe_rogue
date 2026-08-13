@@ -42,9 +42,9 @@ mod Bench {
 
     // ── 毎フレームのシステム（区間末の統計 println があるので \ IO）──
 
-    /// エンジンには手を入れない約束なので、垂直同期はゲーム側から GLFW を直接叩いて切る。
+    /// エンジンには手を入れない決まりなので、垂直同期はゲーム側から GLFW を直接叩いて切る。
     /// 起動直後（描画ループ前）に 1 回呼ぶだけでは macOS で 60fps に張り付いたままだったので、
-    /// 捨てる約束のウォームアップ中に毎フレーム呼んで確実に効かせる。
+    /// 捨てる前提のウォームアップ中に毎フレーム呼んで確実に効かせる。
     def vsyncOff(): Unit \ IO =
         GLFW.glfwSwapInterval(0)
 
@@ -121,7 +121,7 @@ mod Bench {
         }
 
     /// HUD あり構成（HUD=1 で有効）の絵。withHudView 経由なので z は HUD の範囲
-    /// （ZBand.hudBase 以上）へ持ち上がり、mergedByZ が範囲別 2 段ソートに入る —
+    /// （ZBand.hudBase 以上）へ持ち上がり、mergedByZ が範囲別 2 段階ソートに入る —
     /// 範囲が混ざってもスロット方式（counting sort）に乗り続けるかを HUD 無しとの A/B で見る。
     pub def hud(ctx: App.ViewCtx, w: World): List[Render.PlacedItem] =
         RawDraw.boxAt({ x = 160.0, y = 228.0 }, { x = 300.0, y = 16.0 },

@@ -6,7 +6,7 @@ mod RulesDoc {
     use Util.Json.Json
 
     /// 手触りと収支の数値。いじると何が変わるかは各フィールドのコメントのとおり。
-    ///   gravityInterval … 1 段落ちるまでの秒。小さいほど速い。
+    ///   gravityInterval … 1 行落ちるまでの秒。小さいほど速い。
     ///   softDropFactor  … 下キーを押している間の落下倍率（大きいほど速く落ちる）。
     ///   lockDelay       … 接地してから固定されるまでの猶予秒。移動/回転で 0 に戻る（設置面ねばり）。
     ///   maxLockResets   … その猶予リセットの上限回数。無限に延命できないための天井。

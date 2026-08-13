@@ -35,7 +35,7 @@ mod TestRules {
 
     @Test
     def testWallBlocksMove(): Unit \ Assert =
-        // 左端に寄せた O ミノは、さらに左へは動けない（盤の外へ出ない）。
+        // 左端に詰めた O ミノは、さらに左へは動けない（盤の外へ出ない）。
         let w = withPiece(Kind.O, 0, -1, 0, base());   // O の左端セルは col 1 相対 → col 0 が左端
         let (_, moved) = World.tryMove(-1, 0, w);
         Assert.assertEq(expected = false, moved)
@@ -91,7 +91,7 @@ mod TestRules {
 
     @Test
     def testClearShiftsRowsDown(): Unit \ Assert =
-        // 下の 1 行を消すと、その上に載っていたセルが 1 段下へ詰まる。
+        // 下の 1 行を消すと、その上に載っていたセルが 1 行下へ詰まる。
         let bottom = World.rows() - 1;
         let cells = List.append(fullRow(bottom, Kind.I), ((3, bottom - 1), Kind.T) :: Nil);
         let cleared = World.clearLines(bottom :: Nil, withBoard(cells, base())#board);
@@ -147,7 +147,7 @@ mod TestRules {
     @Test
     def testSpawnIntoStackIsGameOver(): Unit \ Assert =
         // 涌き位置（上端中央）が埋まっていると、次のミノが涌いた瞬間にぶつかり GAME OVER になる。
-        // 上 2 段の中央付近だけ塞ぐ（行は満杯にしない = ライン消しには行かせない）。
+        // 上 2 行の中央付近だけ塞ぐ（行は満杯にしない = ライン消しには行かせない）。
         let blockTop = List.range(0, 2) |> List.flatMap(r ->
             List.range(3, 7) |> List.map(c -> ((c, r), Kind.I)));
         // さらに現在のミノがすぐ固定されるよう、その真下も塞いでおく。
@@ -162,7 +162,7 @@ mod TestRules {
 
     @Test
     def testHardDropLandsOnStack(): Unit \ Assert =
-        // 最下段が埋まった盤に O を叩きつけると、その 1 段上に載って固定される。
+        // 最下段が埋まった盤に O を叩きつけると、その 1 行上に載って固定される。
         let bottom = World.rows() - 1;
         let stacked = withBoard(fullRow(bottom, Kind.I), base());
         let w = withPiece(Kind.O, 0, 4, 0, stacked);

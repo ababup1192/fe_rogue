@@ -16,7 +16,7 @@ mod TestSfx {
 
     @Test
     def testNothingHappensIsSilent(): Unit \ Assert =
-        // 何も変わらなかった拍は無音（毎フレーム鳴り続けない）。
+        // 何も変わらなかったフレームは無音（毎フレーム鳴り続けない）。
         let w = racing();
         Assert.assertEq(expected = (Nil: List[String]), Sfx.events({ before = w, after = w }))
 
@@ -30,7 +30,7 @@ mod TestSfx {
 
     @Test
     def testDriftEndGrips(): Unit \ Assert =
-        // 滑りが終わった拍は食いつきの音（擦れとは別の音で終わりが分かる）。
+        // 滑りが終わったフレームは食いつきの音（擦れとは別の音で終わりが分かる）。
         let w = racing();
         Assert.assertEq(
             expected = "grip" :: Nil,
@@ -38,7 +38,7 @@ mod TestSfx {
 
     @Test
     def testCrashSilencesGrip(): Unit \ Assert =
-        // ドリフトのままクラッシュした拍はクラッシュの音だけ（食いつきを重ねない）。
+        // ドリフトのままクラッシュしたフレームはクラッシュの音だけ（食いつきを重ねない）。
         let w = racing();
         Assert.assertEq(
             expected = "crash" :: Nil,
@@ -47,7 +47,7 @@ mod TestSfx {
 
     @Test
     def testNitroFires(): Unit \ Assert =
-        // ニトロは残り時間が 0 から立ち上がった拍に鳴る（発動中ずっとではない）。
+        // ニトロは残り時間が 0 から立ち上がったフレームに鳴る（発動中ずっとではない）。
         let w = racing();
         let fired = { nitroLeft = w#rules#nitroDuration | w };
         Assert.assertEq(
@@ -57,7 +57,7 @@ mod TestSfx {
 
     @Test
     def testOvertakeAndItemAndLap(): Unit \ Assert =
-        // 抜いた・拾った・1 周した は、それぞれ別の音（同じ拍に重なっても取り違えない）。
+        // 抜いた・拾った・1 周した は、それぞれ別の音（同じフレームに重なっても取り違えない）。
         let w = racing();
         let after = { lap = w#lap + 1, taken = Set.insert(0, w#taken),
                       rivals = w#rivals |> List.map(r -> { passed = true | r }) | w };
@@ -110,7 +110,7 @@ mod TestSfx {
 
     @Test
     def testSkidHumsOnlyWhileDrifting(): Unit \ Assert =
-        // 滑っている間だけ擦れが続く（離した拍で宣言が消えるので音も止まる）。
+        // 滑っている間だけ擦れが続く（離したフレームで宣言が消えるので音も止まる）。
         let w = racing();
         Assert.assertEq(
             expected = ("engine" :: Nil, "engine" :: "skid" :: Nil),

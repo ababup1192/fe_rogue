@@ -68,7 +68,7 @@ mod SfxRender {
             fade(tone(k, 300.0, 0.4, 45)) ::
             fade(tone(k, 190.0, 0.5, 70)) :: Nil)
 
-    /// ニトロ: 4 段で駆け上がる矩形波に噴射の雑音を重ねた、一番強い音。
+    /// ニトロ: 4 段階で駆け上がる矩形波に噴射の雑音を重ねた、一番強い音。
     def nitroSurge(k: Knobs): List[Float64] =
         SfxSynth.blend(
             SfxSynth.sequence(

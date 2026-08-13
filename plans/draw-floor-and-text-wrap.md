@@ -14,7 +14,7 @@
      は UiDialog 本文で**本番稼働中**(maxWidth・文字境界折り)
    - はみ出しの主因は **UiStore → UiExtract(TextComp)経路の実行時文字**
      (`UiSlots.fill` / `UiMenu` の setText で流し込まれる AI 生成の長文言)。
-     ここに折り返しの口が無い
+     ここに折り返しの引数が無い
    - 静的な ui.json に入っているのはプレースホルダなので、静的検査だけでは主因を掴めない
 3. **文章の劣化**: visual-dict SKILL.md のバージョン注記が 0.14.0 で停止(0.19 Pass/FBO・
    0.20 RawDraw の断りが無い)。「辞書の穴」に解決済み項目(lightAt/darkAt)が残存。
@@ -99,7 +99,7 @@ visual-dict reference.md の UI/文字の節に追記:
 
 ### B2. 折り返し宣言漏れの静的 lint(bin/lint-ui-overflow.py・純 Python)
 
-B3 で ui.json の text ウィジェットに wrap 宣言の口ができるのを前提に、
+B3 で ui.json の text ウィジェットに wrap 宣言を書けるのを前提に、
 **「固定サイズのパネル内にある text ウィジェットが wrap も fit も宣言していない」**
 を検出する構造検査。フォントメトリクスは読まない(実寸を測る検査ではない)ので
 純 Python で書け、JVM 不要。

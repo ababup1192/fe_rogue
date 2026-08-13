@@ -221,7 +221,7 @@ def testFoo(): Unit \ Assert =
 2. **ソフトウェア一般の語** — `cache` `buffer` `snapshot` `pipeline` `handler` `registry`
 3. **他のゲームエンジンが同じ物をどう呼んでいるか** — Unity / Unreal / Godot / Bevy。
    同じ物に別の名前を付けない（このエンジンは Bevy の render-from-World の考え方に
-   寄せているので、迷ったら Bevy の語を見る）
+   そろえているので、迷ったら Bevy の語を見る）
 
 3 つとも当てはまらない物にだけ、説明的な名前を組み立てる（`silhouettePng` のように、
 読んで何をする物か分かる形）。**比喩で名付けない。**

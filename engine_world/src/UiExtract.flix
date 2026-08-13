@@ -185,7 +185,7 @@ mod UiExtract {
     /// 九分割スキン: テクスチャを角の厚み c（テクスチャ px、既定 短辺/3）で 3×3 に割り、
     /// 角 4 枚は等倍のまま、辺 4 枚と中 1 枚は箱のサイズまで伸ばす。箱が角 2 つ分より
     /// 小さいときだけ角も半分サイズまで縮める（裏返って重なる絵を作らない）。
-    /// 幅か高さが 0 以下の帯（角の厚みちょうどのテクスチャ等）は出さない。
+    /// 幅か高さが 0 以下の矩形（角の厚みちょうどのテクスチャ等）は出さない。
     def nineSlice(box: UiWidget.BoxComp, texture: String, info: GameEngine.TextureInfo,
                   size: Vec2.Vec2): List[Render.PlacedItem] =
         let c = Option.getWithDefault(Float64.min(info#width, info#height) / 3.0, box#skinCorner);

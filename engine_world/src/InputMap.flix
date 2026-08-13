@@ -42,7 +42,7 @@ mod InputMap {
     pub def keysOf(names: List[String]): List[GameEngine.Key] =
         List.filterMap(keyOf, names)
 
-    /// ホイールの生 delta を「目盛り」へ畳む。マウスは 1 目盛りで ±1.0 が届くが、
+    /// ホイールの生 delta を「目盛り」へまとめる。マウスは 1 目盛りで ±1.0 が届くが、
     /// トラックパッドは 1 未満の細かい値が毎フレーム届くので、そのまま使うと速度が
     /// フレームレート依存になる。carry に貯めて ±1.0 を超えたぶんだけを目盛り数として
     /// 返し、端数は次フレームへ持ち越す。carry は呼び側が World に持つ — Frame は

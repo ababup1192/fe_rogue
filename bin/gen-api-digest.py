@@ -3,14 +3,14 @@
 
 AI エージェントが「この関数、型はどんな形だっけ」を調べるたびにソースを grep して
 丸読みすると、トークンも時間も食う。pub def / pub enum / pub type alias の宣言だけを
-機械的に抜き出して 1 ファイルに畳んでおけば、まずそこを読むだけで済む。
+機械的に抜き出して 1 ファイルにまとめておけば、まずそこを読むだけで済む。
 
   python3 bin/gen-api-digest.py            # docs/api-digest.md を書く
   python3 bin/gen-api-digest.py --check    # 生成し直しても差分が無いか検査する（書かない）
 
 対象は engine/src・engine_world/src・engine_tools/src の *.flix。
-pub def のシグネチャは本体開始の `=` 直前までを 1 行に畳む（本体そのものは載せない）。
-pub enum・pub type alias は宣言全体（case 行・フィールドも含む）を 1 行に畳む。
+pub def のシグネチャは本体開始の `=` 直前までを 1 行にまとめる（本体そのものは載せない）。
+pub enum・pub type alias は宣言全体（case 行・フィールドも含む）を 1 行にまとめる。
 
 標準ライブラリだけで動く（Windows / macOS / Linux 共通。sed 等の外部コマンドを使わない）。
 """
@@ -121,7 +121,7 @@ def collapse(text: str) -> str:
 
 
 def extract_def_signature(lines, start_idx):
-    """`pub def` の宣言を、本体開始の `=` 直前まで 1 行に畳んで返す。"""
+    """`pub def` の宣言を、本体開始の `=` 直前まで 1 行にまとめて返す。"""
     depth = 0
     parts = []
     i = start_idx
@@ -187,7 +187,7 @@ def extract_def_signature(lines, start_idx):
 def extract_block(lines, start_idx):
     """`pub enum` / `pub type alias` の宣言全体を、括弧の深さが 0 に戻るまで拾う。
 
-    enum は case 行、type alias はフィールドの中身まで、丸ごと 1 行に畳んで返す
+    enum は case 行、type alias はフィールドの中身まで、丸ごと 1 行にまとめて返す
     （関数と違い、宣言そのものが型の形なので途中で切らない）。
     """
     depth = 0

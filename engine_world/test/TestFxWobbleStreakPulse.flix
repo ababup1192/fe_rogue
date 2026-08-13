@@ -1,7 +1,7 @@
 // TestFxWobbleStreakPulse — fx.json に足した 3 語彙（wobble = 位置の正弦揺らぎ /
 // shape: streak = 速度方向の筋 / pulse = 正弦の明滅カーブ）を固定する。
 // 確かめるのは規約だけ: 閉形式が式どおりの値を出すこと、既定値なら既存の絵が
-// 1 ビットも動かないこと、JSON の読み口が畳めること・範囲外を loud に断ること。
+// 1 ビットも動かないこと、JSON を読み取れること・範囲外を loud に断ること。
 mod TestFxWobbleStreakPulse {
 
     def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
@@ -52,7 +52,7 @@ mod TestFxWobbleStreakPulse {
         Assert.assertEq(expected = List.repeat(4, (3.5, -1.0)),
             ats(Fx.sample(specOf(em), 0i64, 0.25)))
 
-    /// vary > 0 は粒ごとに位相を散らす（全粒が同じ拍子で揺れて画面が脈打つ、が起きない）。
+    /// vary > 0 は粒ごとに位相を散らす（全粒が同じタイミングで揺れて画面が脈打つ、が起きない）。
     @Test
     def testWobbleVaryScattersPhases(): Unit \ Assert =
         let em = { wobble = { amp = Vec2.v2(5.0, 0.0), freq = Vec2.v2(2.0, 0.0), vary = 1.0 },
@@ -132,7 +132,7 @@ mod TestFxWobbleStreakPulse {
             case Err(_)   => None
         }
 
-    /// wobble / shape: streak / stretch が Spec に畳まれる（蛍と雨の宣言の代表形）。
+    /// wobble / shape: streak / stretch が Spec へ読み取られる（蛍と雨の宣言の代表形）。
     @Test
     def testParseWobbleAndStreak(): Unit \ Assert =
         let text = "{ \"name\": \"rain\", \"duration\": 60, \"emitters\": [ {" +

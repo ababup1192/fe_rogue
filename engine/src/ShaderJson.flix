@@ -33,7 +33,7 @@ mod ShaderJson {
     // parse（純粋）
     // ========================================================================
 
-    /// JSON をトップレベルの Spec へ畳む。壊れていれば Err（パス付きの説明）。
+    /// JSON をトップレベルの Spec へ読み取る。壊れていれば Err（パス付きの説明）。
     /// shared（bindings）は前方参照のみ・循環は Err・out や後の binding の未定義 Ref も Err。
     pub def parse(json: Json): Result[JsonError, ShaderDoc.Spec] =
         match json {
@@ -59,7 +59,7 @@ mod ShaderJson {
             case Some(_) => Err(err("'shared' must be an array of [name, field]"))
         }
 
-    // 各要素を順に読み、その時点で定義済みの名前だけを Ref できることを検証しながら畳む。
+    // 各要素を順に読み、その時点で定義済みの名前だけを Ref できることを検証しながらまとめる。
     def foldBindings(items: List[Json], acc: List[(String, ShaderDoc.Field)]):
             Result[JsonError, List[(String, ShaderDoc.Field)]] =
         match items {

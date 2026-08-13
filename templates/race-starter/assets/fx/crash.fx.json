@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "crash",
-  "note": "クラッシュ（スピン開始）。閃光 → 衝撃の輪 → 火の玉 → 火の破片と黒い破片 → 膨らむ煙、の 5 段。最後の billow だけ loop なので、この効果が生きているあいだ（= スピンしているあいだ）煙が出続ける。duration はスピンの長さ（race.rules.json の spinDuration）に合わせてある。灼けた路面の上では加算だけだと白く飛ぶので、火の玉と破片は通常合成で色を残し、加算は閃光と小さな火花だけに使う。shock は dir.mode: even で真円の輪に、破片（chunks / debris）は turn で回しながら飛ばす。",
+  "note": "クラッシュ（スピン開始）。閃光 → 衝撃の輪 → 火の玉 → 火の破片と黒い破片 → 膨らむ煙、の 5 段階。最後の billow だけ loop なので、この効果が生きているあいだ（= スピンしているあいだ）煙が出続ける。duration はスピンの長さ（race.rules.json の spinDuration）に合わせてある。灼けた路面の上では加算だけだと白く飛ぶので、火の玉と破片は通常合成で色を残し、加算は閃光と小さな火花だけに使う。shock は dir.mode: even で真円の輪に、破片（chunks / debris）は turn で回しながら飛ばす。",
   "duration": 1.0,
   "emitters": [
     {

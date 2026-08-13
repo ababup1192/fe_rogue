@@ -14,7 +14,7 @@
   `pub def step(entries: List[(String, List[String])], w: { activeDocsWritten = String | r }): { activeDocsWritten = String | r } \ Fs.FileWrite`
 
 ## Anim — `engine_world/src/Anim.flix`
-- クリップ: シート上の 1 段ぶんの連続コマと再生のしかた（純データ）。
+- クリップ: シート上の 1 行ぶんの連続コマと再生のしかた（純データ）。
   `pub type alias Clip = { row = Int32, frames = Int32, fps = Float64, looping = Bool }`
 - 時刻 t（ループは通し秒・単発は開始からの経過秒）でのコマ番号。
   `pub def frameAt(clip: Clip, t: Float64): Int32`
@@ -52,7 +52,7 @@
   `pub def fpsOf(state: State): Int32`
 - fps の絵。画面右上に固定で置く。
   `pub def fpsItems(fontAtlas: FontAtlas, fontSize: Float64, design: Vec2.Vec2, fps: Int32): List[Render.PlacedItem]`
-- 帯の字の大きさの既定。実機のデバッグ表示は組み込みフォントの等倍で出すので、
+- パネルの字の大きさの既定。実機のデバッグ表示は組み込みフォントの等倍で出すので、
   `pub def defaultBadgeFontSize(): Float64`
 - デザイン座標 → 画面座標。デザイン中央 c を焦点に zoom 倍し、pan だけずらす。
   `pub def toScreen(view: View, p: Vec2.Vec2): Vec2.Vec2`
@@ -96,7 +96,7 @@
   `pub def isDown(key: GameEngine.Key, frame: Frame): Bool`
 - key がこのフレームで新しく押されたか（押しっぱなしは false）。決定・発射などの単発入力に。
   `pub def justPressed(key: GameEngine.Key, frame: Frame): Bool`
-- 負方向・正方向のキーの押し下げを -1 / 0 / +1 に畳む（両押しは打ち消して 0）。
+- 負方向・正方向のキーの押し下げを -1 / 0 / +1 にまとめる（両押しは打ち消して 0）。
   `pub def axis(negative: {negative = GameEngine.Key}, positive: {positive = GameEngine.Key}, frame: Frame): Float64`
 - view / hudView が受け取る「この 1 フレームの見え方」。atlas は文字描画用の既定フォント、
   `pub type alias ViewCtx = { atlas = FontAtlas, fontOf = String -> FontAtlas, visible = Rect2.Rect2 }`
@@ -134,7 +134,7 @@
   `pub def withSpriteAtlases(f: w -> List[AtlasUpload], app: App[w, ef]): App[w, ef]`
 - 「1 度だけ GPU に焼いて使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
   `pub def withStaticLayer(key: w -> GameEngine.StaticKey, build: w -> List[Render.PlacedItem], app: App[w, ef]): App[w, ef]`
-- タイルの層（床・壁1段目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
+- タイルの層（床・壁 1 行目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
   `pub def withTileLayers(f: w -> List[TileLayerSpec], app: App[w, ef]): App[w, ef]`
 - World から「画面中央に映したい world 座標」を導く関数を繋ぐ。view は world 座標のまま
   `pub def withCamera(f: w -> Vec2.Vec2 \ ef, app: App[w, ef]): App[w, ef]`
@@ -198,7 +198,7 @@
   `pub def visibleOf(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Rect2.Rect2`
 - 監視中パスのうち「World を作り直すべき物」を watch の登録順で返す: current で見えて
   `pub def changedPaths(watch: List[String], prev: Map[String, Int64], current: Map[String, Int64]): List[String]`
-- App を走らせる単一の効果多相ランナー。startup を 1 回だけ畳み、いま押されているキーを prev の
+- App を走らせる単一の効果多相ランナー。startup を 1 回だけ畳み込み、いま押されているキーを prev の
   `pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO)`
 - 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
   `pub def historyLimit(): Int32`
@@ -208,7 +208,7 @@
   `pub def worldAt(history: List[w], back: Int32, fallback: w): w`
 - reloadOn で繋いだキーが押された瞬間だけ、リロード関数で World を作り直す。
   `pub def applyReload(app: App[w, ef], frame: Frame, world: w): (w, Bool) \ {Fs.FileRead}`
-- RemoteDebug 分割用の内部窓口 — ゲームからは呼ばない。
+- RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
   `pub def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w, toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef): List[Render.PlacedItem] \ (ef + GameEngine.Game)`
 - タイル層の GPU 焼きの持ち回し。ループが引数で持ち回す。
   `pub type alias TileCache =`
@@ -241,13 +241,13 @@
   `pub def cubic(p0: Vec2.Vec2, c1: Vec2.Vec2, c2: Vec2.Vec2, p1: Vec2.Vec2, steps: Int32): List[Vec2.Vec2]`
 - stroke の引数一式。spine = 背骨の折れ線（quadratic/cubic の出力）、color/z = 塗り。
   `pub type alias Stroke = { spine = List[Vec2.Vec2], color = Color, z = Int32 }`
-- 背骨に太さを付けた帯。widthOf は背骨上の位置 t（0=始点..1=終点）→ その場所の太さで、
+- 背骨に太さを付けたストリップ。widthOf は背骨上の位置 t（0=始点..1=終点）→ その場所の太さで、
   `pub def stroke(s: Stroke, widthOf: Float64 -> Float64): List[Render.PlacedItem]`
 - fill の別名（旧呼び出し向け）。新規コードは fill を使う。
   `pub def convexFill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem]`
 - 閉じた輪郭を 1 枚の多角形として塗る。自己交差しない単純多角形なら深くえぐれた形
   `pub def fill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem]`
-- 折れ線を一定幅の帯で描く（節は丸い継ぎ目でつなぐ）。単発の線分 1 本だけなら
+- 折れ線を一定幅のストリップで描く（節は丸い継ぎ目でつなぐ）。単発の線分 1 本だけなら
   `pub def polyline(points: List[Vec2.Vec2], width: {width = Float64}, color: Color, z: Int32): List[Render.PlacedItem]`
 - 5 芒星の輪郭（上向き）。頂点列なので fill で塗る・stroke の背骨にする・加工する、が自由。
   `pub def star(center: Vec2.Vec2, rOut: {rOut = Float64}, rIn: {rIn = Float64}): List[Vec2.Vec2]`
@@ -315,7 +315,7 @@
   `pub def parallaxCenter(factor: Float64, center: Vec2.Vec2, design: {design = Vec2.Vec2}): Vec2.Vec2`
 - 追従の仕様: 不感帯の幅と寄せ率（1 秒あたり）。
   `pub type alias Follow = { deadzone = Float64, k = Float64 }`
-- target が current±deadzone の帯を出たぶん × min(1, k×dt) の移動量。
+- target が current±deadzone の不感帯を出たぶん × min(1, k×dt) の移動量。
   `pub def followDelta(spec: Follow, dt: Float64, target: Float64, current: Float64): Float64`
 - lo..hi へ収める（hi < lo なら lo）。カメラをレベルの内側に留めるのに使う。
   `pub def clampAxis(lo: Float64, hi: Float64, x: Float64): Float64`
@@ -625,7 +625,7 @@
   `pub type alias Spec = { name = String, duration = Float64, note = Option[String], emitters = List[Emitter] }`
 - 何も出さない空の Spec。「まだ読み込めていない」「効果なし」の置き場に使う —
   `pub def empty(): Spec`
-- ドキュメント（version + name + duration + emitters）を Spec へ畳む。
+- ドキュメント（version + name + duration + emitters）を Spec へ読み取る。
   `pub def parse(json: Json): Result[JsonError, Spec]`
 - パレット付きの parse。emitter の color に "@名前" と書くと palette から解決する
   `pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, Spec]`
@@ -749,7 +749,7 @@
   `pub def keyOf(name: String): Option[GameEngine.Key]`
 - 名前の列 → キーの列(順は保つ)。知らない名前はその 1 個だけ捨てる —
   `pub def keysOf(names: List[String]): List[GameEngine.Key]`
-- ホイールの生 delta を「目盛り」へ畳む。マウスは 1 目盛りで ±1.0 が届くが、
+- ホイールの生 delta を「目盛り」へまとめる。マウスは 1 目盛りで ±1.0 が届くが、
   `pub def wheelSteps(carry: Float64, delta: Float64): (Int32, Float64)`
 
 ## Journey — `engine_world/src/Journey.flix`
@@ -769,7 +769,7 @@
   `pub def expectObject(element: Json): Option[Map[String, Json]]`
 - JSON 文字列なら中身を返す。
   `pub def expectString(element: Json): Option[String]`
-- JSON 数値を Int32 として取り出す。`BigDecimal -> Float64 -> Int32` の 2 段変換。
+- JSON 数値を Int32 として取り出す。`BigDecimal -> Float64 -> Int32` の 2 段階の変換。
   `pub def expectInt(element: Json): Option[Int32]`
 - JSON 数値を Float64 として取り出す。数値以外は None。
   `pub def expectFloat(element: Json): Option[Float64]`
@@ -854,7 +854,7 @@
   `pub type alias Spec = { darkness = Float64, rimWidth = Float64, rimStrength = Float64, haloDiameterFactor = Float64, ambient = Color, shadowStrength = Float64, lights = List[LightSpec], note = Option[String] }`
 - 全フィールド省略時の既定値（lights=Nil の「今は光源なし」ドキュメントも許す —
   `pub def empty(): Spec`
-- ドキュメントを Spec へ畳む。
+- ドキュメントを Spec へ読み取る。
   `pub def parse(json: Json): Result[JsonError, Spec]`
 - Spec の質感パラメータに、ゲーム側が持つ occluders/viewport/glow/z を足して
   `pub def toConfig(spec: Spec, ctx: { occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2, glow = Light.GlowAssets, z = Int32 }): Light.SceneLightConfig`
@@ -913,7 +913,7 @@
 ## Material — `engine_world/src/Material.flix`
 - 粒の形。Speck = 小さな四角が明滅する(水のきらめき)。
   `pub enum SurfaceShape { case Speck case Scales case Bubble case Glow }`
-- 表面の粒のパラメータ1式(fx.json の語彙に寄せた命名)。
+- 表面の粒のパラメータ1式(fx.json の語彙にそろえた命名)。
   `pub type alias SurfaceFx = { shape = SurfaceShape, count = Int32, color = Color, color2 = Color, color3 = Color, channel = Int32, twinkleRate = Float64, alphaBase = Float64, alphaSpan = Float64, sizeBase = Float64, sizeSpan = Float64, period = Float64, riseSpeed = Float64, sizeTo = Float64, blend = DrawCmd.BlendMode }`
 - 静的なむら1式(深い水の暗がり・マグマの冷えた皮)。時間を持たないので
   `pub type alias BlotchFx = { color = Color, channel = Int32, alphaBase = Float64, alphaSpan = Float64, sizeBase = Float64, sizeSpan = Float64 }`
@@ -981,7 +981,7 @@
   `pub type alias Projection = { center = Vec2.Vec2, fx = Float64, fy = Float64 }`
 - 近クリップ済みの線分。camA / camB = 切った後の端点（カメラ空間）、
   `pub type alias Clipped = { camA = CamPoint, camB = CamPoint, t0 = Float64, t1 = Float64, dist = Float64 }`
-- h 帯（世界の縦帯）を画面に落とした四隅。topA.x == botA.x を保証する
+- h ストリップ（世界の縦のストリップ）を画面に落とした四隅。topA.x == botA.x を保証する
   `pub type alias Corners = { topA = Vec2.Vec2, topB = Vec2.Vec2, botA = Vec2.Vec2, botB = Vec2.Vec2 }`
 - 世界の点をカメラ空間へ分解する。fwd = 視線方向の奥行き、lat = 右向きの横ずれ。
   `pub def toCam(cam: Camera, p: Vec2.Vec2): CamPoint`
@@ -989,7 +989,7 @@
   `pub def dist(c: CamPoint): Float64`
 - 透視除算（x）。fwd が小さいほど大きく横に開く。
   `pub def screenX(proj: Projection, c: CamPoint): Float64`
-- 透視除算（y）。h = 帯の中の高さ（世界単位。- が上・+ が下。
+- 透視除算（y）。h = ストリップの中の高さ（世界単位。- が上・+ が下。
   `pub def screenY(proj: Projection, h: Float64, c: CamPoint): Float64`
 - 点の投影（クリップ済みの CamPoint → 画面 px）。大きさの換算は sizeAt へ —
   `pub def projectCam(proj: Projection, h: Float64, c: CamPoint): Vec2.Vec2`
@@ -1018,7 +1018,7 @@
   `pub def other(id: EntityId, contact: Contact): Option[EntityId]`
 - contact の法線を「id を押し出す向き」に揃える（a 側ならそのまま・b 側なら反転）。
   `pub def normalToward(id: EntityId, contact: Contact): Vec2.Vec2`
-- 面に近づく速度の法線成分だけを消す（跳ねずに滑る）。検出順に畳む。bounce の対。
+- 面に近づく速度の法線成分だけを消す（跳ねずに滑る）。検出順に適用する。bounce の対。
   `pub def slide(id: EntityId, contacts: List[Contact], vel: Vec2.Vec2): Vec2.Vec2`
 - normalToward が dir と minDot より強く揃う接触だけ残す
   `pub def contactsAlong(id: EntityId, dir: Vec2.Vec2, minDot: Float64, contacts: List[Contact]): List[Contact]`
@@ -1106,7 +1106,7 @@
   `pub def rotated(center: Vec2.Vec2, halfW: Float64, halfH: Float64, angle: Float64): List[Vec2.Vec2]`
 - 向きを角度でなく単位軸ベクトル `axis` で与える `rotated`。`axis` は箱のローカル +x
   `pub def orientedByAxis(center: Vec2.Vec2, axis: Vec2.Vec2, halfLen: Float64, halfThick: Float64): List[Vec2.Vec2]`
-- `p0` から `p1` への線分に沿った一定幅の帯で、中心線の両側の符号つき法線オフセット
+- `p0` から `p1` への線分に沿った一定幅のストリップで、中心線の両側の符号つき法線オフセット
   `pub def strip(p0: Vec2.Vec2, p1: Vec2.Vec2, o1: Float64, o2: Float64): List[Vec2.Vec2]`
 
 ## Query — `engine_world/src/Query.flix`
@@ -1310,7 +1310,7 @@
   `pub def flipV(vertices: List[Vec2.Vec2]): List[Vec2.Vec2]`
 - 頂点列を原点周りに t（1 周 = 1.0・正で時計回り = 画面の見た目どおり）回す。
   `pub def rotated(t: Float64, vertices: List[Vec2.Vec2]): List[Vec2.Vec2]`
-- 任意の点 pivot 周りに回す（蝶番・ドア用の近道。pivot へ寄せて回して戻すのと同じ）。
+- 任意の点 pivot 周りに回す（蝶番・ドア用の近道。pivot へ移して回して戻すのと同じ）。
   `pub def rotatedAround(t: Float64, pivot: Vec2.Vec2, vertices: List[Vec2.Vec2]): List[Vec2.Vec2]`
 - item を自分の軸で t（1 周 = 1.0）傾ける。軸は Box / Sprite が自分の中心、Text が置き場所、
   `pub def turned(t: Float64, item: Item): Item`
@@ -1431,7 +1431,7 @@
 ## Scatter — `engine_world/src/Scatter.flix`
 - 見えている範囲 visible を覆うセルを走査し、各セルに place を呼んで結果を全部つなぐ。
   `pub def field(visible: Rect2.Rect2, spec: {cell = Float64, salt = Int32}, place: ({col = Int32, row = Int32}, Int32 -> Float64) -> List[a]): List[a]`
-- 1 本の帯（横一列）にセルを敷く。疑似遠近の絵（奥の帯ほど広い世界が画面に入る）では
+- 1 本のストリップ（横一列）にセルを敷く。疑似遠近の絵（奥のストリップほど広い世界が画面に入る）では
   `pub def strip(span: {lo = Float64, hi = Float64}, spec: {cell = Float64, salt = Int32, lane = Int32, reach = Float64, cellsMax = Int32}, place: (Int32, Int32 -> Float64) -> List[a]): List[a]`
 
 ## SceneSeq — `engine_world/src/SceneSeq.flix`
@@ -1541,7 +1541,7 @@
   `pub type alias Doc = { version = Int32, styleMix = DualGrid.StyleMix, entries = List[EntryDoc] }`
 - コード側の既定値。石垣('#')と畑(',')の2行 — Doc が読めなくても地形は描ける。
   `pub def defaults(): Doc`
-- テキストから Doc へ(fail-open)。entries の char 重複は先勝ちで畳み(Studio 契約)、
+- テキストから Doc へ(fail-open)。entries の char 重複は先勝ちでまとめ(Studio 契約)、
   `pub def fromJson(text: String): Option[Doc]`
 - path の Doc を読む。読めない・壊れているときは defaults(fail-open)。
   `pub def load(p: String): Doc \ Fs.FileRead`
@@ -1677,7 +1677,7 @@
 - 図形 widget（UiShape.ShapeComp + 傾き）。軸の決め方は BoxSpec と同じ。
   `pub type alias ShapeSpec = { shape = UiShape.ShapeComp, rotation = Float64, pivot = Option[Vec2.Vec2] }`
 - `pub def nameOf(spec: Spec): String`
-- ドキュメント（version + templates + root）を Spec へ畳む。instance を含むときは load を使う。
+- ドキュメント（version + templates + root）を Spec へ読み取る。instance を含むときは load を使う。
   `pub def parse(json: Json): Result[JsonError, Spec]`
 - parse と同じ。加えて resolver（パス → JSON）で instance 参照を解決できる。
   `pub def parseWith(resolver: Map[String, Json], json: Json): Result[JsonError, Spec]`
@@ -1737,7 +1737,7 @@
 ## UiHierarchy — `engine_world/src/UiHierarchy.flix`
 - parent を親に持つ entity を order 昇順で返す。
   `pub def childrenOf(parent: EntityId, parents: Map[EntityId, EntityId], order: Map[EntityId, Int32]): List[EntityId]`
-- entity の階層深さ（root=0）。parents をたどった段数。
+- entity の階層深さ（root=0）。parents をたどった回数。
   `pub def depthOf(id: EntityId, parents: Map[EntityId, EntityId]): Int32`
 - root とその全子孫を集めた集合（root 自身を含む）。
   `pub def descendants(root: EntityId, parents: Map[EntityId, EntityId]): Set[EntityId]`
@@ -1860,7 +1860,7 @@
   `pub enum Widget with Eq { case BoxW case TextW case SpriteW case PolyW case ShapeW case NoneW }`
 - テンプレート解決済みの UI ノード。ツリーは children で再帰する。
   `pub enum Spec { case Spec({ name = String, widget = Widget, style = UiLayout.Style, box = Option[UiWidget.BoxComp], text = Option[UiWidget.TextComp], sprite = Option[UiWidget.SpriteComp], poly = Option[UiWidget.PolyComp], shape = Option[UiShape.ShapeComp], hover = Option[UiWidget.HoverStyle], visible = Bool, binding = Option[String], meta = Option[String], layer = Int32, children = List[Spec] }) }`
-- ui.json を Spec へ畳む。パースは UiDoc.parse（templates/use・スタイル・全 widget・
+- ui.json を Spec へ読み取る。パースは UiDoc.parse（templates/use・スタイル・全 widget・
   `pub def parse(json: Json): Result[JsonError, Spec]`
 - ui.json を読み込んで Spec にする。instance の参照先も UiDoc.load が読み集める。
   `pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead`
@@ -2035,21 +2035,21 @@
   `pub def replaceCurrent(a: a, wl: Worldline[a]): Worldline[a]`
 - 新しい現在へ進む。今の current を past へ積み（cap で古い端を切り詰め）、future を捨てる。
   `pub def record(a: a, wl: Worldline[a]): Worldline[a]`
-- 1 段遡る。past が空なら何もしない（最古で止まる）。手放した current は future へ積む。
+- 1 回遡る。past が空なら何もしない（最古で止まる）。手放した current は future へ積む。
   `pub def undo(wl: Worldline[a]): Worldline[a]`
-- 1 段下る（やり直し）。future が空なら何もしない。手放した current は past へ戻す。
+- 1 回下る（やり直し）。future が空なら何もしない。手放した current は past へ戻す。
   `pub def redo(wl: Worldline[a]): Worldline[a]`
-- k 段遡る。past が尽きたら最古で止まる（k が履歴長を超えても最古に clamp）。
+- k 回遡る。past が尽きたら最古で止まる（k が履歴長を超えても最古に clamp）。
   `pub def undoBy(k: Int32, wl: Worldline[a]): Worldline[a]`
-- k 段下る。future が尽きたら最新で止まる。undoBy の対。
+- k 回下る。future が尽きたら最新で止まる。undoBy の対。
   `pub def redoBy(k: Int32, wl: Worldline[a]): Worldline[a]`
 - 遡れるか（past が空でないか）。
   `pub def canUndo(wl: Worldline[a]): Bool`
 - 下れるか（future が空でないか）。
   `pub def canRedo(wl: Worldline[a]): Bool`
-- 遡れる段数（past の長さ）。
+- 遡れる回数（past の長さ）。
   `pub def pastLength(wl: Worldline[a]): Int32`
-- 下れる段数（future の長さ）。
+- 下れる回数（future の長さ）。
   `pub def futureLength(wl: Worldline[a]): Int32`
 - 世界線上の総状態数（past + current + future）。
   `pub def length(wl: Worldline[a]): Int32`

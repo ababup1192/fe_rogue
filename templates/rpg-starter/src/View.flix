@@ -15,7 +15,7 @@
 //
 // ── 里の層（奥から手前へ）──
 //   地面のタイル層（エンジンの別チャンネル。縁・角は TownMap が選ぶ）
-//   → 扉・薬草・灯り → 前後の帯（建物・住人・主人公 — 足元 y で前後が入れ替わる）
+//   → 扉・薬草・灯り → 前後の深度の範囲（建物・住人・主人公 — 足元 y で前後が入れ替わる）
 //   → 霧(hud) → ふきだし → 幕(hud)
 // 建物は複数タイルにまたがる大きな 1 枚（town.sprite.json の house_*）をアトラスの
 // quad で置く — タイルを 1 枚ずつ独立に描かない。
@@ -23,8 +23,8 @@
 // ── 絵の下限の 4 性質 × 層の担当（agents-pack/AGENTS.core.md「絵の下限」）──
 //   面の階調  … 地面のタイル層（縁・角・散らしのバリエーション）と水面シェーダー
 //               （流れる網目）。ベタの単色面を作らない。
-//   主役の分離 … 前後の帯のスプライト（彩度のある濃色の輪郭 + 接地影。純黒は使わない）。
-//   層の分かれ … 地面 → 置き物 → 前後の帯 → 霧 → ふきだし → 幕の z-index の範囲
+//   主役の分離 … 前後の深度の範囲のスプライト（彩度のある濃色の輪郭 + 接地影。純黒は使わない）。
+//   層の分かれ … 地面 → 置き物 → 前後の深度の範囲 → 霧 → ふきだし → 幕の z-index の範囲
 //               （下の「z 層」の数が唯一の権威）。
 //   時間の流れ … 水面シェーダー・窯の煙(Fx)・旗と住人の歩き（コマ送り）・灯りの明滅。
 //               表紙や幕の下でも t は進み続ける（World の doc 参照）。
@@ -37,8 +37,8 @@ mod View {
 
     // ── z 層 ──
     // 地面はタイル層（エンジンが動的な絵より必ず奥に敷く）なので、ここには出てこない。
-    // 置き物 10..29 / 前後の帯（人・建物）100..131 / 霧 200 / 幕 210.. / ふきだし 220..
-    // 前後の帯は Depth.forRows が行ごとに 1 段割り当てる — 帯の上下の数と重ならないこと。
+    // 置き物 10..29 / 前後の深度の範囲（人・建物）100..131 / 霧 200 / 幕 210.. / ふきだし 220..
+    // 前後の深度は Depth.forRows が行ごとに 1 つ割り当てる — その範囲の上下の数と重ならないこと。
 
     def zHerb(): Int32 = 12
     def zDepthBack(): Int32 = 100
@@ -137,7 +137,7 @@ mod View {
 
     // ── 建物（複数タイルにまたがる大きな 1 枚をアトラスの quad で置く）──
 
-    /// 建物。壁と屋根は別 sprite だが足元 y（接地の南端）を共有して前後の帯に載る —
+    /// 建物。壁と屋根は別 sprite だが足元 y（接地の南端）を共有して前後の深度の範囲に載る —
     /// 主人公が北側（裏）を歩くと屋根と壁に隠れ、南側では建物の前に立つ。
     def houses(w: World.World): List[Render.PlacedItem] =
         TownMap.buildings() |> List.flatMap(b ->
@@ -190,7 +190,7 @@ mod View {
             PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
                 name, "idle", { x = at#x, y = bottom - size#y }, false, 1, 0))
 
-    // ── 橋の欄干（橋面はタイル層。欄干は前後の帯に立てる）──
+    // ── 橋の欄干（橋面はタイル層。欄干は前後の深度の範囲に立てる）──
 
     /// 北の欄干は主人公の後ろ（足元 = マスの上端）、南の欄干は前
     /// （足元 = 次の行の中ほど）— 渡っている間、体が南の欄干に半分隠れる。
@@ -326,7 +326,7 @@ mod View {
         let (frameName, flipX) = heroFrame(w);
         placeAtFeet(w, w#hero, sprite(w, "hero", frameName, w#hero, flipX, 0, w#theme#accent))
 
-    /// マスに立つ 1 体を前後の帯へ載せる（足元 = マスの下端）。
+    /// マスに立つ 1 体を前後の深度の範囲へ載せる（足元 = マスの下端）。
     def placeAtFeet(w: World.World, cell: Grid.Cell, items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         Depth.place(depthRange(w), cellCenter(w, cell)#y + World.tileSize() / 2.0, items)
 
@@ -369,7 +369,7 @@ mod View {
         else
             items
 
-    // ── 霧（決定的なばらつきで横に流れる帯。保存も乱数の種も持たない） ──
+    // ── 霧（決定的なばらつきで横に流れるストリップ。保存も乱数の種も持たない） ──
 
     def fogStrips(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         List.range(0, 5) |> List.map(i ->
@@ -480,8 +480,8 @@ mod View {
     // 戦いの画面（魔物と向き合う）
     // ══════════════════════════════════════════════════════
     //
-    // 里の絵は出さない（盤・霧の帯・ふきだしは village 側の物）。ここは
-    // 「夜空 → 霧 → 地面 → 魔物」の 4 段（ウィンドウは hud 側）で、視線が魔物と下の文に集まるようにする。
+    // 里の絵は出さない（盤・霧のストリップ・ふきだしは village 側の物）。ここは
+    // 「夜空 → 霧 → 地面 → 魔物」の 4 層（ウィンドウは hud 側）で、視線が魔物と下の文に集まるようにする。
 
     def battleWorld(w: World.World): List[Render.PlacedItem] =
         List.flatten(
@@ -498,9 +498,9 @@ mod View {
               { top = ThemeDoc.darken(theme#sky, 0.45),
                 bottom = ThemeDoc.lighten(theme#sky, 0.10) }, zBattleSky()) } :: Nil
 
-    /// 遠くにかかる霧。濃さが縦に変わる帯を数枚重ねる。里の霧（fogStrips）は四角い帯で
-    /// よいが、こちらは下地がなめらかなグラデなので、縁が立つと帯の四角が見えてしまう —
-    /// 上下で薄れる頂点色つきの帯にして、境目を消す。
+    /// 遠くにかかる霧。濃さが縦に変わる面を数枚重ねる。里の霧（fogStrips）は四角い面で
+    /// よいが、こちらは下地がなめらかなグラデなので、縁が立つと面の四角が見えてしまう —
+    /// 上下で薄れる頂点色つきの面にして、境目を消す。
     def battleMist(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         List.range(0, 3) |> List.map(i -> {
             let top = 48.0 + Hash01.at(i, 21) * 72.0;
@@ -574,7 +574,7 @@ mod View {
     def windowLine(atlas: FontAtlas, text: String, at: Vec2.Vec2, color: Color): Render.PlacedItem =
         { at = at, item = Render.textTinted(text, atlas, 12.0, color, zWindowText()) }
 
-    /// 体力のウィンドウ（左上）。数だけでなく残りの帯も出す — 数を読まなくても危なさが判る。
+    /// 体力のウィンドウ（左上）。数だけでなく残りをバーでも出す — 数を読まなくても危なさが判る。
     def statusWindow(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         let rect = { position = { x = 16.0, y = 14.0 }, size = { x = 132.0, y = 44.0 } };
         let maxHp = Int32.max(1, w#battleDoc#heroMaxHp);

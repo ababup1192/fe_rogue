@@ -6,8 +6,8 @@ mod TestRules {
     // ══════════════════════════════════════════════════════
     // fixture: hall で 1 分岐 → endA（疑う）/ endB（疑わない）
     //
-    //   hall: beat a → beat b → ask ──[疑う]──→ endA (1 拍で結末)
-    //                              └─[疑わない]→ endB (1 拍で結末)
+    //   hall: beat a → beat b → ask ──[疑う]──→ endA (1 ビートで結末)
+    //                              └─[疑わない]→ endB (1 ビートで結末)
     // ══════════════════════════════════════════════════════
 
     def beat(speaker: String, text: String): StoryDoc.Beat =
@@ -31,7 +31,7 @@ mod TestRules {
                         theme = ThemeDoc.defaults(), sprites = PxSpriteDoc.empty() },
                       UiStore.empty())
 
-    /// 文字送りを使い切って 1 拍読み終えた状態にする（テストは速さを検査しない）。
+    /// 文字送りを使い切って 1 ビート読み終えた状態にする（テストは速さを検査しない）。
     def settle(w: World.World): World.World = World.step(1000.0, w)
 
     /// 表紙から最初の分岐（選択肢待ち）まで進めた状態。
@@ -51,7 +51,7 @@ mod TestRules {
 
     @Test
     def testAdvanceReadsBeatsInOrder(): Unit \ Assert =
-        // 読み終えた拍を送ると、同じ節の次の拍がダイアログに乗る（本文は台本の rows から導く）。
+        // 読み終えたビートを送ると、同じ節の次のビートがダイアログに乗る（本文は台本の rows から導く）。
         let w = w0() |> World.advance |> settle |> World.advance;
         let shown = UiDialog.currentLine(w#kit#dialog)
             |> Option.map(line -> RichText.plainText(line#body))
@@ -79,7 +79,7 @@ mod TestRules {
 
     @Test
     def testEndingReturnsToTitle(): Unit \ Assert =
-        // 結末の節（ask も next も無い）の最後の拍を送ると表紙へ戻る。死なない・詰まない。
+        // 結末の節（ask も next も無い）の最後のビートを送ると表紙へ戻る。死なない・詰まない。
         let w = World.pick(0, atAsk()) |> settle |> World.advance;
         Assert.assertEq(expected = World.Phase.Title, w#phase)
 

@@ -29,7 +29,7 @@ mod TestAnim {
         Assert.assertEq(expected = (0, 0),
             (Anim.frameAt(normal, -1.0), Anim.frameAt(empty, 1.0)))
 
-    /// regionOf: 段 2・コマ 3・24x24 は position (72, 48)・size (24, 24)。
+    /// regionOf: 行 2・コマ 3・24x24 は position (72, 48)・size (24, 24)。
     @Test
     def testRegionOfComputesExactRect(): Unit \ Assert =
         let clip = { row = 2, frames = 6, fps = 8.0, looping = true };

@@ -3,7 +3,7 @@
 
 生成した絵 (各ゲームの gallery/ と reference/*.png) は git 管理外にしてある。PNG/GIF は
 生成し直すたび丸ごと別の実体になり、差分圧縮も効かないまま履歴に積み上がるためで、
-放っておくと clone が何十 MB も重くなる。このゲートは、その約束が守られているかを見る。
+放っておくと clone が何十 MB も重くなる。このゲートは、その決まりが守られているかを見る。
 
 追跡してよい絵は 3 種類だけ:
   展示    人に見せる絵 (docs/gallery/) とブランド素材 (docs/brand/)
@@ -11,7 +11,7 @@
   例外    templates/*/reference/title.png … Studio のジャンルカードのサムネイルが実体を読む
 
 使い方: python3 bin/lint-images.py [ルート]   (既定のルートはこのファイルの親の親)
-約束が破れていれば 1 行ずつ挙げて終了コード 1。
+決まりが破れていれば 1 行ずつ挙げて終了コード 1。
 """
 
 import os
@@ -75,7 +75,7 @@ def main():
         full = os.path.join(root, p)
         sizes[p] = os.path.getsize(full) if os.path.exists(full) else 0
 
-    # 1. 置き場の約束
+    # 1. 置き場の決まり
     for p in paths:
         if not allowed(p):
             problems.append(

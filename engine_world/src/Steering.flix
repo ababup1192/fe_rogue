@@ -60,7 +60,7 @@ mod Steering {
         (x, y - 1) :: (x, y + 1) :: (x - 1, y) :: (x + 1, y) :: Nil
 
     /// 並び順で最初に現れる最小（同値では置き換えない = 先勝ち）。
-    /// ソートに頼らず foldLeft で畳む — 同着の決定性を neighborsOf の順が担保する。
+    /// ソートに頼らず foldLeft で畳み込む — 同着の決定性を neighborsOf の順が担保する。
     def firstMinBy(key: a -> Int32, l: List[a]): Option[a] =
         List.foldLeft((acc, x) -> match acc {
             case None    => Some(x)

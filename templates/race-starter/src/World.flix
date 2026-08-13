@@ -5,7 +5,7 @@
 //   1. 急カーブとドリフト … カーブの急さは区間の curve が持つ。速いまま入ると
 //      「道が横へ動くのに舵が追いつかない」+ 超過ぶんの横押しでアウトへ膨らむ。
 //      X を押しながら曲がるとドリフト: 舵が深くなり減速もしないが、外へ流れ続ける。
-//   2. スリップストリーム + ラバーバンド AI … 前走車の真後ろの帯で加速。ライバルは
+//   2. スリップストリーム + ラバーバンド AI … 前走車の真後ろの範囲で加速。ライバルは
 //      距離差で速度が補正され（離されると速く・千切ると遅く）、常に接戦へ戻る。
 //   3. ニトロ … 危険な走り（ドリフト・張り付き・すれすれ）だけがゲージを貯め、
 //      満タンで Z 発動。爆発的に速いが、操舵が半分になる。
@@ -72,7 +72,7 @@ mod World {
     ///   nitroLeft / boostLeft / spinLeft … 発動中のニトロ / アイテムブースト / スピンの残り秒。
     ///   bumpLeft  … 車どうしがぶつかって速度が落ちている残り秒。
     ///   drifting / steerDir … いまドリフト中か・ハンドルの向き（絵の傾きと煙の向きに使う）。
-    ///   taken     … 取ったアイテムの通し段（同じアイテムは 1 周で 1 回だけ）。
+    ///   taken     … 取ったアイテムの通し行（同じアイテムは 1 周で 1 回だけ）。
     ///   skids     … タイヤ痕（コース相対の点のまま持ち、View が毎フレーム投影する）。
     ///   bursts    … 進行中の粒の効果（煙・火花・クラッシュ。at はコース相対）。
     ///   fxSeq     … 効果の通し番号（同じ煙が毎回そっくり同じ姿になるのを避ける種）。
@@ -119,11 +119,11 @@ mod World {
     pub def designW(): Float64 = 240.0
     pub def designH(): Float64 = 360.0
 
-    /// コース 1 段が距離いくつ分か（px）。距離 → 通し段の割り算の分母。
+    /// コース 1 行が距離いくつ分か（px）。距離 → 通し行の割り算の分母。
     pub def rowPitch(): Float64 = 40.0
 
-    /// 1 周の距離（px）= コースの段数 × 1 段の距離。Doc に別の数値としては持たない —
-    /// 持つと、コースの段数を編集したとき周長だけ古いままずれる。
+    /// 1 周の距離（px）= コースの行数 × 1 行の距離。Doc に別の数値としては持たない —
+    /// 持つと、コースの行数を編集したとき周長だけ古いままずれる。
     pub def lapLength(course: CourseDoc.Doc): Float64 =
         Int32.toFloat64(CourseDoc.rowCount(course)) * rowPitch()
 
@@ -149,31 +149,31 @@ mod World {
     /// 道の外（草）へ踏み出せる幅（px）。ここを越える前に大減速で引き戻される。
     def grassReach(): Float64 = 52.0
 
-    // ── コースの読み取り（段・曲がり・道幅） ──
+    // ── コースの読み取り（行・曲がり・道幅） ──
 
-    /// 距離 d にいる自機が「乗っている」通し段（0 始まり・周回しても増え続ける）。
+    /// 距離 d にいる自機が「乗っている」通し行（0 始まり・周回しても増え続ける）。
     pub def playerRowOf(d: Float64): Int32 =
         Num.floorInt((d + playerAheadPx()) / rowPitch())
 
-    /// 通し段 n で道が曲がっていく強さ（+ が右）。急さの物差しはこれ 1 本。
+    /// 通し行 n で道が曲がっていく強さ（+ が右）。急さの物差しはこれ 1 本。
     pub def curveAt(n: Int32, course: CourseDoc.Doc): Float64 =
         CourseDoc.curveAt(n, course)
 
-    /// 通し段 n の道の半幅（px）。
+    /// 通し行 n の道の半幅（px）。
     pub def halfWidthAt(n: Int32, course: CourseDoc.Doc): Float64 =
         CourseDoc.halfWidthAt(n, course)
 
-    /// 通し段 n の路面の左右端（道の中心からの横ずれ px）。
-    /// 帯どうしで辺を共有させるため、絵の側はこの 1 か所からしか道の幅を引かない
-    /// （段ごとに別々に幅を出すと、帯の境目で道が横へ飛ぶ）。
+    /// 通し行 n の路面の左右端（道の中心からの横ずれ px）。
+    /// セグメントどうしで辺を共有させるため、絵の側はこの 1 か所からしか道の幅を引かない
+    /// （行ごとに別々に幅を出すと、セグメントの境目で道が横へ飛ぶ）。
     pub def roadEdgeAt(n: Int32, course: CourseDoc.Doc): { xl = Float64, xr = Float64 } =
         let half = halfWidthAt(n, course);
         { xl = 0.0 - half, xr = half }
 
     /// 距離 d まで走ってきて、道がどれだけ向きを変えたか（+ = 右へ回った）。
-    /// 空・太陽・雲はこの値で横へ流す — 帯の折れだけだと、急カーブと「強く傾いた直線」が
+    /// 空・太陽・雲はこの値で横へ流す — セグメントの折れだけだと、急カーブと「強く傾いた直線」が
     /// 見分けられない（景色が動いて初めて「回った」と読める）。
-    /// 周回ぶんは足さない。区間表の curve の合計は 1 周で 0 に戻す約束なので、
+    /// 周回ぶんは足さない。区間表の curve の合計は 1 周で 0 に戻す決まりなので、
     /// 足すと同じ場所なのに周ごとに空の位置がずれる。
     pub def headingAt(d: Float64, course: CourseDoc.Doc): Float64 =
         let rowF = d / rowPitch();
@@ -199,25 +199,25 @@ mod World {
     pub def onRoad(w: World): Bool =
         Float64.abs(w#playerOff) <= halfWidthAt(playerRowOf(w#distance), w#course)
 
-    // ── 立ち物（置き場 Doc）と、障害物の当たりの帯 ──
+    // ── 立ち物（置き場 Doc）と、障害物の当たりの範囲 ──
 
-    /// 通し段 n に置かれている物。周回の巻き戻しはコースの段数で行う
+    /// 通し行 n に置かれている物。周回の巻き戻しはコースの行数で行う
     /// （置き場の表はコース 1 周ぶんしか持たない）。
     pub def propCellsAt(n: Int32, w: World): List[PropsDoc.Cell] =
         PropsDoc.cellsAt(CourseDoc.wrapRow(n, w#course), w#props)
 
-    /// 通し段 n のアイテムの横ずれ（px）。
+    /// 通し行 n のアイテムの横ずれ（px）。
     pub def itemOffsAt(n: Int32, w: World): List[Float64] =
         let half = halfWidthAt(n, w#course);
         propCellsAt(n, w) |> List.filterMap(c ->
             if (c#kind == PropsDoc.Kind.Item) Some(PropsDoc.laneOff(c#lane, half)) else None)
 
-    /// 障害物 1 つの当たり（道の中心からの横ずれ px の帯）と、その正体。
-    /// 点でなく帯で持つのは、土管ゲートのように「隙間以外ぜんぶ塞がっている」物を
-    /// 同じ 1 つの規則で扱うため。絵（ViewRoad）もこの帯から引く。
+    /// 障害物 1 つの当たり（道の中心からの横ずれ px の範囲）と、その正体。
+    /// 点でなく範囲で持つのは、土管ゲートのように「隙間以外ぜんぶ塞がっている」物を
+    /// 同じ 1 つの規則で扱うため。絵（ViewRoad）もこの範囲から引く。
     pub type alias Blocker = { lo = Float64, hi = Float64, kind = PropsDoc.Kind }
 
-    /// 通し段 n の障害物の帯ぜんぶ。土管ゲートは左右 2 本ぶんの帯になる。
+    /// 通し行 n の障害物の範囲ぜんぶ。土管ゲートは左右 2 つぶんの範囲になる。
     pub def blockersAt(n: Int32, w: World): List[Blocker] =
         let half = halfWidthAt(n, w#course);
         propCellsAt(n, w) |> List.flatMap(c ->
@@ -233,7 +233,7 @@ mod World {
                     ({ lo = x - hw, hi = x + hw, kind = c#kind }: Blocker) :: Nil
             })
 
-    /// 土管ゲート = 隙間の左右に伸びる 2 本の帯。土管の外側の端を道の外まで伸ばすのは、
+    /// 土管ゲート = 隙間の左右に伸びる 2 つの範囲。土管の外側の端を道の外まで伸ばすのは、
     /// 草へ迂回して隙間を通らずに済ませられないようにするため。
     def gateBlockers(lane: Int32, half: Float64, w: World): List[Blocker] =
         let gap = Int32.max(1, w#props#gateGapLanes);
@@ -245,8 +245,8 @@ mod World {
             else ({ lo = lo, hi = hi, kind = PropsDoc.Kind.Gate }: Blocker) :: Nil;
         span(0.0 - far, gapL) ::: span(gapR, far)
 
-    /// 振り子バーが通し段 n・時刻 t にいる横ずれ（px）。閉じた式 1 本で決まる —
-    /// 乱数も、覚えておく状態も無い。段番号が位相を決めるので、同じ段のバーは
+    /// 振り子バーが通し行 n・時刻 t にいる横ずれ（px）。閉じた式 1 本で決まる —
+    /// 乱数も、覚えておく状態も無い。行番号が位相を決めるので、同じ行のバーは
     /// 何周目でもそっくり同じリズムで往復し、覚えて攻略できる。
     pub def barOffAt(n: Int32, w: World): Float64 =
         let phase = w#t / w#props#barPeriod + Int32.toFloat64(n) * w#props#barPhaseStep;
@@ -255,7 +255,7 @@ mod World {
 
     // ── ガードレール ──
 
-    /// 通し段 n でガードレールが立っている側（-1 = 左・+1 = 右・0 = 立っていない）。
+    /// 通し行 n でガードレールが立っている側（-1 = 左・+1 = 右・0 = 立っていない）。
     pub def railSideAt(n: Int32, w: World): Float64 =
         CourseDoc.railSideAt(n, w#course)
 
@@ -300,7 +300,7 @@ mod World {
               passed = false }
         })
 
-    /// 道の半幅（px）の見積もり（スタート段の道幅から。レーンの振り幅に使う）。
+    /// 道の半幅（px）の見積もり（スタート行の道幅から。レーンの振り幅に使う）。
     def roadHalfPx(course: CourseDoc.Doc): Float64 =
         halfWidthAt(0, course)
 
@@ -344,7 +344,7 @@ mod World {
     // 毎フレームの更新
     // ══════════════════════════════════════════════════════
 
-    /// 毎フレームの拍。時計と粒の寿命は場面を問わず進める — 待っている画面でも
+    /// 毎フレームの更新。時計と粒の寿命は場面を問わず進める — 待っている画面でも
     /// 海が光り、煙は流れて消える。走りの規則は Racing のときだけ。
     pub def step(inputs: Inputs, dt: Float64, w: World): World =
         let ticked = { t = w#t + dt, bursts = Fx.expire(w#t + dt, w#bursts) | w };
@@ -353,7 +353,7 @@ mod World {
             case _            => ticked
         }
 
-    /// Racing の 1 拍。「進める部品」を順に pipe でつなぐ（読み下すと 1 フレームの物語になる）。
+    /// Racing の 1 フレーム。「進める部品」を順に pipe でつなぐ（読み下すと 1 フレームの物語になる）。
     def tickRacing(inputs: Inputs, dt: Float64, w: World): World =
         w
             |> resolveDrift(inputs)
@@ -434,7 +434,7 @@ mod World {
             * (if (w#spinLeft > 0.0) w#rules#spinSlow else 1.0)
             * (if (w#bumpLeft > 0.0) w#rules#bumpSlow else 1.0)
 
-    /// 坂の速度倍率。登りで遅く、下りで速い。1 段ぶんの勾配にしか掛けないので、
+    /// 坂の速度倍率。登りで遅く、下りで速い。1 行ぶんの勾配にしか掛けないので、
     /// 長い坂ほど効き続ける。0.6〜1.4 で頭打ちにするのは、極端な勾配を書かれても
     /// 止まったり倍速になったりしないため（コースの書き手を信用しすぎない）。
     def hillMult(w: World): Float64 =
@@ -462,9 +462,9 @@ mod World {
         else if (w#rank == 2) { nitro = Num.clamp01(w#nitro + w#rules#itemNitroCharge) | w }
         else                  { boostLeft = w#rules#itemBoostDuration | w }
 
-    /// 障害物マス: 車体が帯に触れていればスピン、触れていなくても帯の端から
+    /// 障害物マス: 車体が範囲に触れていればスピン、触れていなくても範囲の端から
     /// nearMissDist 以内なら「すれすれ」（ゲージが貯まり火花が散る）。
-    /// 帯 1 本につき 1 回数えるので、土管ゲートの狭い隙間を両側すれすれで抜けると 2 回貯まる —
+    /// 範囲 1 つにつき 1 回数えるので、土管ゲートの狭い隙間を両側すれすれで抜けると 2 回貯まる —
     /// 危険に寄るほど強くなる仕組みの、一番おいしい所。
     def hitObstacles(n: Int32, w: World): World =
         let blockers = blockersAt(n, w);
@@ -506,9 +506,9 @@ mod World {
 
     // ── 柱 3: ニトロ（貯める・撃つ） ──
 
-    /// スリップストリームの帯の中か（前走車の真後ろ・幅 slipWidth）。
+    /// スリップストリームの範囲の中か（前走車の真後ろ・幅 slipWidth）。
     /// 横のずれは道の中心から測る — カーブの途中では画面上の左右で測ると、
-    /// 同じ車線に並んでいるのに帯から外れてしまう。
+    /// 同じ車線に並んでいるのに範囲から外れてしまう。
     pub def slipActive(w: World): Bool =
         let me = playerDistOf(w);
         w#rivals |> List.exists(r ->

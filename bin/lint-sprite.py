@@ -52,7 +52,7 @@ TRANSPARENT_CHARS = {".", " "}
 RULES = ("structure", "orphan", "palette", "jaggy", "banding", "corner", "silhouette")
 
 MAX_COLORS = 12          # 1 スプライトの色数上限 (legend の値の異なり数)
-MAX_COLORS_BIG = 16      # 32px を超える大物 (建物・帯) は少し緩める
+MAX_COLORS_BIG = 16      # 32px を超える大物 (建物・細長い物) は少し緩める
 BIG_SIDE = 32
 TEXTURE_FILL = 0.90      # これ以上塗られたコマはテクスチャ扱い
 MIN_ORPHAN_CELLS = 4     # これ未満の極小スプライト (粒など) は orphan を見ない
@@ -355,7 +355,7 @@ def silhouette_notes(cells, width, height):
     occupancy = len(cells) / (box_w * box_h)
     if occupancy < SILHOUETTE_MIN_OCC:
         notes.append(f"シルエットがスカスカ (枠 {box_w}x{box_h} の {occupancy:.0%})")
-    # 格子の端から端まで届く物はタイルの縁・帯であって、細くて当たり前。
+    # 格子の端から端まで届く物はタイルの縁や細長い物であって、細くて当たり前。
     spans = box_w == width or box_h == height
     if not spans and min(box_w, box_h) <= 2 and max(box_w, box_h) >= 8:
         notes.append(f"シルエットが細長すぎる ({box_w}x{box_h})")

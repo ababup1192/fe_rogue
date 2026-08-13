@@ -69,20 +69,20 @@
 | 当たり判定の幾何形状（矩形・円・カプセル・坂）を計算したい | CollisionShape2D |
 | 今フレーム押されているキー・マウスボタンの集合を取りたい | InputEvent |
 | HUD を本体より確実に手前に出す zIndex の基準が欲しい | CanvasLayer |
-| 放射グラデの組み込みテクスチャ（`__radial_light` / `__radial_dark`）の画素・名前・寸法を知りたい | RadialBuiltin（ゲーム側の窓口は engine_world の `Render.lightAt` / `Render.darkAt`） |
+| 放射グラデの組み込みテクスチャ（`__radial_light` / `__radial_dark`）の画素・名前・寸法を知りたい | RadialBuiltin（ゲーム側の入口は engine_world の `Render.lightAt` / `Render.darkAt`） |
 | Drawable 経路のカメラ・投影を知りたい（`view = None` のゲーム以外では使わない） | Camera / Projection |
-| 画面でなくレンダーターゲットに描いてテクスチャとして読み返したい（`eff Target`） | RenderTarget（GL 実装は render_gl の Target.flix / RenderTargetGl。ゲーム側の窓口は engine_world の `Render.Pass` + `App.withPasses`、[逆引き](module-index.md)を参照） |
+| 画面でなくレンダーターゲットに描いてテクスチャとして読み返したい（`eff Target`） | RenderTarget（GL 実装は render_gl の Target.flix / RenderTargetGl。ゲーム側の入口は engine_world の `Render.Pass` + `App.withPasses`、[逆引き](module-index.md)を参照） |
 | いま bind 中のフレームバッファ（FBO でも既定でも）を画像 / PNG に吸い出したい | GlReadback（render_gl の Readback.flix。`readBoundImage`（RGBA・左上原点）/ `readBoundImageRgb`（RGB に落とす皮）/ `readBoundPng`。splashShot・注釈スクショ・GL 突き合わせ（bench/gl_parity）が共有する読み出しの核） |
 
 ## 土台
 
-- **GameEngine** — ゲームとエンジンの境界に置く共有の型（描画データ・キー・色など）と、副作用の窓口（描画・入力・音・時間の取得）をまとめて定義する。各ゲームはここの型とエフェクトだけを見れば、内部実装を知らずに描画や入力を組める。
+- **GameEngine** — ゲームとエンジンの境界に置く共有の型（描画データ・キー・色など）と、副作用の入口（描画・入力・音・時間の取得）をまとめて定義する。各ゲームはここの型とエフェクトだけを見れば、内部実装を知らずに描画や入力を組める。
 - **EngineSentinel** — engine fpkg のロードを consumer 側で trigger するためのモジュール。
 - **EngineSentinel.Marker** — EngineSentinel が使う印だけの小さな型。
 
 ## シェーダー
 
-- **ShaderDoc** — 面（矩形）を GPU シェーダーで塗るための「宣言データ」。生の GLSL を書かず、少数の部品（値の場・色・出力）を組み合わせて水面のような連続した見た目を作る。部品の型（Spec）と、木の汎用走査 `ShaderDoc.foldField`・Tex が読むテクスチャ名の正典順列挙 `ShaderDoc.texNames`（GLSL の uniform 番号 = sampler unit 番号 = 描画依頼の texNames の並びの正）を持つ。全面でない面から pass を等倍・鏡像で読む Shift の dy 場は、ゲーム側の窓口 engine_world の `Render.passStripDy` で組める。
+- **ShaderDoc** — 面（矩形）を GPU シェーダーで塗るための「宣言データ」。生の GLSL を書かず、少数の部品（値の場・色・出力）を組み合わせて水面のような連続した見た目を作る。部品の型（Spec）と、木の汎用走査 `ShaderDoc.foldField`・Tex が読むテクスチャ名の正典順列挙 `ShaderDoc.texNames`（GLSL の uniform 番号 = sampler unit 番号 = 描画依頼の texNames の並びの正）を持つ。全面でない面から pass を等倍・鏡像で読む Shift の dy 場は、ゲーム側の入口 engine_world の `Render.passStripDy` で組める。
 - **ShaderGen** — Spec を GLSL の fragment シェーダー文字列へ変換する codegen。各部品が自分の GLSL 片（式）を返し、compile が 1 枚の main() に繋ぐ。出力は決定論なのでスナップショットで釘打ちできる。
 - **ShaderEval** — Spec 木を CPU（Float64）で評価する検証用の純関数。描画経路ではなく、式の構造が GLSL 側と揃っているかをテストで確かめるために使う。tex 場つきの評価は `ShaderEval.evalPixelTex` / `ShaderEval.evalAlphaTex`、生成の画素ループは色と α を 1 回の shared 先行評価で返す `ShaderEval.evalPixelAlphaTex` を使う。
 - **ShaderJson** — シェーダー面の宣言（ShaderDoc.Spec）を JSON と相互変換する codec。engine を触らず `*.shader.json` の保存だけで調整できる（App.watchFile によるホットリロードの受け皿）。

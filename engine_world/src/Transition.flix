@@ -1,5 +1,5 @@
 // Transition — 画面を覆う/晴らす切り替え演出を、進行度 t だけから絵にする道具箱。
-// シーンの変え目に単色の帯を重ねるだけで「唐突に切り替わった」感じを消せる。
+// シーンの変え目に単色の覆いを重ねるだけで「唐突に切り替わった」感じを消せる。
 // 利用例: フロア移動の前後で FadeOut → FadeIn を挟む / メニュー確定で WipeLeft を出す。
 // カメラを使うゲームは HUD 側（withHudView / composeScene の hud）に重ねる — world 側だと覆いがカメラで動く。
 // イージングは持たない: 呼び側で t を変形して渡せば効く（例: t*t でゆっくり立ち上がる）。
@@ -12,8 +12,8 @@ mod Transition {
     pub enum Kind with Eq {
         case FadeOut,    // だんだん黒く覆っていく（t=0 素通し → t=1 全面黒）
         case FadeIn,     // 覆いがだんだん晴れる（t=0 全面黒 → t=1 素通し）
-        case WipeLeft,   // 黒い帯が右から左へ画面を覆っていく
-        case WipeRight   // 黒い帯が左から右へ画面を覆っていく
+        case WipeLeft,   // 黒い覆いが右から左へ画面を広がっていく
+        case WipeRight   // 黒い覆いが左から右へ画面を広がっていく
     }
 
     // ── 純関数層: 進行度 t → 画面を覆う描画物 ──
@@ -49,7 +49,7 @@ mod Transition {
             (RawDraw.boxAt(center, viewport, color, z) |> withAlpha(t)) :: Nil
         }
 
-    /// 画面幅 t 分だけ帯で覆う（fromRight=true で右端から左へ、false で左端から右へ）。
+    /// 画面幅 t 分だけ覆う（fromRight=true で右端から左へ、false で左端から右へ）。
     def wipeItems(t: Float64, viewport: Vec2.Vec2, color: Color, z: Int32, fromRight: Bool): List[Render.PlacedItem] =
         if (t <= 0.0) Nil
         else {

@@ -74,11 +74,11 @@ mod ThemeDoc {
 
     // ── 派生色と resolver ──
 
-    /// 白に寄せる（ハイライト）。
+    /// 白に近づける（ハイライト）。
     pub def lighten(c: Color, k: Float64): Color =
         Color.lighten(c, k)
 
-    /// 黒に寄せる（影・段の陰）。
+    /// 黒に近づける（影・くぼみの陰）。
     pub def darken(c: Color, k: Float64): Color =
         Color.darken(c, k)
 
@@ -122,12 +122,12 @@ mod ThemeDoc {
             case "grassDark"   => lighten(doc#field, 0.10)
             case "grassDeep"   => Color.cool(darken(doc#field, 0.16), 0.05)
             case "grassLight"  => lighten(doc#field, 0.50)
-            // 石畳（暖灰4段。水路の岸・建物の基礎も同じランプを使う）
+            // 石畳（暖灰4段階。水路の岸・建物の基礎も同じランプを使う）
             case "paveLight"   => Color.warm(lighten(doc#wall, 0.55), 0.05)
             case "pave"        => Color.warm(lighten(doc#wall, 0.40), 0.04)
             case "paveDark"    => Color.warm(lighten(doc#wall, 0.24), 0.03)
             case "paveDeep"    => Color.warm(lighten(doc#wall, 0.06), 0.02)
-            // 水（青緑3段）
+            // 水（青緑3段階）
             case "waterGlint"  => Color.cool(lighten(doc#cloth, 0.50), 0.05)
             case "water"       => Color.cool(lighten(doc#cloth, 0.05), 0.08)
             case "waterDeep"   => Color.cool(darken(doc#cloth, 0.22), 0.10)
@@ -136,7 +136,7 @@ mod ThemeDoc {
             case "plasterHi"   => lighten(doc#paper, 0.05)
             case "plasterMid"  => darken(doc#paper, 0.07)
             case "plasterShade" => darken(doc#paper, 0.24)
-            // 屋根の赤茶5階調。灯りの橙だけでは黄に寄りすぎるので、煉瓦の赤へ大きく寄せる
+            // 屋根の赤茶5階調。灯りの橙だけでは黄に寄りすぎるので、煉瓦の赤へ大きく近づける
             // （accent を混ぜて残すのは、テーマの暖色を変えたとき屋根も一緒に振れるため）。
             // roofLine は最暗の締めだが純黒にはしない（画風宣言）。
             case "roofHi"      => Color.warm(lighten(roofBase(doc), 0.34), 0.10)
@@ -149,7 +149,7 @@ mod ThemeDoc {
             case "strawMid"    => strawBase(doc)
             case "strawDark"   => darken(strawBase(doc), 0.18)
             case "strawLine"   => darken(strawBase(doc), 0.36)
-            // スレート石屋根4階調（教会。石垣の灰を青みへ寄せる — 民家の赤茶と対比）
+            // スレート石屋根4階調（教会。石垣の灰を青みへ近づける — 民家の赤茶と対比）
             case "slateHi"     => Color.cool(lighten(doc#wall, 0.42), 0.06)
             case "slateMid"    => Color.cool(lighten(doc#wall, 0.22), 0.07)
             case "slateDark"   => Color.cool(lighten(doc#wall, 0.04), 0.08)

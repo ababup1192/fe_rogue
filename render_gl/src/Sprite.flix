@@ -333,7 +333,7 @@ mod RenderSprite {
         vbo
 
     /// 既存のインスタンス VBO へ中身を入れ直す（glBufferData の作り直し —
-    /// 古い領域はドライバが回収する）。焼き直しの多いタイル層が VBO を積み増さないための口。
+    /// 古い領域はドライバが回収する）。焼き直しの多いタイル層が VBO を積み増さないための関数。
     pub def uploadTileInstances(vbo: Int32, instances: List[RenderType.TileInstance]): Unit \ IO =
         let f32 = RenderUtil.f32;
         let count = List.length(instances);

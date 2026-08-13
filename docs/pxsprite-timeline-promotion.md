@@ -76,7 +76,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
     mushroomPile・meat・riceBale・branch・woodBundle・woodEnd を、現行 box 列を
     読み解いて写経。流れ者は体色キー(body→wandererBody)、野のきのこの赤/茶傘は
     cap キーの resolver 差し替えで格子を共有。z の内部段差(woodBundle の z+1/z+2、
-    riceBale の z+1)は単一 z へ畳んだ — 格子が「後勝ち」を色で織り込むため画素は
+    riceBale の z+1)は単一 z へまとめた — 格子が「後勝ち」を色で織り込むため画素は
     不変(render_gl の stable sort が同 z の列順を保つ)。Doc は PrologueDoc.load が
     spritePath() から同居読みし、watchFile(Main)→ Controls.reloadPrologue の
     一本道に乗せた。家・蔵・山・川など一点物は触っていない。
@@ -131,7 +131,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       Fx の乱数系統(splitmix64)とも数式(dir+speed の極座標)とも同値にならない —
       置換すればギャラリーのバイト一致が壊れるため、設計書の原則
       「語彙は追加・村の置換は同値になる物だけ」に従い村の描画は現状維持。
-      (煙の帯 = loop+spawn+色キー、雪 = loop+spawn+accel、葉 = loop+accel(風)、
+      (煙の筋 = loop+spawn+色キー、雪 = loop+spawn+accel、葉 = loop+accel(風)、
       木くず = burst+accel(重力) が新語彙の対応形 — 新規ゲームはこちらを使う。)
     - **radial(3面同時)**: ShaderDoc.Field.Radial({cx,cy}) = 中心距離場(Disk が
       マスクなのに対し生の距離 — Smoothstep でカーブを絞ってビネットに)。
@@ -145,7 +145,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       blendPixel で z 合流 — mask は偶奇 point-in-polygon)、`HeadlessRender.renderPngWith`。
       既存 renderPng/renderToImage は署名不変(surfaces = Nil に委譲)。
     - **村の暗がりのポスト面化(見た目が変わってよい唯一の箇所)**:
-      PrologueView.darkItems の「額縁ビネット(帯12枚)+霧の柱(12本)+全画面とばり」を
+      PrologueView.darkItems の「額縁ビネット(面12枚)+霧の柱(12本)+全画面とばり」を
       全画面1枚の shaderFill(blend Multiply・z=zDark)へ。ビネット =
       smoothstep(0.36, 0.86, radial)×0.30、霧(未開放時のみ・spec 名を分けて GL の
       プログラムキャッシュも分岐) = smoothstep(U:0.708→1.0)×smoothstep(V:0.30→0.36)×0.38、
@@ -153,7 +153,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       **uTime からシェーダー内で組む — spec が時刻に依らず一定なので GLSL の
       再コンパイルはテーマ/開放状態の変化時だけ**。描き出しは SceneRender.shootPro
       (shaderSurfaces + renderPngWith)で GL と同じ数式(ShaderEval)を生成する。
-      目視確認済み: 帯の縞・額縁の継ぎ目が消え、角へ滑らかに沈むビネットと
+      目視確認済み: 面の縞・額縁の継ぎ目が消え、角へ滑らかに沈むビネットと
       右肩上がりの霧のグラデになった。夜は Normal 重ねから Multiply になり
       「夜色へ引っ張る」→「夜色で沈める」に変わって窓明かりが映える。
     - **ギャラリー差分**: debug/ 27枚中、c1_01..c2_10 の26枚が暗がりの差分で変化

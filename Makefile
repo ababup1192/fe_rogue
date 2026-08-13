@@ -105,7 +105,7 @@ help:
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make lint-view            View が矩形と円だけになっていないか検査"
 	@echo "  make lint-images          git に入れる絵が増えすぎていないか検査"
-	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・階段・帯・色数) を検査"
+	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・階段・細長さ・色数) を検査"
 	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
 	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
@@ -116,7 +116,7 @@ help:
 	@echo "  make render               render ターゲットを持つ全 template の生成物を描き出し直す"
 	@echo "  make render-par           同上を並列実行"
 	@echo "  make diff DIR=<dir>       直す前(スナップショット)と後(gallery)を左右に並べて <dir>/debug/diff/ に描き出す"
-	@echo "  make gl-parity            GL と SoftRaster が同じ絵を出すかを隠し窓で突き合わせ (不一致で exit 1)"
+	@echo "  make gl-parity            GL と SoftRaster が同じ絵を出すかを隠しウィンドウで突き合わせ (不一致で exit 1)"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (依存する各パッケージへ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (render_gl / engine_world / engine_tools / editor_server へ)"
@@ -259,8 +259,8 @@ diff:
 			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint ReferenceDiff.pairs; \
 	fi
 
-# GL と SoftRaster の突き合わせ (bench/gl_parity)。隠し窓で GL を 1 コマずつ描き出し、
-# 同じ scene 宣言を SoftRaster でも描き出して画素比較する。A 段 (バイト一致層) に不一致が
+# GL と SoftRaster の突き合わせ (bench/gl_parity)。隠しウィンドウで GL を 1 コマずつ描き出し、
+# 同じ scene 宣言を SoftRaster でも描き出して画素比較する。A 段階 (バイト一致層) に不一致が
 # あれば exit 1。描画経路 (render_gl / SoftRaster / Frame / ShaderEval) を触ったら回す。
 gl-parity:
 	@$(MAKE) -C bench/gl_parity run
@@ -368,7 +368,7 @@ editor:
 # 推奨フロー (この3手だけ):
 #   1) make bump FROM=<旧> TO=<新>   … 全 flix.toml と VERSION を一括更新
 #   2) git で変更を commit → main へ push  … リリースするバージョンを GitHub に載せる
-#   3) make release                        … sync → test-par(全量ゲート) → gl-parity(A 段全一致) → build-pkg → gh release
+#   3) make release                        … sync → test-par(全量ゲート) → gl-parity(A 段階の全一致) → build-pkg → gh release
 #   終了後の案内どおり、lib/ を消したコピーで外部 fetch を検証する。
 #
 # release は sync (clean-locks はパッケージ配下だけ walk するのでもう固まらない) と
@@ -678,8 +678,8 @@ check-docs-sync:
 #   - GAME  … 生成先（存在しない絶対パス）。
 #   - TEMPLATE … 複製元（templates/ 直下の名前。省略時は game-starter）。
 #   - NAME  … Flix パッケージ名（小文字英字はじまり・[a-z0-9_]）。sprite の entityId にも使う。
-#   - TITLE … 窓の題名（省略時は NAME）。
-#   - W/H   … design 解像度（省略時は 480×300。窓はその 2 倍）。
+#   - TITLE … ウィンドウの題名（省略時は NAME）。
+#   - W/H   … design 解像度（省略時は 480×300。ウィンドウはその 2 倍）。
 # templates/game-starter を写して __NAME__/__TITLE__/__W__/__H__/__WW__/__WH__ を置換する。
 # エンジンの現在地は Makefile には書かず、git に入れない local.mk へ書く（Makefile は
 # マシンをまたいで共有できる形のまま。別のマシンでは local.mk を 1 度だけ書き直す）。
@@ -761,7 +761,7 @@ new-game: engine-full-fresh
 	echo ""; \
 	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
 	echo "  次にやること:"; \
-	echo "    cd $(GAME) && make run              … 窓を開いて遊ぶ（矢印キーで移動）"; \
+	echo "    cd $(GAME) && make run              … ウィンドウを開いて遊ぶ（矢印キーで移動）"; \
 	echo "    make reference-update                 … いまの絵をリファレンス画像(基準)にする"; \
 	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
 	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"

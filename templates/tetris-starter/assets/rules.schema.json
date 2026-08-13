@@ -5,7 +5,7 @@
     "gravityInterval": {
       "kind": "field",
       "type": "float",
-      "label": "1 段落ちるまでの秒（小さいほど速い）",
+      "label": "1 行落ちるまでの秒（小さいほど速い）",
       "order": 1,
       "min": 0.05,
       "max": 2.0,

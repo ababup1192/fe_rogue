@@ -35,10 +35,10 @@
 |---|---|
 | 箱や丸を並べて物・キャラを作りたくなった | PxSprite（+PxShade）/ gradPolygon / Terrain。RawDraw は下地とデバッグ用 |
 | メニューを作る（項目列・カーソル・ハイライト） | UiMenu（実例: `templates/novel-starter/src/World.flix`） |
-| 窓より長い内容をスクロールで覗く（ログ・履歴・一覧） | UiScroll |
-| 描画物を矩形で切り抜く（スクロール窓・PiP。スクリーン空間） | Render（clipped / clippedAll）（実例: `templates/novel-starter/src/View.flix`） |
+| 表示範囲より長い内容をスクロールで覗く（ログ・履歴・一覧） | UiScroll |
+| 描画物を矩形で切り抜く（スクロールの表示範囲・PiP。スクリーン空間） | Render（clipped / clippedAll）（実例: `templates/novel-starter/src/View.flix`） |
 | 文章を幅で行に折る・描く前に行数を数える | RichText（wrapLinesBy）（実例: `templates/rpg-starter/src/View.flix`） |
-| ホイールの生 delta を目盛りに畳む | InputMap（wheelSteps） |
+| ホイールの生 delta を目盛りにまとめる | InputMap（wheelSteps） |
 | 固定スロットに可変個の項目を流し込む | UiSlots（実例: `templates/novel-starter/src/World.flix`） |
 | UI を JSON（ui.json）で宣言する | UiDoc / UiSpec（実例: `templates/novel-starter/assets/ui/dialog.ui.json` / `templates/novel-starter/src/NovelKit.flix`） |
 | 宣言した UI の「名前 → 画面上の矩形」を引く（当たり判定を宣言と共有） | UiDoc（rectsOf / renderWithRects）/ Flex（keyed） |
@@ -49,7 +49,7 @@
 | マウスの下の UI 要素を知る | UiFocus（実例: `templates/novel-starter/src/Controls.flix`） |
 | meta "prefix/N" から番号を読む | UiMeta（実例: `templates/novel-starter/src/Controls.flix`） |
 | 粒を舞わせる | Fx / Scatter（実例: `templates/race-starter/src/World.flix`） |
-| 疑似遠近の帯（横一列）ごとに立ち物・床を敷く | Scatter.strip（実例: `templates/race-starter/src/ViewScene.flix`） |
+| 疑似遠近のストリップ（横一列）ごとに立ち物・床を敷く | Scatter.strip（実例: `templates/race-starter/src/ViewScene.flix`） |
 | 爆発・火花を fx.json で宣言して時刻から描く | FxDoc / Fx（sample / sampleAt）（実例: `templates/race-starter/assets/fx/spark.fx.json`） |
 | 粒を輪に等分して撒く・破片を回しながら飛ばす | FxDoc（dir.mode: even / turn）（実例: `templates/race-starter/assets/fx/crash.fx.json` / `nitro-burst.fx.json`） |
 | 蛍・湯気をその場でゆらゆら舞わせる | FxDoc（wobble） |
@@ -76,7 +76,7 @@
 | 当たり判定を JSON で宣言する | HitDoc + Hit（実例: `templates/platformer-starter/src/World.flix`） |
 | キーが押された瞬間を取る | InputEdge |
 | 複数キーを 1 つの操作にまとめる（WASD と矢印の両対応） | InputMap（実例: `templates/game-starter/src/KeysDoc.flix`） |
-| カメラで寄せる・追いかける | CameraRig（実例: `templates/platformer-starter/src/World.flix`） |
+| カメラでズームする・追いかける | CameraRig（実例: `templates/platformer-starter/src/World.flix`） |
 | 被弾・着弾で画面を揺らす（減衰ノイズの画面揺れ） | CameraRig（addTrauma / tick / shakeOffset）（実例: `templates/platformer-starter/src/World.flix`） |
 | 起動中のゲームを外から操作・観測する | RemoteDebug |
 | Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs（実例: `templates/tetris-starter/src/World.flix`） |
@@ -95,7 +95,7 @@
 | 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
 | 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
 | 修飾パイプの末尾で置き場所を与える（`{ at = …, item = … }` の糖衣。中心置きは At 族） | Render.at |
-| 列を丸ごと動かす・pivot 不動点で一様に拡縮する（Clipped の窓も追随） | Render.movedAll / Render.scaledAllAround |
+| 列を丸ごと動かす・pivot 不動点で一様に拡縮する（Clipped の切り抜き矩形も追随） | Render.movedAll / Render.scaledAllAround |
 | Doc を fail-open で読む（読めない・壊れは既定値へ） | DocJson.loadOr / decodeObject |
 | 太さのある線・棒を引く（法線を手計算しない） | RawDraw.lineSeg / Quad.strip |
 | 値を範囲に収める（1 軸） | Num.clamp（カメラの寄せ幅は CameraRig.clampAxis） |
@@ -106,7 +106,7 @@
 | 生成した絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
 | 放射状の明かり・翳りを 1 枚で置く（松明・スポットライト・vignette。アセット不要） | Render（lightAt / darkAt。組み込みテクスチャは engine の RadialBuiltin） |
-| 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |
+| 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の細い矩形を積まない） | Render（gradPolygon / vgrad） |
 | 箱に枠線を付ける（半透明の枠も） | Render（outline / outlineA） |
 | 暗い部屋に光源を置く（穴あきの暗くするオーバーレイ+ハロ） | Light |
 | 複数光源＋影（光マップ。Pass に灯りを集めて Multiply で貼る） | Light（lightMapPass / lightMapOverlay）+ App.withPasses |
@@ -132,7 +132,7 @@
 | 見えている範囲に重なるマスだけ並べる（盤が広くても仕事は画面ぶん） | Grid.cellsIn |
 | ドット絵を握るところで回す・左上でそろえて並べる | PxSprite.drawQuadTurned / drawQuadTopLeft |
 | 走行中に生成した絵を静止画の描き出しでも同じ絵にする | HeadlessRender.imagePngs / imageTextureInfo（実例: `templates/race-starter/src/render/SceneRender.flix`） |
-| 光側は暖色・影側は寒色へ寄せて階調を増やす | Color.warm / Color.cool |
+| 光側は暖色・影側は寒色へ近づけて階調を増やす | Color.warm / Color.cool |
 | 生成したドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases（実例: `templates/race-starter/src/Main.flix`） |
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped（実例: `templates/platformer-starter/src/Main.flix`） |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
@@ -163,7 +163,7 @@
 - **Render** — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
 - **RawDraw** — 単色ベタの図形プリミティブ（box / circle / star / ellipse / sector / ngon など）。材料であって、
   View に直接並べる完成品ではない。正当な用途は HUD 下地・デバッグ描画・fail-open の仮板。
-- **CameraRig** — world のどこを・どれだけ寄せて映すかを描画物の列に掛ける道具箱。
+- **CameraRig** — world のどこを・どれだけズームして映すかを描画物の列に掛ける道具箱。
 - **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。
 - **Persp** — 疑似 3D（2.5D）カメラの数学一式。世界の点を前後 fwd・左右 lat に分解し、透視除算で画面へ落とす。近クリップ・逆投影（depthAtY）・距離霧の式も持つ。焦点距離や霧の色の実体はゲーム側の意見（theme Doc など）。
 - **WallFaces** — マス目の迷路から「カメラに見える壁の境界面」だけを集める純幾何。壁どうしの内部面と、カメラに背を向けた裏面は落とす。solid の判定は関数で注入する（MapDoc の形を知らない）。
@@ -175,7 +175,7 @@
 - **Bezier** — ベジエ曲線の平坦化と、曲線から作る描画部品。
 - **Fx** — たくさんの粒を、保存せず「今の時刻から計算」して並べる薄い仕組み。「撃つたびに出る」効果の器（burst / expire / drawAll）も持つ。
 - **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。語彙は mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ dir.mode: even（粒の番号で射出方向を等分 — 衝撃の輪・花火）/ turn（粒の傾き base・spread と回る速さ spin・spinSpread。単位は回転数で 1 周 = 1.0）/ wobble（位置の正弦揺らぎ amp・freq・vary — 蛍・湯気の有界運動）/ shape: streak + stretch（速度方向に伸びた筋 — 雨・火花・流星）/ カーブ pulse（1 と min の間の正弦明滅）/ parseWith（"@名前" の色キーをパレットで解決）。
-- **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近の帯 1 本（帯ごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。
+- **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近のストリップ 1 本（ストリップごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
 - **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
 - **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。drawQuad の scale は整数のみ（box 列とのバイト一致保証のため）。実数倍率のクアッドは templates/race-starter の ViewCar.pxQuadScaled が実戦例（遠景のヤシ・ニトロ残像。2 本目の使い手が現れたら昇格を相談）。
@@ -189,11 +189,11 @@
   App.withPasses と組む。光 A の影は光 B の灯りも消す割り切り）。
 - **Shadow** — 光と壁の頂点列から影の四角形を導く（当たり判定の形からも作れる）。
 - **Mirror** — 面（夜のガラス・鏡・磨いた床）に映る姿を、ドット絵の走り（PxSprite.Run）から組む。映り込み用の絵を別に描かないので、元の絵を直せば映るほうも一緒に直る。映るかどうかと、どのコマをどこへ合わせるかは呼び側の決めごと。
-- **LightDoc** — light.json（光源の質感）の宣言層。暗さ・照り返しフチ・ハロの大きさ・環境光・影の濃さ・光源の並びを JSON に書き、Spec へ畳む。壁の遮蔽形はゲームの World が持つので含まない。ambient / shadowStrength（光マップ方式用）は 0.19 系から — 古いバージョンのエンジンは読み飛ばして既定になる。
+- **LightDoc** — light.json（光源の質感）の宣言層。暗さ・照り返しフチ・ハロの大きさ・環境光・影の濃さ・光源の並びを JSON に書き、Spec へ読み取る。壁の遮蔽形はゲームの World が持つので含まない。ambient / shadowStrength（光マップ方式用）は 0.19 系から — 古いバージョンのエンジンは読み飛ばして既定になる。
 
 ## UI
 
-- **UiDoc** — ui.json 方言の唯一のパーサ。JSON のノード木を Spec へ畳む。
+- **UiDoc** — ui.json 方言の唯一のパーサ。JSON のノード木を Spec へ読み取る。
 - **UiSpec** — UiDoc の Spec を UiStore 向けに射影し、spawn / リロードを担う宣言層。
 - **UiStore** — UI を作る「部品ごとの表」の束と、その足し引きの基本操作。
 - **UiLayout** — 縦か横に並べる指定から、各 UI 要素の画面上の矩形を自動で決める。
@@ -207,7 +207,7 @@
 - **UiBinding** — UI のテキスト欄に付けた「差し込み名」を実行時の値に置き換える。
 - **UiSlots** — ui.json に用意した固定数のスロットへ、可変個の項目を先頭から流し込む。
 - **UiMenu** — 選択メニュー共通の「項目の並べ方」「選択中の見せ方」「カーソルの動かし方」。
-- **UiScroll** — 窓より長い内容を位置ひとつで覗く共通の勘定（末尾基準 offset・両端 clamp・▲▼判定）。
+- **UiScroll** — 表示範囲より長い内容を位置ひとつで覗く共通の勘定（末尾基準 offset・両端 clamp・▲▼判定）。
 - **UiMeta** — UI の目印（meta 文字列）の共通の読み方（接頭辞 + 番号）。
 - **UiDialog** — 会話窓の中身（誰が・何を・どこまで見せたか）と、その進め方。
 - **UiTypewriter** — 文章を 1 文字ずつ現す「文字送り」の進み具合を持つ小さな値。
@@ -215,7 +215,7 @@
 ## 時間と動き
 
 - **AudioFade** — 進行度 t から音量をひとつ決める（フェードイン・アウト・クロスフェード）。
-- **Calendar** — ゲームの中の時計と暦。実時間の秒を分・時・日・季節・年へ畳み、日またぎを合図する。
+- **Calendar** — ゲームの中の時計と暦。実時間の秒を分・時・日・季節・年へ換算し、日またぎを合図する。
 - **Clock** — 経過時間を貯めて「一定間隔で合図」「残り時間を数える」を数値だけで扱う。
 - **Lifetime** — 一過性のもの（発火して時刻で進み寿命で消える）の「誕生時刻＋長さ」から経過・進行(0..1)・残り・生存を now の純関数で導く。得点ポップ等の表示期間や Fx.Burst の寿命に使う（now から導くので巻き戻しに強い）。
 - **Curve** — 時間や進行度から、放物線の山・周回・揺れなどの値を計算する、状態を持たない小さな関数の詰め合わせ。
@@ -244,9 +244,9 @@
 - **GridRay** — マス目の世界で「start から goal の間に壁が挟まるか」（視線の遮蔽）。壁の向こうの松明を消す・敵から主人公が見えるか、の見通し判定。solid の判定は関数で注入する。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
 - **MapResource**（legacy/） — タイルセット PNG + 自前の map.json でマップを貼る旧世代層。新規は DualGrid / Material / TerrainDoc を使う(棲み分けは docs/dual-grid.md)。
-- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。ヘッドレス生成・F8 停止画面・スナップショットが GPU の事前生成と同じ絵になるための橋。
+- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵へ変換する。ヘッドレス生成・F8 停止画面・スナップショットが GPU の事前生成と同じ絵になるための橋。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。概念: docs/dual-grid.md。
-- **Material** — DualGrid のタイルに質感(塗り・フチ帯・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
+- **Material** — DualGrid のタイルに質感(塗り・フチ・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
 - **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API(実装例: rpg-starter)。
 - **TerrainDoc** — セル文字→質感の表の宣言(*.terrain.json)を読む codec。色は #rrggbb か @キー(テーマ参照)。
 
@@ -285,7 +285,7 @@
 
 ## デバッグ・開発
 
-- **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジの窓口。同じ内容なら書かない）。
+- **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジはこれを読む。同じ内容なら書かない）。
 - **DocTable** — Doc の一覧表（id・パス・読み直し）1 枚から、watchFile の配線・一括リロード・ActiveDocs の名乗りを導出する。一覧の手写しを 1 か所に。
 - **Annotate** — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲んで記録する。
 - **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /render は App.onRenderRequest で登録した「描き出しの実体」を温まった JVM で実行し、描き出したパス列を返す（プレイ状態には触れない）。

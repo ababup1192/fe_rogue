@@ -1,4 +1,4 @@
-// TestUiSlots — 固定スロットへの流し込み（余りの畳み方・meta の付け外し・あふれ検知）と、
+// TestUiSlots — 固定スロットへの流し込み（余りのまとめ方・meta の付け外し・あふれ検知）と、
 // UiMenu の applyItemLabels / scrollOffset を具体値で固定する。
 // UiWorld は（既知のコンパイラ制約を避けるため）レコード直構築せず、必ず parse→spawnRoot で作る。
 mod TestUiSlots {
@@ -27,7 +27,7 @@ mod TestUiSlots {
     def entry(text: String, meta: String): UiSlots.Entry =
         { text = text, meta = Some(meta) }
 
-    // ── fill: 流し込みと余りの畳み方 ──
+    // ── fill: 流し込みと余りのまとめ方 ──
 
     @Test
     def testFillWritesLabelMetaAndVisibility(): Unit \ Assert =

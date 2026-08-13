@@ -207,7 +207,7 @@ mod HeadlessRender {
     /// passes を宣言順に生成してから本編を PNG に生成する（GL の renderFrame と同じ順序 —
     /// 後の pass の drawables は先に生成した pass の名前を貼れる）。
     /// 本編の drawables 同様、pass の items も Render.withoutShaders → Render.draw で
-    /// 下ろすこと（PassSpec の doc の約束）。
+    /// 下ろすこと（PassSpec の doc の決まり）。
     pub def renderPngWithPasses(cfg: RenderConfig, passes: List[PassSpec],
                                 drawables: List[GameEngine.Drawable],
                                 polygons: List[GameEngine.PolygonRenderCmd],
@@ -254,7 +254,7 @@ mod HeadlessRender {
     /// シェーダー面つきの renderGif（renderPngWith の GIF 版）。toCmds が各コマの
     /// (描き物, 多角形, シェーダー面) を返し、面は ShaderEval の画素評価で z 順に合流する。
     /// 渡す側は draw の代表色ベタ塗りと二重にならないよう、items を Render.withoutShaders で
-    /// 外してから draw すること（renderPngWith と同じ約束）。
+    /// 外してから draw すること（renderPngWith と同じ決まり）。
     /// 既存 renderGif に surfaces 引数を足さないのは、面チャンネルの無い呼び元のシグネチャを
     /// 割らないため。
     pub def renderGifWith(cfg: RenderConfig, frames: List[w], stride: Int32,
@@ -285,7 +285,7 @@ mod HeadlessRender {
     /// (pass 列, 描き物, 多角形, シェーダー面) を返し、コマごとに pass を宣言順に生成してから
     /// 本編と合成する — 実機の App.withPasses と同じ順序で、後の pass は先に生成した pass の
     /// 名前を貼れる。items は本編・pass とも Render.withoutShaders → Render.draw で下ろす
-    /// こと（renderPngWithPasses と同じ約束。pass は Render.passSpecOf が外してくれる）。
+    /// こと（renderPngWithPasses と同じ決まり。pass は Render.passSpecOf が外してくれる）。
     /// pass の Keep はコマをまたいで持ち越さない — 実機の Keep は前フレームの画面を
     /// 引き継ぐが、GIF は途中のコマからも見られるので、頭出しの位置で絵が変わる生成物は
     /// スナップショットに固定できない。毎コマ透明から始める（静止画の renderPngWithPasses と同じ）。

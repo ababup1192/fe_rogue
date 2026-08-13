@@ -97,7 +97,7 @@ mod TestCameraRig {
     /// 追従テスト用の仕様: 不感帯 40px・寄せ率 8/s。
     def follow(): CameraRig.Follow = { deadzone = 40.0, k = 8.0 }
 
-    // 不感帯の中（±40px 以内）では動かない。帯の両端ぎりぎりも 0。
+    // 不感帯の中（±40px 以内）では動かない。不感帯の両端ぎりぎりも 0。
     @Test
     def testFollowDeltaHoldsInsideDeadzone(): Unit \ Assert =
         Assert.assertEq(expected = (0.0, 0.0, 0.0),
@@ -105,7 +105,7 @@ mod TestCameraRig {
              CameraRig.followDelta(follow(), 0.25, 140.0, 100.0),
              CameraRig.followDelta(follow(), 0.25, 60.0, 100.0)))
 
-    // 帯を出たぶん × min(1, k×dt) の移動量。dt=1/8 で係数 1.0 → 出たぶん全部（±60）。
+    // 不感帯を出たぶん × min(1, k×dt) の移動量。dt=1/8 で係数 1.0 → 出たぶん全部（±60）。
     // k×dt が 1 を超えても行き過ぎない（min で 1.0 に頭打ち）。
     @Test
     def testFollowDeltaMovesByExcess(): Unit \ Assert =

@@ -1,5 +1,5 @@
 // ActiveDocs のテスト。テストするのは「エディタが読める形か」だけ —
-// { "active": { id: パス } } に畳まれ、1 本は文字列・複数は列で出ること。
+// { "active": { id: パス } } にまとまり、1 本は文字列・複数は列で出ること。
 // いつ書くか(書き込みのスキップ)は IO の振る舞いなのでテストしない。
 mod TestActiveDocs {
     use Util.Json.Json.{JObject, JString, JArray}

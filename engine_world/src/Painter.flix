@@ -6,7 +6,7 @@ mod Painter {
     /// items を距離の遠い順に並べ、(zIndex, item) を返す。zIndex は
     /// zBase + 並び順 * zStride — 1 個が複数の層（面 + 縁取りなど）を使うなら
     /// zStride にその層数を渡す。同距離どうしの並びは入力に対して決定的
-    /// （同じ列なら呼ぶたびに同じ — ちらつかない）だが、渡した順の保存までは約束しない。
+    /// （同じ列なら呼ぶたびに同じ — ちらつかない）だが、渡した順の保存までは保証しない。
     pub def zOrdered(distOf: a -> Float64, zBase: Int32, zStride: Int32,
                      items: List[a]): List[(Int32, a)] =
         items

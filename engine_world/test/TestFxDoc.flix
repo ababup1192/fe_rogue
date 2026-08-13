@@ -95,7 +95,7 @@ mod TestFxDoc {
             expected = Some((0.5, 0.2, 140.0, 0.3, ("easeOut", 2.4, 0.0), 0.0, 360.0)),
             got)
 
-    /// sizeOver = peak {at}・alphaOver の fadeOut は linear {1, 0} の別名に畳まれる。
+    /// sizeOver = peak {at}・alphaOver の fadeOut は linear {1, 0} の別名として読み取られる。
     @Test
     def testParseCurves(): Unit \ Assert =
         let got = parseDoc(explosionDoc()) |> Option.flatMap(firstEmitter)

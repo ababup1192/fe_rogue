@@ -1,5 +1,5 @@
 // ActiveDocs — 走っているゲームが「いま表示に使っている Doc(JSON)はどれか」を
-// debug/active-docs.json に名乗る窓口。別プロセスのエディタ(Studio)がこれを読み、
+// debug/active-docs.json に名乗る入口。別プロセスのエディタ(Studio)がこれを読み、
 // ファイル一覧の該当ファイルに「表示中」の印を付ける。
 // キーは project.json の editor 宣言 id(theme / sprite / kind 等)と一致させる —
 // エディタ側がグループの突き合わせに使うため。値はパス 1 本でも列でもよい。

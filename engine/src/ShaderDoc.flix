@@ -83,11 +83,11 @@ mod ShaderDoc {
         /// 円が楕円に歪む — aspect = 矩形の幅 ÷ 高さ を渡すと、u 方向の距離を aspect 倍して
         /// px で見た真円になる（距離は「rect の高さ = 1」の単位・aspect = 1 で Radial と同じ）。
         case RadialAspect({ cx = Float64, cy = Float64, aspect = Float64 })
-        /// 値を steps 段の階段に量子化する（ポスタライズ）。滑らかなノイズやグラデが
-        /// ドット絵調の段々になる。steps が 1 未満なら 1 として扱う。
+        /// 値を steps 段階の階段に量子化する（ポスタライズ）。滑らかなノイズやグラデが
+        /// ドット絵調の階段になる。steps が 1 未満なら 1 として扱う。
         case Quantize({ of = Field, steps = Int32 })
         /// 規則的に敷き詰めた丸い距離場（乱数でなく規則配置な点が Worley と違う）。
-        /// scale = 細かさ、stagger = 行ごとの横ずらし（0 = 格子・0.5 = 段違い）。
+        /// scale = 細かさ、stagger = 行ごとの横ずらし（0 = 格子・0.5 = 半分ずらし）。
         case Scales({ scale = Float64, stagger = Float64 })
         /// まばらに明滅する横線（セルごとに違う位相で現れて消える）。scale = 間隔、
         /// rate = 明滅の速さ、density = 光るセルの割合（0..1・小さいほどまばら）、seed = 配置。
@@ -122,7 +122,7 @@ mod ShaderDoc {
         /// 1 マスの中はどこを見ても同じ値になるので、なめらかなノイズやグラデが
         /// 「補間なしで引き伸ばした低解像度の絵」と同じ角ばった塊になる。
         /// cells は軸ごとの分割数（120×68 のような非正方も可）。1 未満は 1 として扱う。
-        /// Quantize が「値」を段にするのに対し、こちらは「座標」を段にする（迷彩でなく塊が出る）。
+        /// Quantize が「値」を階段にするのに対し、こちらは「座標」を階段にする（迷彩でなく塊が出る）。
         case Snap({ cells = Vec2.Vec2, of = Field })
         /// 中心 (cx,cy) のまわりに座標を回して of を読む（水に溶いた絵の具を混ぜる渦）。
         /// 中心に近いほど速く回る（差動回転 strength/距離）ので、絵の具が渦を巻いて混ざる。
@@ -222,7 +222,7 @@ mod ShaderDoc {
 
     /// マグマの正典 Spec（水と同じ骨格を熱いパレットで組み替えた対の素材）。
     /// 冷えた岩盤のひび割れ = Worley(F2mF1) を Warp でうねらせ（重い対流）、岩肌のムラ = Fbm を
-    /// Blend で混ぜて割れ目以外ものっぺりさせない。割れ目を太めの光る帯（Smoothstep hi 大）にして
+    /// Blend で混ぜて割れ目以外ものっぺりさせない。割れ目を太めの光る筋（Smoothstep hi 大）にして
     /// 黒い殻→橙→黄白の Ramp で「割れ目が明るく光る」向きに塗る。cycleRate で発光が脈打つ。
     /// alpha は Disk で丸い溶岩溜まりにする（水の丸池と対で見せられる）。
     pub def lavaVeins(): Spec =
@@ -230,7 +230,7 @@ mod ShaderDoc {
             Field.Warp({ amount = 0.14, scale = 3.0, seed = 3,
                 of = Field.Scaled({ factor = 5.0, scroll = { x = 0.01, y = 0.008 },
                     of = Field.Worley({ scale = 1.0, seed = 17, out = WorleyOut.F2mF1 }) }) });
-        // 割れ目を太めの光る帯に絞りつつ、岩肌のムラ(Fbm)を薄く混ぜてのっぺりを崩す。
+        // 割れ目を太めの光る筋に絞りつつ、岩肌のムラ(Fbm)を薄く混ぜてのっぺりを崩す。
         let mottle = Field.Fbm({ octaves = 3, scale = 4.0, seed = 23 });
         let glow = Field.Blend({ a = Field.Smoothstep({ lo = 0.0, hi = 0.12, of = cracks }),
                                  b = mottle, by = Field.Const(0.25) });
@@ -273,7 +273,7 @@ mod ShaderDoc {
         }
 
     /// 係数 f（0..1）で stops を混ぜた色。先頭色から始めて、隣り合う区切りごとに
-    /// smoothstep(前の位置, 次の位置, f) の重みで次の色へ寄せていく（GPU/CPU 同じ数式）。
+    /// smoothstep(前の位置, 次の位置, f) の重みで次の色へ近づけていく（GPU/CPU 同じ数式）。
     def gradientColorAt(f: Float64, stops: List[(Float64, Color)]): Color =
         match stops {
             case Nil => { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
@@ -299,7 +299,7 @@ mod ShaderDoc {
           g = a#g + (b#g - a#g) * tf,
           b = a#b + (b#b - a#b) * tf }
 
-    /// 場の木を前置順（親 → 子）で 1 本ずつ f に渡して畳む汎用の走査。
+    /// 場の木を前置順（親 → 子）で 1 本ずつ f に渡して畳み込む汎用の走査。
     /// Ref 集め（ShaderJson）と Tex 名集め（texNames）がこれに乗る — ノードを増やすときは
     /// ここへ 1 case 足せば全部の走査が追随する（走査を何本も別々に持たない）。
     pub def foldField(f: (a, Field) -> a, acc: a, field: Field): a =

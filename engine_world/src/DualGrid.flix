@@ -1,7 +1,7 @@
 // DualGrid — 「セル4つが接する角」を見て、半セルずらしたタイル(16ケースの多角形)を組む
 // 純粋な幾何。色も z も持たない(質感は Material が決める)。Corner は呼び側が注入するため、
 // マップの型に依存せず、壁でも水でもマグマでも同じ幾何が使い回せる。
-// resolve は角1個ぶんの純関数(全マップ一括の口はない — キャッシュや遅延評価は呼び側の方針)。
+// resolve は角1個ぶんの純関数(全マップ一括の関数はない — キャッシュや遅延評価は呼び側の方針)。
 // 初学者向けの概念説明は docs/dual-grid.md。
 
 mod DualGrid {
@@ -20,7 +20,7 @@ mod DualGrid {
     pub type alias StyleMix = { round = Float64, square = Float64 }
 
     /// 輪郭の1辺。points = スタイル適用後の折れ線(丸=曲線の折れ線化・揺らぎ=中点をずらした
-    /// 3点)、normal = 外向き法線(縁の色と帯の向きはこれで選ぶ)、border = タイル境界上の辺か
+    /// 3点)、normal = 外向き法線(フチの色とストリップの向きはこれで選ぶ)、border = タイル境界上の辺か
     /// (隣のタイルと必ず同じ埋まり方になる辺 — 縁取りすると塊の内部に継ぎ目が走る)。
     pub type alias Edge = { points = List[Vec2.Vec2], normal = Vec2.Vec2, border = Bool }
 

@@ -44,7 +44,7 @@ mod ProjectCtx {
     }
 
     /// ドキュメントが使うフォント名の一覧から atlas 表と代表フォントを組む。
-    /// ラスタライザは TTF 1 本しか受けないので、複数フォントの使用は代表 1 本に寄せて warning にする。
+    /// ラスタライザは TTF 1 本しか受けないので、複数フォントの使用は代表 1 本にまとめて warning にする。
     /// atlas は caches のレジストリ経由で引く (同じ TTF の焼き直しは mtime が変わったときだけ)。
     pub def fontSetup(usedFonts: List[String], dir: String, caches: Caches.Caches, ctx: Ctx): FontSetup \ IO =
         let used = List.distinct(usedFonts);

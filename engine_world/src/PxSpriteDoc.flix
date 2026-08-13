@@ -111,7 +111,7 @@ mod PxSpriteDoc {
 
     /// path の Doc を読む。読めない・壊れているときは empty(fail-open)。
     /// empty に倒れると絵が「消える」だけで落ちないぶん原因が見えにくいので、
-    /// 読み口を DocJson.loadOr に委譲し、倒れた事実は標準エラーへ 1 行出る。
+    /// 読み込みを DocJson.loadOr に委譲し、倒れた事実は標準エラーへ 1 行出る。
     pub def load(p: String): Doc \ Fs.FileRead =
         DocJson.loadOr(fromJson, empty(), p)
 }

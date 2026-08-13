@@ -88,7 +88,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 | kind | 主なキー | 何をするか |
 |---|---|---|
 | `smoothstep` | `lo`, `hi`, `of` | しきい値でくっきりさせる（境の太さ = `hi`） |
-| `quantize` **[新]** | `of`, `steps` | 段数を減らす（ポスタリゼーション） |
+| `quantize` **[新]** | `of`, `steps` | 段階の数を減らす（ポスタリゼーション） |
 | `pow` | `of`, `p` | 明暗のカーブ |
 | `math1` | `op`, `of` | `neg`/`abs`/`fract`/`floor`/`sin`/`cos`/`sat`/`oneMinus` |
 | `math2` | `op`, `a`, `b` | `add`/`sub`/`mul`/`min`/`max`/`step` |

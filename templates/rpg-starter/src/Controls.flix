@@ -60,7 +60,7 @@ mod Controls {
         ShaderJson.loadOr(ShaderDoc.waterVeins(), waterShaderPath())
 
     /// 窯の煙の FxDoc。読めなければ粒なし（empty = 煙が出ないだけで落ちない）。
-    /// 読み口は DocJson.loadOr — 壊れた JSON で粒が消えた事実は標準エラーへ 1 行出る。
+    /// 読み込みは DocJson.loadOr — 壊れた JSON で粒が消えた事実は標準エラーへ 1 行出る。
     def loadSmokeFx(): FxDoc.Spec \ Fs.FileRead =
         DocJson.loadOr(
             text -> DocJson.parse(String.trim(text)) |> Option.flatMap(j -> FxDoc.parse(j) |> Result.toOption),

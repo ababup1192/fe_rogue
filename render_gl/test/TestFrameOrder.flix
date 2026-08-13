@@ -64,7 +64,7 @@ mod TestFrameOrder {
         Assert.assertEq(expected = "s2.0,s1.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
-    /// 範囲をまたぐフレームでも各範囲の中は z 昇順・同 z は入力順のまま（範囲別 2 段の安定性）。
+    /// 範囲をまたぐフレームでも各範囲の中は z 昇順・同 z は入力順のまま（範囲別 2 段階ソートの安定性）。
     @Test
     def testRangesKeepWithinRangeOrderStable(): Unit \ Assert =
         let sprites =

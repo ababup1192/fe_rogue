@@ -78,8 +78,9 @@ mod TestRules {
     def testStompKillsAndBounces(): Unit \ Assert =
         // 上から踏む: 敵は消え stompScore ぶん加点、hitstop = Doc、バウンドの初速 = stompBounceTiles から導出。
         let w = world(flat("..P..a.."));
-        let e = List.head(w#enemies) |> Option.getWithDefault(Enemies.make("walker", { x = 5, y = 4 }));
-        let etop = e#pos#y - Enemies.sizeOf("walker")#y * 0.5;
+        let e = List.head(w#enemies)
+            |> Option.getWithDefault(Enemies.make(Enemies.Motion.Walking(0.0), { x = 5, y = 4 }));
+        let etop = e#pos#y - Enemies.sizeOf(Enemies.Motion.Walking(0.0))#y * 0.5;
         let above = { body = { pos = { x = e#pos#x, y = etop - Physics.playerSize()#y * 0.5 - 2.0 },
                                vel = { x = 0.0, y = 200.0 }, onGround = false }
                     | w#player };
@@ -98,8 +99,21 @@ mod TestRules {
             (hurtW#hearts, hurtW#invuln))
 
     @Test
+    def testFlyerBobsWithoutDrifting(): Unit \ Assert =
+        // 飛ぶ敵は湧いた高さを中心に上下するだけ: 横へ流れず、振れ幅は Doc の flyAmpTiles を超えない。
+        let posOf = x -> List.head(x#enemies) |> Option.map(e -> e#pos)
+            |> Option.getWithDefault({ x = 0.0, y = 0.0 });
+        let w = world(flat("..P..b.."));
+        let p0 = posOf(w);
+        // 1/4 周期 = 振れの頂点。
+        let p1 = posOf(stepN(ticksFor(EnemyDoc.defaults()#flyPeriod / 4.0), idle(), w));
+        let amp = EnemyDoc.defaults()#flyAmpTiles * Physics.tileSize();
+        Assert.assertEq(expected = (true, true, true),
+            (p1#x == p0#x, p1#y != p0#y, Float64.abs(p1#y - p0#y) <= amp))
+
+    @Test
     def testShooterFiresWhenInRange(): Unit \ Assert =
-        // 射程内(Doc の shotRangeTiles)・同じ高さ帯 → 弾が出て主役の側へ飛ぶ。
+        // 射程内(Doc の shotRangeTiles)・同じ高さの範囲 → 弾が出て主役の側へ飛ぶ。
         let w = world(flat("..P..z.."));
         let w1 = World.step(idle(), dt(), w);
         let vx = List.head(w1#shots) |> Option.map(s -> s#vel#x) |> Option.getWithDefault(0.0);

@@ -617,7 +617,7 @@ mod PreviewUi {
             "children" => JArray(node#children |> List.map(child -> treeJson(path, child)) |> List.toVector)
         })
 
-    /// widget を種別名 1 語に畳む (図形の詳細パラメータはプレビュー画像側が語る)。
+    /// widget を種別名 1 語にまとめる (図形の詳細パラメータはプレビュー画像側が語る)。
     def widgetName(widget: UiDoc.Widget): String =
         match widget {
             case UiDoc.Widget.NoneW      => "none"

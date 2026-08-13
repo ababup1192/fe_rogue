@@ -27,7 +27,7 @@ mod RenderSplash {
             |> Map.insert(BootFont.logoTextureName(), logoTex)
 
     /// 進み具合を伝える。前に描いてから間が空いていなければ何もしない。
-    /// done / total は「何本目 / 全何本」。total が 0 以下なら本数不明として流れる帯になる。
+    /// done / total は「何本目 / 全何本」。total が 0 以下なら本数不明として流れるバーになる。
     /// phase は**その場で組み立てない**で渡す。ここは字 1 つごとに数千回呼ばれるので、
     /// 出さないと決めた回でも文言を作る手間だけが積み上がる。
     pub def tick(st: State, draw: List[GameEngine.Drawable] -> Unit \ IO, design: Vec2.Vec2,

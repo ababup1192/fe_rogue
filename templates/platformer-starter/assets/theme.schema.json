@@ -1,5 +1,5 @@
 {
-  "//": "platformer.theme.json の形の宣言（Studio の sections 方言）。色は文書直下でなく colors の中に『名前 → #RRGGBB』で並ぶので、record 1 段で宣言する（sections の group はスカラー用なので使えない）。既定は src/Theme.flix の defaults() が持ち、この JSON は上書きしたい色だけ書けばよい（書かない色はコードの既定）。画風の約束（AGENTS.local.md）: 夕空の青 / コインの金 / 影の藍。黒は使わず最暗部も ink まで。ドット絵の legend が引く実色は assets/px.palette.json（make palette の生成物）が Studio に教える。",
+  "//": "platformer.theme.json の形の宣言（Studio の sections 方言）。色は文書直下でなく colors の中に『名前 → #RRGGBB』で並ぶので、record 1 階層で宣言する（sections の group はスカラー用なので使えない）。既定は src/Theme.flix の defaults() が持ち、この JSON は上書きしたい色だけ書けばよい（書かない色はコードの既定）。画風の約束（AGENTS.local.md）: 夕空の青 / コインの金 / 影の藍。黒は使わず最暗部も ink まで。ドット絵の legend が引く実色は assets/px.palette.json（make palette の生成物）が Studio に教える。",
   "version": 1,
   "sections": {
     "colors": {

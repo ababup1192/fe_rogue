@@ -6,7 +6,7 @@
 **絵は描かない。** やるのは次だけ:
 
 1. 拡大されている絵から**元の格子**を割り出し、等倍へ戻す
-2. 立ち絵を向きごとに切り分ける (透明な縦の帯で区切る)
+2. 立ち絵を向きごとに切り分ける (透明な縦の列で区切る)
 3. 足元と対称軸で位置を合わせ、決めた枠へ収める
 4. 横向きを反転して左右をそろえる
 5. **脚の区画を見つけて左右にずらし、体を 1px 浮かせて**歩き 3 コマを作る
@@ -134,7 +134,7 @@ def solid_at(img, x, y, mask=None):
 
 
 def spans_of(img, mask=None, step=4, least=40):
-    """絵のある縦の帯を探す。ここで 3 面図を 1 体ずつに切り分ける。"""
+    """絵のある縦の範囲を探す。ここで 3 面図を 1 体ずつに切り分ける。"""
     cols = [x for x in range(img.width)
             if any(solid_at(img, x, y, mask) for y in range(0, img.height, step))]
     if not cols:
@@ -352,7 +352,7 @@ def motion_frames(cells, size, motion="walk", swing=2, dip=1):
     for name, phase, sink in MOTIONS[motion]:
         frame = shear_legs(cells, band, size, phase, swing, sink * dip)
         if len(components(frame)) > 1:
-            # 千切れたら歩幅を 1 段狭めて作り直す。振りを捨てない
+            # 千切れたら歩幅を 1 段階狭めて作り直す。振りを捨てない
             frame = shear_legs(cells, band, size, phase, max(1, swing - 1),
                                sink * dip)
         made[name] = frame

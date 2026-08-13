@@ -9,7 +9,7 @@ mod TestNum {
 
     @Test
     def testClampFallsToLowEndWhenRangeIsEmpty(): Unit \ Assert =
-        // lo > hi は範囲が無い。下端に寄せる（呼び側が気付けるよう黙って通さない）。
+        // lo > hi は範囲が無い。下端に丸める（呼び側が気付けるよう黙って通さない）。
         Assert.assertEq(expected = (2.0, 5.0), (Num.clamp(2.0, 8.0, -1.0), Num.clamp(5.0, 1.0, 3.0)))
 
     @Test
@@ -34,6 +34,6 @@ mod TestNum {
 
     @Test
     def testLerpDoesNotClampOutsideRange(): Unit \ Assert =
-        // 範囲外は伸ばしたまま（外挿）。収めたいなら呼ぶ側が clamp01 を通す約束。
+        // 範囲外は伸ばしたまま（外挿）。収めたいなら呼ぶ側が clamp01 を通す決まり。
         Assert.assertEq(expected = (5.0, 20.0), (Num.lerp(0.0, 10.0, 0.5), Num.lerp(0.0, 10.0, 2.0)))
 }

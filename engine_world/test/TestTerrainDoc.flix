@@ -27,7 +27,7 @@ mod TestTerrainDoc {
 
     @Test
     def testTerrainDecodeRulesInOneSample(): Unit \ Assert =
-        // 複合破損サンプル1本で decode 契約を3つ固定する(壊れ扱いにせず静かに畳む = fail-open):
+        // 複合破損サンプル1本で decode 契約を3つ固定する(壊れ扱いにせず静かに受け入れる = fail-open):
         //   (a) 同じ char の二重宣言は先勝ち(Studio 契約)
         //   (b) 未知の preset 名は decode 時に除去され surface が空になる
         //   (c) edge に uniform と top が混在したら uniform 先勝ち

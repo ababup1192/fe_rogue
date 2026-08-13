@@ -1,4 +1,4 @@
-// UiDoc — ui.json の宣言ドキュメントを Spec（pure data）へ畳み、Flex（→ UiLayout）で
+// UiDoc — ui.json の宣言ドキュメントを Spec（pure data）へ読み取り、Flex（→ UiLayout）で
 // レイアウトして Render.PlacedItem の列に落とす。**ui.json 方言の唯一のパーサ** —
 // UiSpec.parse はこの parse の結果を UiStore コンポーネントへ射影する薄い層で、
 // 方言の定義はこのモジュールに一本化されている。
@@ -79,7 +79,7 @@ mod UiDoc {
         stack = List[String]                         // 解決中の instance パスの連なり（循環検出用）
     }
 
-    /// ドキュメント（version + templates + root）を Spec へ畳む。instance を含むときは load を使う。
+    /// ドキュメント（version + templates + root）を Spec へ読み取る。instance を含むときは load を使う。
     pub def parse(json: Json): Result[JsonError, Spec] =
         parseWith(Map.empty(), json)
 
@@ -151,7 +151,7 @@ mod UiDoc {
             case Ok(None)           => parsePlainNode(env, parentPath, ordinal, nodeMap)
         }
 
-    /// use のテンプレ値の上にノード値を重ね（ノード勝ち）、属性と子を畳む。
+    /// use のテンプレ値の上にノード値を重ね（ノード勝ち）、属性と子をまとめる。
     /// エラーはこのノードの名前パスでタグする（子は子が自分でタグ済み）。
     def parsePlainNode(env: ParseEnv, parentPath: String, ordinal: Int32,
                        nodeMap: Map[String, Json]): Result[JsonError, Spec] =
@@ -945,7 +945,7 @@ mod UiDoc {
         Flex.place(build(atlasOf, spec), rootRect)
 
     /// 敷いた結果の「名前の道（親/子/孫）→ 画面上の矩形」。当たり判定やツールチップの位置を、
-    /// 描くのと同じ宣言から引くための口 — 座標をコードにもう一度書くと二重管理になる。
+    /// 描くのと同じ宣言から引くための関数 — 座標をコードにもう一度書くと二重管理になる。
     pub def rectsOf(atlasOf: String -> FontAtlas, spec: Spec,
                     rootRect: Rect2.Rect2): Map[String, Rect2.Rect2] =
         Flex.rectsOf(build(atlasOf, spec), rootRect)
@@ -1030,7 +1030,7 @@ mod UiDoc {
 
     /// path とそこから instance 参照される全ドキュメントを読み、合成して Spec にする。
     /// トップに "paletteFile" があれば外部パレットもここで読んで合成する（リロードでも再読され、
-    /// instance で参照される側のドキュメントにも効く — 合成は collectDocs の読み口で行う）。
+    /// instance で参照される側のドキュメントにも効く — 合成は collectDocs の読み込みで行う）。
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
         collectDocs("", path :: Nil, Map.empty()) |> Result.flatMap(resolver ->
             Map.get(path, resolver) |> Option.toOk(unloadedErr(path))
@@ -1055,7 +1055,7 @@ mod UiDoc {
         else "${dir}/${rel}"
 
     /// ドキュメント 1 枚を読み、トップに "paletteFile" があれば外部パレットを合成して返す
-    /// （同名は inline 勝ち）。parse は純粋なまま — 外部参照はこの load 層で畳む。
+    /// （同名は inline 勝ち）。parse は純粋なまま — 外部参照はこの load 層で解決する。
     def readDocMerged(baseDir: String, path: String): Result[JsonError, Json] \ Fs.FileRead =
         DocJson.readJson(joinPath(baseDir, path)) |> Result.flatMap(json -> mergePaletteFile(baseDir, json))
 

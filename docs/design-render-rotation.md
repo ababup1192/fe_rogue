@@ -58,7 +58,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 
 ### やらないこと（v1 の線引き）
 
-- `Clipped` の窓は回さない（窓は画面に平行な矩形のまま）。中身だけ回る。ui.json の poly と同じ割り切り。
+- `Clipped` の切り抜き矩形は回さない（切り抜きは画面に平行な矩形のまま）。中身だけ回る。ui.json の poly と同じ割り切り。
 - `Shader` の面は回さない（uv の意味が変わるため。必要になったら spec 側の Rotate で回す）。
 - F8 注釈の当たり矩形は回転前の外接矩形のまま（傾いたカードのクリック判定はゲーム側の責任）。
 
@@ -74,7 +74,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 | 6 | 配布（`make sync-engine-world` → engine_full 再ビルド → neon_deck の lib へ) と neon_deck のカード傾き実装 | Makefile 経由 + `neon_deck/src/View.flix`, `CardLayout.flix` | 0.2 日 |
 
 合計 **約 1.5 日**。フェーズ 5 は後回し可能（neon_deck はコードから呼ぶため）。ただし
-「新しい表現は JSON で宣言できる形にする」という約束があるので、同じリリースに入れたい。
+「新しい表現は JSON で宣言できる形にする」という決まりがあるので、同じリリースに入れたい。
 
 ## 4. テストと検証
 

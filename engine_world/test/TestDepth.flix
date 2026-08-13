@@ -19,12 +19,12 @@ mod TestDepth {
 
     @Test
     def testOutsideRangeIsClampedToEdges(): Unit \ Assert =
-        // 帯の外へ歩き出しても順序が壊れない（端で止まる）。
+        // 範囲の外へ歩き出しても順序が壊れない（端で止まる）。
         Assert.assertEq(expected = (20, 40), (Depth.zAt(zRange(), -500.0), Depth.zAt(zRange(), 900.0)))
 
     @Test
     def testPlaceKeepsRelativeOrderInsideOneBody(): Unit \ Assert =
-        // 1 体を 0・1・2 の小さな z で組んでも、帯へ持ち上げたあと差はそのまま。
+        // 1 体を 0・1・2 の小さな z で組んでも、範囲へ持ち上げたあと差はそのまま。
         let parts = { at = Vec2.zero(), item = RawDraw.box(Vec2.one(), white(), 0) }
             :: { at = Vec2.zero(), item = RawDraw.box(Vec2.one(), white(), 2) } :: Nil;
         let lifted = Depth.place(zRange(), 100.0, parts) |> List.map(zOf);
@@ -32,7 +32,7 @@ mod TestDepth {
 
     @Test
     def testForRowsGivesOneStepPerRow(): Unit \ Assert =
-        // 10 行の盤なら 10 段ぶんの幅を持ち、1 行下がるごとに 1 段手前になる。
+        // 10 行の盤なら 10 個ぶんの幅を持ち、1 行下がるごとに 1 つ手前になる。
         let b = Depth.forRows({ back = 5, originY = 0.0, rows = 10, tileSize = 20.0 });
         Assert.assertEq(expected = (5, 15, 200.0), (b#back, b#front, b#bottom))
 

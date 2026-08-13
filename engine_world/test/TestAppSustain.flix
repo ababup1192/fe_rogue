@@ -1,6 +1,6 @@
 // TestAppSustain — 鳴り続ける音（App.withSustained）の仕分けを固定する。
 // 確かめるのは規約だけ: 新しく出た宣言だけ鳴らし始める・続いている宣言は鳴らし直さない・
-// 消えた宣言は止める・同じ名前の重複は 1 本に畳む。
+// 消えた宣言は止める・同じ名前の重複は 1 本にまとめる。
 mod TestAppSustain {
 
     def hum(name: String, volume: Float32, pitch: Float32): App.Sustain =
@@ -44,7 +44,7 @@ mod TestAppSustain {
         Assert.assertEq(expected = ("engine" :: "wind" :: Nil, 0, 0),
             (ops#stop, List.length(ops#start), List.length(ops#keep)))
 
-    /// 同じ名前を 2 回宣言しても 1 本に畳む（先勝ち）。二重に鳴らすと同じ音源を
+    /// 同じ名前を 2 回宣言しても 1 本にまとめる（先勝ち）。二重に鳴らすと同じ音源を
     /// 頭から鳴らし直して途切れる。
     @Test
     def testDuplicateNamesFoldToTheFirst(): Unit \ Assert =
@@ -53,7 +53,7 @@ mod TestAppSustain {
         let got = List.map(s -> (s#name, s#volume), ops#start);
         Assert.assertEq(expected = ("wind", 0.2f32) :: Nil, got)
 
-    /// 止める側は名前の重複も畳む（同じ音を 2 回止めに行かない）。
+    /// 止める側は名前の重複もまとめる（同じ音を 2 回止めに行かない）。
     @Test
     def testStopListHasNoDuplicates(): Unit \ Assert =
         let ops = App.sustainOps("wind" :: "wind" :: Nil, Nil);

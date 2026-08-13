@@ -43,7 +43,7 @@ mod TestClip {
 
     @Test
     def testNestedClipIntersects(): Unit \ Assert =
-        // 入れ子の Clipped は交差した clip 矩形 1 つに畳まれる。
+        // 入れ子の Clipped は交差した clip 矩形 1 つにまとめられる。
         let box = RawDraw.box({ x = 10.0, y = 10.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let nested = Render.clipped(rect(0.0, 0.0, 40.0, 30.0),
                         Render.clipped(rect(10.0, 20.0, 100.0, 100.0), box));

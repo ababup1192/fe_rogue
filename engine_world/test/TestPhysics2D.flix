@@ -256,7 +256,7 @@ mod TestPhysics2D {
             (xy(Physics2D.slide(ball(), floor :: Nil, vec(100.0, 50.0))),
              xy(Physics2D.slide(ball(), floor :: Nil, vec(100.0, -50.0)))))
 
-    // slide は検出順に畳む: 床 → 右壁の 2 接触で vy が消えたあと vx も消えて (0, 0)。
+    // slide は検出順に適用する: 床 → 右壁の 2 接触で vy が消えたあと vx も消えて (0, 0)。
     @Test
     def testSlideFoldsContactsInOrder(): Unit \ Assert =
         let floor = { a = ball(), b = wall(), normal = vec(0.0, -1.0),

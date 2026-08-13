@@ -1,5 +1,5 @@
 // LwjglLayer — ウィンドウ表示・入力の読み取り・音の再生を実機で受け持ち、GameEngine.Game / Audio の
-// effect ハンドラを提供する。ゲーム側はこの窓口越しに描画や入力を頼むだけで、GL や OpenAL の
+// effect ハンドラを提供する。ゲーム側はこの入口越しに描画や入力を頼むだけで、GL や OpenAL の
 // 細部を知らずに済む。
 // 利用例: `withLwjgl(config, ...)` でウィンドウを開き、ゲームループを回す。
 // 注意: GL / OpenAL / シェーダ / テクスチャ / フォントベイク / フレーム描画 / 音声デコードは
@@ -441,13 +441,13 @@ mod LwjglLayer {
             RenderShader.tileFragmentShaderSource());
         RenderShader.setProjectionMatrix(tileShader, screenW, screenH);
 
-        // 連続する同テクスチャのスプライトを 1 draw call に畳む instanced 描画用。
+        // 連続する同テクスチャのスプライトを 1 draw call にまとめる instanced 描画用。
         let instShader = RenderShader.createShaderProgram(
             RenderShader.spriteInstancedVertexShaderSource(),
             RenderShader.spriteInstancedFragmentShaderSource());
         RenderShader.setProjectionMatrix(instShader, screenW, screenH);
 
-        // 連続する同 blend / 切り抜き clip 矩形の多角形を 1 draw call に畳むバッチ描画用（頂点色）。
+        // 連続する同 blend / 切り抜き clip 矩形の多角形を 1 draw call にまとめるバッチ描画用（頂点色）。
         let polyBatchShader = RenderShader.createShaderProgram(
             RenderShader.polyBatchVertexShaderSource(),
             RenderShader.polyBatchFragmentShaderSource());
@@ -609,7 +609,7 @@ mod LwjglLayer {
         };
         // レンダーターゲットへの 1 フレーム。画面用の renderFrame と違い、黒帯 clear を
         // せず（targetClear）、タイル層・静的レンジ・シェーダー面は乗らない（Pass の doc の
-        // 約束）。ターゲットは design と同寸なので投影行列はそのままでよい。
+        // 決まり）。ターゲットは design と同寸なので投影行列はそのままでよい。
         let renderTargetFrame = (tw: Int32, th: Int32, op: RenderTarget.LoadOp,
                                   sprites: List[GameEngine.Drawable],
                                   polygons: List[GameEngine.PolygonRenderCmd]) -> {
@@ -1081,7 +1081,7 @@ mod LwjglLayer {
                 k(Map.get(name, Ref.get(registryRef)))
             }
             def ensureTexture(name, key, width, height, argb, k) = {
-                // key が前と同じなら何もしない（毎フレーム呼ばれる前提の口）。
+                // key が前と同じなら何もしない（毎フレーム呼ばれる前提の関数）。
                 if (Map.get(name, Ref.get(textureKeyRef)) == Some(key)) k(())
                 else {
                     let prev = Map.get(name, Ref.get(registryRef));

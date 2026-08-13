@@ -119,7 +119,7 @@ mod TestFxTurn {
             case Err(_)   => None
         }
 
-    /// dir.mode: "even" と turn が Spec に畳まれる。
+    /// dir.mode: "even" と turn が Spec へ読み取られる。
     @Test
     def testParseEvenAndTurn(): Unit \ Assert =
         let text = "{ \"name\": \"ring\", \"duration\": 1, \"emitters\": [ {" +

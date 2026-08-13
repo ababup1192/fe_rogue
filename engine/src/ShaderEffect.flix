@@ -1,4 +1,4 @@
-// ShaderEffect — 宣言シェーダー面を GPU で描くための「別チャンネル」の窓口（eff Shader）。
+// ShaderEffect — 宣言シェーダー面を GPU で描くための「別チャンネル」の入口（eff Shader）。
 //
 // なぜ eff Game でなく別の効果か: eff Game に描画オペを足すと、その効果を張る全ハンドラ
 // （本番のバックエンド・テストのスタブ）が新オペの実装を義務づけられて波及する。シェーダー面は
@@ -11,7 +11,7 @@ mod ShaderEffect {
 
     /// シェーダー面 1 枚ぶんの描画依頼。
     /// program = buildProgram が返した GPU ハンドル、rect = 塗る矩形（スクリーン空間 px・uv=0..1 が
-    /// この矩形）、time = uTime uniform に渡す秒、zIndex = 重なり順（骨格では固定 z-index の範囲へ寄せる）、
+    /// この矩形）、time = uTime uniform に渡す秒、zIndex = 重なり順（骨格では固定 z-index の範囲へそろせる）、
     /// blend = 重ね方。
     /// texNames = Spec の Tex ノードが読むテクスチャ名（ShaderDoc.texNames の正典順）。
     /// program は GLSL ソースが鍵のキャッシュで共有され、名前を GLSL に写さないため、
@@ -35,7 +35,7 @@ mod ShaderEffect {
         /// 失敗時は bug! でなく単色フォールバックプログラムを返す（fail-open）— theme 由来の
         /// codegen ミスで全体がクラッシュしないように。
         def buildProgram(spec: ShaderDoc.Spec): GpuHandle.ShaderProgram
-        /// シェーダー面 1 枚を描く。骨格では「床タイルと壁の間の固定 z-index の範囲」へ寄せて
+        /// シェーダー面 1 枚を描く。骨格では「床タイルと壁の間の固定 z-index の範囲」へそろえて
         /// renderCommands の下に敷く（暗くするオーバーレイ・ハロが上に正しく乗る）。
         def drawSurface(cmd: ShaderRenderCmd): Unit
     }

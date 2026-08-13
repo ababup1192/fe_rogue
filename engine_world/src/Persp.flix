@@ -1,9 +1,9 @@
 // Persp — 疑似 3D（2.5D）カメラの数学一式。世界の点を「前後 fwd・左右 lat」に分解し、
 // fwd で割って（透視除算）画面座標に落とす。一人称ダンジョン・一人称レーサー・
-// 背後カメラ STG のような「縦帯とビルボードで組む 3D 風」の共通土台。
+// 背後カメラ STG のような「縦のストリップとビルボードで組む 3D 風」の共通土台。
 //
-// 扱うのは足元の 2D 線分を上下一様に押し出した縦帯と点だけ（任意メッシュ・
-// pitch/roll・z バッファは約束しない — この割り切りが 2.5D のスコープ線）。
+// 扱うのは足元の 2D 線分を上下一様に押し出した縦のストリップと点だけ（任意メッシュ・
+// pitch/roll・z バッファは保証しない — この割り切りが 2.5D のスコープ線）。
 // 描画順は Painter（距離の遠→近）、壁面の収集は WallFaces、遮蔽は GridRay が受け持つ。
 // 焦点距離・霧の係数・色の実体はゲーム側の意見（theme Doc など）で、ここは式だけを持つ。
 //
@@ -36,7 +36,7 @@ mod Persp {
         t0 = Float64, t1 = Float64, dist = Float64
     }
 
-    /// h 帯（世界の縦帯）を画面に落とした四隅。topA.x == botA.x を保証する
+    /// h ストリップ（世界の縦のストリップ）を画面に落とした四隅。topA.x == botA.x を保証する
     /// （同じ端点の上下で x がずれて壁が歪む事故を式の形で防ぐ）。
     pub type alias Corners = {
         topA = Vec2.Vec2, topB = Vec2.Vec2,
@@ -60,7 +60,7 @@ mod Persp {
     pub def screenX(proj: Projection, c: CamPoint): Float64 =
         proj#center#x + proj#fx * c#lat / c#fwd
 
-    /// 透視除算（y）。h = 帯の中の高さ（世界単位。- が上・+ が下。
+    /// 透視除算（y）。h = ストリップの中の高さ（世界単位。- が上・+ が下。
     /// 例: 高さ 1 の壁なら天井側 -0.5・床側 +0.5）。
     pub def screenY(proj: Projection, h: Float64, c: CamPoint): Float64 =
         proj#center#y + proj#fy * h / c#fwd
@@ -78,7 +78,7 @@ mod Persp {
         proj#fy * worldLen / c#fwd
 
     /// 点の投影（世界座標から一息に）。fwd が spec#near 未満（真横〜後方）は None。
-    /// spec: near = 近クリップ距離、h = 帯の中の高さ（screenY と同じ向き）。
+    /// spec: near = 近クリップ距離、h = ストリップの中の高さ（screenY と同じ向き）。
     pub def projectPoint(proj: Projection, cam: Camera,
                          spec: { near = Float64, h = Float64 },
                          p: Vec2.Vec2): Option[Vec2.Vec2] =
@@ -94,7 +94,7 @@ mod Persp {
 
     /// 近クリップ。fwd が near 未満の部分（カメラの真横〜後方）を切り落とし、
     /// 残った区間 t0..t1 とカメラ空間の端点・中点距離を返す。全部後方なら None。
-    /// 縦帯は足元の 2D 線分を切るだけで多角形が切れる — これが 2.5D の旨み。
+    /// 縦のストリップは足元の 2D 線分を切るだけで多角形が切れる — これが 2.5D の旨み。
     pub def clipSegment(near: Float64, camA: CamPoint, camB: CamPoint): Option[Clipped] =
         if (camA#fwd < near and camB#fwd < near) None
         else {

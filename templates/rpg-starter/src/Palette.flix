@@ -14,7 +14,7 @@ mod Palette {
     pub def path(): String = "assets/rpg.palette.json"
 
     /// sprite Doc の legend に出てくる意味色キーを、テーマの実色へ解いた表（純粋）。
-    /// 名前の重複は 1 つに畳み、並びは名前順（書き出しが毎回同じになる）。
+    /// 名前の重複は 1 つにまとめ、並びは名前順（書き出しが毎回同じになる）。
     pub def entriesOf(sprites: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): List[(String, Color)] =
         entriesOfAll(sprites :: Nil, theme)
 

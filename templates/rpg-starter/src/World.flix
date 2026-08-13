@@ -11,7 +11,7 @@
 //
 // 遷移を起こす関数の doc には [遷移: X→Y] を付けてある（探すときの目印）。
 //
-// Doc が壊れていても止まらない（fail-open の 3 段）:
+// Doc が壊れていても止まらない（fail-open の 3 段階）:
 //   読めない → 既定値で起動（Controls.loadDocs / *Doc.defaults）
 //   一部が欠け → その欄だけ既定値（fromJson が欄ごとに拾う）
 //   型が違う   → その欄は既定値のまま（数を入れる欄に文字 等）
@@ -27,7 +27,7 @@ mod World {
         case Clear
     }
 
-    /// 戦いのどの段か。Choosing = コマンドを選んでいる、Report = 打ち合いの結果を読んでいる
+    /// 戦いのどのフェーズか。Choosing = コマンドを選んでいる、Report = 打ち合いの結果を読んでいる
     /// （決定でつぎの番へ）、Done = 決着（決定で里へ戻る）。
     pub enum BattleStep with Eq, ToString {
         case Choosing
@@ -44,7 +44,7 @@ mod World {
 
     /// いま戦っている 1 回ぶん。主人公の体力は戦いをまたいで残るので World 側が持ち、
     /// ここには「この戦いの中だけの物」を置く。
-    ///   step … いまどの段か。cursor … 選んでいるコマンド（0 = たたかう / 1 = にげる）。
+    ///   step … いまどのフェーズか。cursor … 選んでいるコマンド（0 = たたかう / 1 = にげる）。
     ///   foeHp … 魔物の残り体力。lines … 下のウィンドウに出す文（上から順）。
     ///   foeHurt … 魔物が殴られたコマを出すか。outcome … 決着（まだなら None）。
     pub type alias Battle = {
@@ -244,7 +244,7 @@ mod World {
                     |> List.map(pair -> { let (a, b) = pair;
                         ({ src = a, dst = b, speed = 22.0 }: Journey.Leg) });
                 let total = Journey.total(legs);
-                // 同じ拍で全員が曲がらないよう、名前の長さで位相をずらす。
+                // 同じフレームで全員が曲がらないよう、名前の長さで位相をずらす。
                 let phase = Int32.toFloat64(String.length(villager#id)) * 3.7;
                 let tt = wrapBy(total, w#npcClock + phase);
                 Journey.at(legs, tt)
@@ -330,7 +330,7 @@ mod World {
             case _ => ticked
         }
 
-    /// 歩みの拍。向きは押せばすぐ変わり、gauge が 0 になった拍だけ 1 歩進む。
+    /// 歩みの更新。向きは押せばすぐ変わり、gauge が 0 になったフレームだけ 1 歩進む。
     /// 実際に進んだら次の一歩まで stepInterval を貯め直す。
     def walk(direction: Option[Dir4.Dir4], gauge: Float64, w: World): World =
         match direction {
@@ -386,7 +386,7 @@ mod World {
             { battle = { cursor = cursor | w#battle } | w }
         }
 
-    /// 戦いの決定 1 回分。段によって意味が変わる:
+    /// 戦いの決定 1 回分。フェーズによって意味が変わる:
     ///   Report   … 読み終えた → つぎのコマンド選びへ。
     ///   Choosing … 選んだコマンドを実行する（たたかう / にげる）。
     ///   Done     … 決着を読み終えた → 里へ戻る。

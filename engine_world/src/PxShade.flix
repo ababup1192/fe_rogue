@@ -1,14 +1,14 @@
 // PxShade — ドット絵の塗りに光の陰影（ふち光・接地影・ディザ・粒）を掛ける純粋な filter。
 // *.sprite.json を読んだ直後に 1 度だけ掛ける（毎フレームには入らない）。
-// Hash01 の channel は 1〜4 を使う。Material の帯（83 以降）と重ねないこと。
+// Hash01 の channel は 1〜4 を使う。Material の範囲（83 以降）と重ねないこと。
 mod PxShade {
 
     /// 仕上げの重み。0 にしたものは掛からない。
     /// lightX / lightY = 光の来る向き（-1 = 左 / 上、+1 = 右 / 下、0 = その軸は効かない）。
     pub type alias Spec = {
-        rim = Float64,         // 光の側の縁を 1 段明るく（立体の丸みが出る）
-        contact = Float64,     // 光と反対側の縁を 1 段暗く（地面や隣との境が締まる）
-        dither = Float64,      // 明と中の境目を市松に散らして段差を隠す
+        rim = Float64,         // 光の側の縁を 1 段階明るく（立体の丸みが出る）
+        contact = Float64,     // 光と反対側の縁を 1 段階暗く（地面や隣との境が締まる）
+        dither = Float64,      // 明と中の境目を市松に散らして切り替わりを隠す
         grain = Float64,       // 面の内側に明暗の点を散らす（ベタ塗りののっぺり対策）
         grainScale = Int32,    // grain の升目の大きさ。上げると点が塊になり土の斑に見える
         lightX = Int32,
@@ -93,7 +93,7 @@ mod PxShade {
                 else grainOf(spec, ch, light, dark, x, y)
             case None =>
                 // 明るい色の「影の側の隣」が中の色なら、そこは明↔中の境目。
-                // 市松に中を混ぜて段差をぼかす（ディザ）。
+                // 市松に中を混ぜて切り替わりをぼかす（ディザ）。
                 match Map.findLeft((_, tones) -> fst(tones) == ch, ramp) {
                     case Some((m, _)) =>
                         let below = src(x - spec#lightX, y - spec#lightY);
@@ -111,7 +111,7 @@ mod PxShade {
         else {
             let step = Int32.max(1, spec#grainScale);
             let v = Hash01.at((x / step) * 31337 + (y / step) * 6151, 4);
-            // 1.0 を超えると明暗の帯が全域を覆い、面が丸ごと明るくなってしまう。
+            // 1.0 を超えると明暗の縞が全域を覆い、面が丸ごと明るくなってしまう。
             let half = Float64.min(1.0, Float64.max(0.0, spec#grain)) / 2.0;
             if (v < half) light else if (v > 1.0 - half) dark else mid
         }

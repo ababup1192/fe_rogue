@@ -194,7 +194,7 @@ mod UiStore {
 
     /// 名前パスの entity のフロー外オフセット（style#abs）を差し替える。style を持たなければ no-op。
     /// カード内の要素を実測幅で右寄せ / 隣接配置する（Lv・EXP バー・HP 数値・アイコン）ときや、
-    /// 敵カード panel をデザイン解像度の右端へ寄せるときに使う。
+    /// 敵カード panel をデザイン解像度の右端にそろえるときに使う。
     pub def setAbs(path: String, pos: Vec2.Vec2, ui: UiWorld): UiWorld =
         let updated = idOf(path, ui)
             |> Option.flatMap(id -> Map.get(id, ui#styles) |> Option.map(style -> (id, {abs = Some(pos) | style})));

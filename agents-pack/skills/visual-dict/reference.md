@@ -24,7 +24,7 @@ canvas の狙い絵 → 実エンジンのヘッドレス生成（静止画 + �
 
 | web の技法 | エンジンの部品 | 実証済みの作法・癖 |
 |---|---|---|
-| グロー / bloom | `DrawCmd.BlendMode.Add` + 柔らかい円 | `Render.glowAt` は同心円 24 輪・減衰カーブ固定。大半径は段差が見える → 半径違いを数枚重ねてディザする |
+| グロー / bloom | `DrawCmd.BlendMode.Add` + 柔らかい円 | `Render.glowAt` は同心円 24 輪・減衰カーブ固定。大半径は継ぎ目が見える → 半径違いを数枚重ねてディザする |
 | 放射グラデ（光だまり・暗くするオーバーレイ・vignette） | **`Render.lightAt`（Add の明かり）/ `Render.darkAt`（Multiply の翳り）**が一次部品（組み込みテクスチャ 1 枚・アセット不要・GL と生成で同一画素）。面ごと塗るなら `ShaderDoc` の `radial` / `radialAspect` **[新]** + Gradient 面（SoftRaster が画素評価） | 円形の明かり・翳りはまず `lightAt` / `darkAt`（radius = 見た目半径 px・strength 0..1。光マップのレンダーターゲット（Pass）に Add で集めて Multiply で本編に掛けるのが定石）。`radial` は uv 空間なので非正方形 rect では楕円に歪む → **`radialAspect` に aspect を渡す**。0.12.1 以前は無いので、正方形 rect を大きく置いて回避する。`Light` は RadialGlow で生成したテクスチャ前提で、texturePath 無しの生成では使えない |
 | 線形グラデ（空・水・空気色） | **`Render.vgrad(size, {top, bottom}, z)` / `Render.gradPolygon`** **[新]**（頂点色つきポリゴン） | 実装済み・SoftRaster も対応済み（`gradSample`）。**1px 色帯の積みは禁止** — 部品数がそのまま生成時間に乗る。任意方向・4 頂点別色は `gradPolygon`、縦のニ色は `vgrad` |
 | 残像 / トレイル | 過去位置に減衰 α で再描画 | **動き専用** — 静止画では 1px 未満のズレで写らない |

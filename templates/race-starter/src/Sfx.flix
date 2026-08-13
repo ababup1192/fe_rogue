@@ -8,7 +8,7 @@
 mod Sfx {
 
     /// このフレームで鳴らす音の名前（project.json の sounds に載る名前）。
-    /// 同じ音は 1 フレームに 1 回へ畳む（滑り出しの拍で擦れ音が二重に乗らない）。
+    /// 同じ音は 1 フレームに 1 回へまとめる（滑り出しのフレームで擦れ音が二重に乗らない）。
     pub def events(worlds: { before = World.World, after = World.World }): List[String] =
         List.append(phaseSounds(worlds#before, worlds#after),
                     racingSounds(worlds#before, worlds#after))
@@ -41,15 +41,15 @@ mod Sfx {
                 (if (after#lap > before#lap) "lap" :: Nil else Nil) :: Nil)
         }
 
-    /// ドリフトの終わりの音。滑っている間の擦れは hums が受け持つので、ここは離した拍だけ。
-    /// クラッシュした拍の食いつきは鳴らさない（潰れた音の上に軽い音を重ねない）。
+    /// ドリフトの終わりの音。滑っている間の擦れは hums が受け持つので、ここは離したフレームだけ。
+    /// クラッシュしたフレームの食いつきは鳴らさない（潰れた音の上に軽い音を重ねない）。
     def driftSounds(crashed: Bool, before: World.World, after: World.World): List[String] =
         if (before#drifting and not after#drifting and not crashed) "grip" :: Nil
         else Nil
 
     // ── 鳴り続ける音 ──
 
-    /// このフレームで鳴り続けていてほしい音。宣言が続く間だけ鳴り、消えた拍で止まる
+    /// このフレームで鳴り続けていてほしい音。宣言が続く間だけ鳴り、消えたフレームで止まる
     /// （App.withSustained の規約）。走っていない場面は 1 本も宣言しないので、
     /// タイトルとゴール画面は静かになる。
     pub def hums(w: World.World): List[App.Sustain] =
@@ -96,7 +96,7 @@ mod Sfx {
               pitch = Float64.truncateToFloat32(Float64.max(0.1, k#pitch)) } :: Nil
         }
 
-    /// もう抜いたライバルの数（増えた拍が「1 台抜いた」）。
+    /// もう抜いたライバルの数（増えたフレームが「1 台抜いた」）。
     def passedCount(w: World.World): Int32 =
         w#rivals |> List.count(r -> r#passed)
 }

@@ -59,7 +59,7 @@ mod SceneRender {
     // 立ち位置は「道の中心からの横ずれ（px）」で書く。区間表を差し替えても、
     // 車は道の上の同じ所に乗ったままになる。
 
-    /// 右への切り込み（通し段 22〜24）をドリフト中: 道の中心より外側で車が傾き、
+    /// 右への切り込み（通し行 22〜24）をドリフト中: 道の中心より外側で車が傾き、
     /// 後ろへタイヤ痕が伸び、白煙が続けて膨らんでいる。ゲージは半分強（貯まっていく途中の絵）。
     def driftScene(w0: World.World): World.World =
         let started = World.startGame(w0);
@@ -91,7 +91,7 @@ mod SceneRender {
           nitro = 0.55, rank = 2, score = 300,
           rivals = rivals, skids = skids, bursts = bursts, fxSeq = 10 | started }
 
-    /// 長い直線（区間 17・通し段 31〜34）でニトロ発動中: 発動から 0.05 秒（衝撃が車から
+    /// 長い直線（区間 17・通し行 31〜34）でニトロ発動中: 発動から 0.05 秒（衝撃が車から
     /// 離れきる前の一番濃い瞬間）。前方にライバル 1 台。
     /// 炎（loop の fx）は View が nitroLeft を見て毎フレーム描くので bursts には積まない。
     def nitroScene(w0: World.World): World.World =
@@ -109,7 +109,7 @@ mod SceneRender {
           nitroLeft = w0#rules#nitroDuration - 0.05, nitro = 0.0, rank = 2, score = 600,
           rivals = rivals | started }
 
-    /// U 字の手前（通し段 9）でコーンに当たった直後: スピンの残り 0.55 秒。
+    /// U 字の手前（通し行 9）でコーンに当たった直後: スピンの残り 0.55 秒。
     /// 閃光と火花が散り、その先には U 字の巻き込みが見えている
     /// （「イン側を攻めて失敗した」が 1 枚で読める場所を選ぶ）。
     def crashScene(w0: World.World): World.World =
@@ -132,8 +132,8 @@ mod SceneRender {
           spinLeft = 0.55, rank = 3, score = 300,
           rivals = rivals, bursts = bursts, fxSeq = 9 | started }
 
-    /// 左の U 字（区間 6・通し段 11〜15）へ入っていく所: 幅の絞られた入口を
-    /// イン側（左）に付けてドリフト中。道は 2 段先から巻き込んで画面の外へ消える。
+    /// 左の U 字（区間 6・通し行 11〜15）へ入っていく所: 幅の絞られた入口を
+    /// イン側（左）に付けてドリフト中。道は 2 行先から巻き込んで画面の外へ消える。
     def uturnScene(w0: World.World): World.World =
         let started = World.startGame(w0);
         let dist = World.rowPitch() * 9.4;
@@ -160,7 +160,7 @@ mod SceneRender {
           nitro = 0.8, rank = 2, score = 900,
           rivals = rivals, skids = skids, bursts = bursts, fxSeq = 20 | started }
 
-    /// 登りの頂上ぎわ（通し段 7）から土管ゲート（通し段 8）へ差し掛かる所。
+    /// 登りの頂上ぎわ（通し行 7）から土管ゲート（通し行 8）へ差し掛かる所。
     /// 道が坂で持ち上がり、その先に隙間 3 レーンのゲートが立っている。
     def gateScene(w0: World.World): World.World =
         let started = World.startGame(w0);
@@ -176,7 +176,7 @@ mod SceneRender {
           speed = w0#rules#forwardSpeed, nitro = 0.35, rank = 2, score = 300,
           rivals = rivals | started }
 
-    /// 左 U 字（通し段 12）の外側のガードレールに擦り付けて曲がっている所。
+    /// 左 U 字（通し行 12）の外側のガードレールに擦り付けて曲がっている所。
     /// 壁に押し付けたまま曲がると遅いが確実 — その代わり火花が散り、ゲージが貯まる。
     def railScene(w0: World.World): World.World =
         let started = World.startGame(w0);
@@ -201,8 +201,8 @@ mod SceneRender {
           nitro = 0.62, rank = 2, score = 600,
           rivals = rivals, bursts = bursts, fxSeq = 40 | started }
 
-    /// 長い直線（通し段 32）の振り子バーへ差し掛かる所: バーは道の左寄りへ振れていて、
-    /// 右に隙間が残っている。自機はその右へ寄せている（避け先が絵で読めるかを見る場面）。
+    /// 長い直線（通し行 32）の振り子バーへ差し掛かる所: バーは道の左寄りへ振れていて、
+    /// 右に隙間が残っている。自機はその右へ動かしている（避け先が絵で読めるかを見る場面）。
     def barScene(w0: World.World): World.World =
         let started = World.startGame(w0);
         let dist = World.rowPitch() * 30.6;

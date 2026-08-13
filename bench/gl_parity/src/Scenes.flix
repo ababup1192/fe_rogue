@@ -1,7 +1,7 @@
 // 突き合わせに使う場面（scene）の宣言。GL と SoftRaster の両方が同じこの列を描き出す。
 //
-// A 段（バイト一致を主張する層）の scene 規約:
-//   1. 整数座標・整数寸法・整数倍率のみ（小数の丸めの差を測るのは B 段の仕事）。
+// A 段階（バイト一致を主張する層）の scene 規約:
+//   1. 整数座標・整数寸法・整数倍率のみ（小数の丸めの差を測るのは B 段階の仕事）。
 //      倍率 = texel→画素の拡大率が整数、の意味（sprite の scale 値そのものではない —
 //      blitRegion の scale が 0.5 でも、貼り先/切り出し元の比が整数なら規約内）
 //   2. 色は k/255 で表せる値のみ・alpha は 1.0（8bit に落ちない中間値は正規化で ±1 が出うる）
@@ -36,7 +36,7 @@ mod Scenes {
     pub def all(): List[Scene] =
         boxes() :: spriteNearest() :: passPaste() :: texField() :: lightMap() :: radial() :: Nil
 
-    /// 8bit の値そのままの色（k/255）。A 段規約 2 をこの入口で守る。
+    /// 8bit の値そのままの色（k/255）。A 段階の規約 2 をこの入口で守る。
     def c8(r: Int32, g: Int32, b: Int32): Color =
         { r = f255(r), g = f255(g), b = f255(b) }
 
@@ -162,7 +162,7 @@ mod Scenes {
 
     // ── scene 5: 光マップの配管（Light.lightMapPass → Multiply blit。Wave F の主役）──
     //
-    // A 段に載せるのは配管（環境光 → pass 内 Add → Multiply 貼り）だけ:
+    // A 段階に載せるのは配管（環境光 → pass 内 Add → Multiply 貼り）だけ:
     //   - 影ポリゴンは載せない（斜め縁は GL だけ AA が掛かる — 規約 3）
     //   - 放射（Render.lightAt の組み込み放射テクスチャ）はここでは Add の単色 box で
     //     代役し、放射そのものは radial scene が単体で見る（配管と放射で不一致の源を

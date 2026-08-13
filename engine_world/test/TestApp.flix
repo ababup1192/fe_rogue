@@ -202,7 +202,7 @@ mod TestApp {
             case _                  => None
         })
 
-    // world z=1000（爆発など）より hud z=10 の方が手前になる（帯の持ち上げ）。
+    // world z=1000（爆発など）より hud z=10 の方が手前になる（範囲への持ち上げ）。
     @Test
     def testComposeSceneLiftsHudAboveWorld(): Unit \ Assert =
         let composed = App.composeScene(None, 1.0, sceneDesign(),
@@ -210,7 +210,7 @@ mod TestApp {
         Assert.assertEq(expected = (Some(1000), Some(1_000_000_010)),
             (zAt(0, composed), zAt(1, composed)))
 
-    // 帯からはみ出す hud の z は clamp（wrap しない）: 負は帯の底・過大は帯の上限。
+    // 範囲からはみ出す hud の z は clamp（wrap しない）: 負は範囲の底・過大は範囲の上限。
     @Test
     def testComposeSceneClampsHudZIntoRange(): Unit \ Assert =
         let composed = App.composeScene(None, 1.0, sceneDesign(),

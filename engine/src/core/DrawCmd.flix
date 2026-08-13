@@ -70,8 +70,8 @@ mod DrawCmd {
 
     /// スプライト 1 つ分の描画命令（zIndex 順にソートして描画される）。
     /// `style = Some(..)` かつ texture="" のとき角丸スタイル矩形として描く。
-    /// `clip` はスクリーン空間（design px）の切り抜き窓 — None なら切らない。
-    /// バックエンドは窓の外のピクセルを描かない（GL: scissor / SoftRaster: setClip）。
+    /// `clip` はスクリーン空間（design px）の切り抜き矩形 — None なら切らない。
+    /// バックエンドはその矩形の外のピクセルを描かない（GL: scissor / SoftRaster: setClip）。
     /// `blend` はピクセルの重ね方（既定 Normal — 従来と同じ半透明合成）。
     /// `mask` は多角形の型抜き（空 = 抜かない）。頂点は表示クアッドのローカル座標
     /// （design px・原点 = クアッドの左上・回転前）で、rotation / 反転（scale の符号）は
@@ -134,7 +134,7 @@ mod DrawCmd {
     }
 
     /// 凸多角形の塗り潰し命令。vertices はスクリーン px に変換済みの頂点列を渡す。
-    /// `clip` は Drawable と同じスクリーン空間の切り抜き窓（None なら切らない）。
+    /// `clip` は Drawable と同じスクリーン空間の切り抜き矩形（None なら切らない）。
     /// `blend` はピクセルの重ね方（既定 Normal — 従来と同じ半透明合成）。
     /// `grad` は頂点ごとの色（vertices と同じ長さ・同じ順）。Some のとき color は
     /// 補いにだけ使い、面の中で頂点色が滑らかに混ざる（空・水面・光の帯のグラデ）。
@@ -156,7 +156,7 @@ mod DrawCmd {
     /// （単色は従来の耳切り経路のまま — 絵を 1 バイトも変えないため）。
     /// 扇割り（頂点 0 を要）なので凸専用 — 凹ませたい形は呼び側で凸に割って並べる。
     /// 色列が頂点より短い分は color で補い、長い分は捨てる（fail-open — 落として
-    /// 消すより一色で出るほうが調整中に気づける）。濃さは頂点 α × 全体 α を畳み込み済み。
+    /// 消すより一色で出るほうが調整中に気づける）。濃さは頂点 α × 全体 α を掛け合わせ済み。
     pub def gradTriangles(p: PolygonRenderCmd): List[(GradVertex, GradVertex, GradVertex)] =
         match p#grad {
             case None        => Nil
@@ -209,7 +209,7 @@ mod DrawCmd {
 
     /// エンジン内部でキャッシュした 1 レンジの目次（バックエンドだけが使う）。
     /// 入力の多角形を z 昇順に三角形化して 1 本の VBO に連続配置したときの、
-    /// z / blend / 切り抜き窓ごとの (開始頂点, 頂点数)。zIndex で動的アイテムと同じ
+    /// z / blend / 切り抜き矩形ごとの (開始頂点, 頂点数)。zIndex で動的アイテムと同じ
     /// z 安定ソート列に並べ、重なり順を壊さない。
     pub type alias StaticPolyMeta = {
         first  = Int32,

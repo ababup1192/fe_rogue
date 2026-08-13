@@ -1,8 +1,8 @@
 // SceneRender — ゲーム画面を画面なしで PNG に描き出す（スナップショット比較用と、アトリエ候補のプレビュー用）。
 // 実行: flix run --entrypoint SceneRender.all → gallery/title.png・choice.png・ending.png
 //       flix run --entrypoint SceneRender.atelier → debug/atelier/*.png（スナップショットの外）
-// 場面は「進めて作る」: 台本が伸びても拍数を数え直さずに済むよう、
-// 「選択肢待ちになるまで進める」「結末の最後の拍まで進める」で位置を決める。
+// 場面は「進めて作る」: 台本が伸びてもビート数を数え直さずに済むよう、
+// 「選択肢待ちになるまで進める」「結末の最後のビートまで進める」で位置を決める。
 mod SceneRender {
     import java.io.File
 
@@ -41,7 +41,7 @@ mod SceneRender {
         let asking = walkToAsk(40, World.advance(w0));
         let choice = shoot(cfg, ctx, { t = 5.1 | asking }, "choice");
         // 結末: 疑いを重ねて灯りが消えた書斎で、最後の一文を読んでいる状態。
-        // （分岐 2 つは選んで次の分岐まで歩き、最後の告発だけは結末の最後の拍で止める）
+        // （分岐 2 つは選んで次の分岐まで歩き、最後の告発だけは結末の最後のビートで止める）
         let ended = asking |> pickAndWalk(0) |> pickAndWalk(0) |> World.pick(1) |> walkToLast(40);
         let ending = shoot(cfg, ctx, { t = 8.4 | ended }, "ending");
         title :: choice :: ending :: Nil
@@ -57,10 +57,10 @@ mod SceneRender {
         println("rendered: ${path}");
         path
 
-    /// 文字送りを使い切って 1 拍読み終えた状態にする（UI への投影も済む）。
+    /// 文字送りを使い切って 1 ビート読み終えた状態にする（UI への投影も済む）。
     def settle(w: World.World): World.World = World.step(60.0, w)
 
-    /// 選択肢待ちになるまで拍を進める（fuel で必ず止まる）。
+    /// 選択肢待ちになるまでビートを進める（fuel で必ず止まる）。
     def walkToAsk(fuel: Int32, w: World.World): World.World =
         let settled = settle(w);
         if (fuel <= 0 or NovelKit.isAsking(settled#kit)) settled
@@ -70,7 +70,7 @@ mod SceneRender {
     def pickAndWalk(i: Int32, w: World.World): World.World =
         walkToAsk(40, World.pick(i, w))
 
-    /// これ以上進めると表紙へ戻る、その手前（結末の最後の拍）で止める。
+    /// これ以上進めると表紙へ戻る、その手前（結末の最後のビート）で止める。
     def walkToLast(fuel: Int32, w: World.World): World.World =
         let settled = settle(w);
         let next = World.advance(settled);

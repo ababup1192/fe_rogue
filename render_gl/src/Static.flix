@@ -65,7 +65,7 @@ mod RenderStatic {
     def bake(key: DrawCmd.StaticKey, polys: List[DrawCmd.PolygonRenderCmd]): Entry \ IO =
         // z 昇順・同 z は入力順（安定）に並べ替える。
         let sorted = stableByZ(pc -> pc#zIndex, polys);
-        // 各多角形を三角形化して 6 floats/頂点の配列にし、(頂点配列列, レンジ目次) を畳む。
+        // 各多角形を三角形化して 6 floats/頂点の配列にし、(頂点配列列, レンジ目次) にまとめる。
         // レンジは「連続する同 z・同 blend・同 clip」でまとめる。
         // 展開（単色の耳切り / grad の扇割り＋頂点色）は RenderSprite.polyVertsRev に共通化。
         let init = { vertsRev = (Nil: List[Array[Float32, Static]]), total = 0,

@@ -13,7 +13,7 @@ mod TestReplay {
     def integ(on: Bool, dt: Float64, w: Float64): Float64 =
         if (on) w + dt else w
 
-    /// play は Trace を畳んで終端の World を返す。true×3・false×2・true×1 で +4。
+    /// play は Trace を畳み込んで終端の World を返す。true×3・false×2・true×1 で +4。
     @Test
     def testPlayDrivesToyWorld(): Unit \ Assert =
         let cues =

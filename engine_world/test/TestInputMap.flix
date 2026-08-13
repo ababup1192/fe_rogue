@@ -133,7 +133,7 @@ mod TestInputMap {
         let (s2, c2) = InputMap.wheelSteps(c1, -0.6);
         Assert.assertEq(expected = (0, true), (s2, Float64.abs(c2) < 0.000001))
 
-    // 大きな delta は複数目盛りにまとめて畳まれる（負方向も 0 へ向けて切り捨て）。
+    // 大きな delta は複数目盛りにまとめられる（負方向も 0 へ向けて切り捨て）。
     @Test
     def testWheelStepsMultipleNotches(): Unit \ Assert =
         Assert.assertEq(expected = ((2, true), (-2, true)),

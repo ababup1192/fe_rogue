@@ -1,4 +1,4 @@
-// 起動画面の「約束」だけを確かめる。
+// 起動画面の決まりだけを確かめる。
 // 置き場所・色・ロゴの大きさ・ゲージの太さは演出なので、ここでは見ない（目視の仕事）。
 
 mod TestSplash {
@@ -18,7 +18,7 @@ mod TestSplash {
         Assert.assertEq(expected = Some(1.0), Splash.clampRatio(9, 4));
         Assert.assertEq(expected = Some(0.0), Splash.clampRatio(-3, 4))
 
-    /// 流れる帯の位置は 1 周ぶんの端数（何秒経っても 0..1 の中を回り続ける）。
+    /// 流れるバーの位置は 1 周ぶんの端数（何秒経っても 0..1 の中を回り続ける）。
     @Test
     def testTurnsWrapAround(): Unit \ Assert =
         Assert.assertEq(expected = 0.0, Splash.turnsOf(0.0));
@@ -35,7 +35,7 @@ mod TestSplash {
         let zero = boxes(Splash.bootView(design, "loading...", Some(0.0), 0.0));
         let unknown = boxes(Splash.bootView(design, "loading...", None, 0.0));
         Assert.assertEq(expected = half - 1, zero);
-        // 本数が分からないときは流れる帯が出る（溜まる棒と同じ本数）。
+        // 本数が分からないときは流れるバーが出る（溜まる棒と同じ本数）。
         Assert.assertEq(expected = half, unknown)
 
     /// 文言に無い字があっても落ちない。組み込みフォントは ASCII だけなので、

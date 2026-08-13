@@ -60,12 +60,12 @@ mod ThemeDoc {
 
     // ── 派生色と resolver ──
 
-    /// 白に寄せる（ハイライト）。
+    /// 白に近づける（ハイライト）。
     pub def lighten(c: Color, k: Float64): Color =
         Color.lighten(c, k)
 
     /// スプライトの意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
-    /// accentLight / accentDark は PxShade のふち光・接地影が使う 3 段の明暗
+    /// accentLight / accentDark は PxShade のふち光・接地影が使う 3 段階の明暗
     /// （絵は accent 1 色で平らに塗り、明暗はここから導く）。
     pub def resolver(doc: Doc, key: String): Color =
         match key {

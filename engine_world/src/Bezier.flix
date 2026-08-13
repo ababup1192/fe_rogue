@@ -1,4 +1,4 @@
-// Bezier — ベジエ曲線の平坦化と、曲線から作る描画部品（太さ付きの帯・塗りつぶし）。
+// Bezier — ベジエ曲線の平坦化と、曲線から作る描画部品（太さ付きのストリップ・塗りつぶし）。
 // 角丸ボックスだけでは描けない、線の太さを端に向けて変えた形や曲線に沿った輪郭を
 // 多角形として組み立てられる（塗りは描画側が耳切りで三角形化するので、凹んだ輪郭もよい）。
 // 利用例: spine = quadratic(付け根, 制御点, 先端, 12);
@@ -28,8 +28,8 @@ mod Bezier {
     /// stroke の引数一式。spine = 背骨の折れ線（quadratic/cubic の出力）、color/z = 塗り。
     pub type alias Stroke = { spine = List[Vec2.Vec2], color = Color, z = Int32 }
 
-    /// 背骨に太さを付けた帯。widthOf は背骨上の位置 t（0=始点..1=終点）→ その場所の太さで、
-    /// 先細り・先太りが自由に作れる。帯は凸クアッド列 + 節ごとの丸い継ぎ目隠しで返す
+    /// 背骨に太さを付けたストリップ。widthOf は背骨上の位置 t（0=始点..1=終点）→ その場所の太さで、
+    /// 先細り・先太りが自由に作れる。ストリップは凸クアッド列 + 節ごとの丸い継ぎ目隠しで返す
     /// （クアッドの境界にアンチエイリアスの筋が出ないように、内側の点に円盤を重ねる）。
     pub def stroke(s: Stroke, widthOf: Float64 -> Float64): List[Render.PlacedItem] =
         let pts = List.toVector(s#spine);
@@ -68,7 +68,7 @@ mod Bezier {
         else
             quadPiece(outline, color, z) :: Nil
 
-    /// 折れ線を一定幅の帯で描く（節は丸い継ぎ目でつなぐ）。単発の線分 1 本だけなら
+    /// 折れ線を一定幅のストリップで描く（節は丸い継ぎ目でつなぐ）。単発の線分 1 本だけなら
     /// RawDraw.lineSeg（quad 1 枚で軽い）が近道。
     pub def polyline(points: List[Vec2.Vec2], width: {width = Float64},
                      color: Color, z: Int32): List[Render.PlacedItem] =

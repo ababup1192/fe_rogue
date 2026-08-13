@@ -328,7 +328,7 @@ mod RenderFont {
         let glyphCount = List.length(cps);
         // 下見（収まる焼きサイズ探し・アトラス辺長選び）も全字を 2 度走査するので体感に出る。
         // まだ何割かは言えないので、本数不明（0）として知らせる — 起動画面は
-        // 溜まる棒でなく流れる帯になり、進み具合が出せない間も止まって見えない。
+        // 溜まる棒でなく流れるバーになり、進み具合が出せない間も止まって見えない。
         onGlyph(0, 0);
         let bakeSize = fitBakeSize(fontInfo, entry#fontSize, padding, oversample, cps,
             () -> onGlyph(0, 0));

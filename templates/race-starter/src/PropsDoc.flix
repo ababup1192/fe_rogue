@@ -1,5 +1,5 @@
 // PropsDoc — race.props.json（コースに置く物の置き場と、置き物の寸法・周期）の宣言ドキュメント層。
-// 1 行 = コースの 1 段、1 文字 = 道幅を 9 等分したレーン 1 本。文字はそのマスに立つ物:
+// rows の 1 行 = コースの 1 行、1 文字 = 道幅を 9 等分したレーン 1 本。文字はそのマスに立つ物:
 //   '.' 何も無い / 'I' アイテム / 'X' コーン / 'G' 土管ゲート（その列が隙間）/ 'P' 振り子バー
 //
 // 列は「画面の位置」ではなく「道の中のレーン」。左端の列が道の左端で、右端の列が道の右端。
@@ -7,8 +7,8 @@
 //
 // 形（race.course.json）と置き場（このファイル）で Doc を分けてある。1 Doc = 1 関心
 // （docs/doc-conventions.md）の見本 — コースの曲がりを直す作業と、物を並べ替える作業は
-// 別の作業で、同時に読み直したい物でもない。行数はコースの段数（区間の len の合計）と
-// 揃える。足りない行はその段に何も無い、余った行は捨てる（fail-open）。
+// 別の作業で、同時に読み直したい物でもない。行数はコースの行数（区間の len の合計）と
+// 揃える。足りない行はその行に何も無い、余った行は捨てる（fail-open）。
 mod PropsDoc {
     use Util.Json.Json
 
@@ -25,13 +25,13 @@ mod PropsDoc {
 
     /// 置き場の表と、置き物の寸法・周期。寸法をここに持つのは「G や P を並べ替える作業と
     /// 同時に触る値」だから — 速度係数やゲージ収支（手触り）は rules 側に残る。
-    ///   rows … スタートの段から 1 段ずつ。
+    ///   rows … スタートの行から 1 行ずつ。
     pub type alias Doc = {
         version = Int32,
         rows = List[String],
         gateGapLanes = Int32,   // 土管ゲートの隙間の広さ（レーン何本ぶん）
         barPeriod = Float64,    // 振り子バーが 1 往復する時間（秒）
-        barPhaseStep = Float64, // 段が 1 つ進むごとにずれる位相（周）
+        barPhaseStep = Float64, // 行が 1 つ進むごとにずれる位相（周）
         barHalfWidth = Float64  // 振り子バーの半分の長さ（px）
     }
 
@@ -40,10 +40,10 @@ mod PropsDoc {
     /// 道幅を割るレーンの数（= 1 行の文字数）。奇数にしてあるので真ん中の列（4）が道の中心。
     pub def lanes(): Int32 = 9
 
-    /// 既定コース（CourseDoc.defaults）の段数。既定の置き場もこの数だけ行を持つ。
+    /// 既定コース（CourseDoc.defaults）の行数。既定の置き場もこの数だけ行を持つ。
     def defaultRows(): Int32 = 66
 
-    /// 何か置いてある段だけの表（段番号, その段の 1 行）。残りの段は空の行で埋める —
+    /// 何か置いてある行だけの表（行番号, その行の 1 行）。残りの行は空の行で埋める —
     /// 66 行すべてを並べると、どこに何があるかが読み取れない表になる。
     /// ねらいは race.props.json の note に書いてある。
     def marks(): List[(Int32, String)] =
@@ -77,8 +77,8 @@ mod PropsDoc {
           barPhaseStep = 0.37,
           barHalfWidth = 26.0 }
 
-    /// 段 m（コース 1 周の中の段。周回の巻き戻しは呼ぶ側の仕事）に置かれた物。
-    /// 行が足りない段は何も無い（fail-open — 置き場が短くてもゲームは走れる）。
+    /// 行 m（コース 1 周の中の行。周回の巻き戻しは呼ぶ側の仕事）に置かれた物。
+    /// 行が足りない所は何も無い（fail-open — 置き場が短くてもゲームは走れる）。
     pub def cellsAt(m: Int32, doc: Doc): List[Cell] =
         if (m < 0) Nil
         else List.drop(m, doc#rows) |> List.head
@@ -102,12 +102,12 @@ mod PropsDoc {
             case _   => None
         }
 
-    /// レーン lane の中心が道の中心から何 px ずれた所か（half = その段の道の半幅）。
+    /// レーン lane の中心が道の中心から何 px ずれた所か（half = その行の道の半幅）。
     pub def laneOff(lane: Int32, half: Float64): Float64 =
         half * (2.0 * (Int32.toFloat64(lane) + 0.5) / Int32.toFloat64(lanes()) - 1.0)
 
     /// レーン lane の左の境（lane = lanes() を渡すと道の右端）。
-    /// 帯で当たりを取る物（ゲートの土管）はここから辺を引く。
+    /// 範囲で当たりを取る物（ゲートの土管）はここから辺を引く。
     pub def laneEdge(lane: Int32, half: Float64): Float64 =
         half * (2.0 * Int32.toFloat64(lane) / Int32.toFloat64(lanes()) - 1.0)
 

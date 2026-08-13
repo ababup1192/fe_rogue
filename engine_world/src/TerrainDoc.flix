@@ -4,7 +4,7 @@
 // (PxSprite / ThemeDoc.resolver と同じ流儀)。
 // fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 // decode の契約: entries の char 重複は先勝ち・surface の未知 preset 名は除去・
-// edge は uniform 先勝ち(いずれも壊れ扱いにせず静かに畳む)。
+// edge は uniform 先勝ち(いずれも壊れ扱いにせず静かに受け入れる)。
 
 mod TerrainDoc {
     use Util.Json.Json
@@ -34,7 +34,7 @@ mod TerrainDoc {
     }
 
     /// 表全体。styleMix = 角の形(丸/四角)の混ぜ具合、entries = セル文字→質感の表
-    /// (char は一意が契約 — 重複は fromJson が先勝ちで畳む)。
+    /// (char は一意が契約 — 重複は fromJson が先勝ちでまとめる)。
     pub type alias Doc = { version = Int32, styleMix = DualGrid.StyleMix,
                            entries = List[EntryDoc] }
 
@@ -60,7 +60,7 @@ mod TerrainDoc {
                 surface = Nil, mottle = 0.0, height = None }
            :: Nil }
 
-    /// テキストから Doc へ(fail-open)。entries の char 重複は先勝ちで畳み(Studio 契約)、
+    /// テキストから Doc へ(fail-open)。entries の char 重複は先勝ちでまとめ(Studio 契約)、
     /// surface の未知 preset 名は decode 時に捨てる(specOf 側 presetOf の None は防衛の二重化)。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.parse(String.trim(text))
@@ -68,7 +68,7 @@ mod TerrainDoc {
             |> Option.map(fromRoot)
 
     /// path の Doc を読む。読めない・壊れているときは defaults(fail-open)。
-    /// 読み口を DocJson.loadOr に委譲し、壊れた JSON で倒れた事実は標準エラーへ 1 行出る。
+    /// 読み込みを DocJson.loadOr に委譲し、壊れた JSON で倒れた事実は標準エラーへ 1 行出る。
     pub def load(p: String): Doc \ Fs.FileRead =
         DocJson.loadOr(fromJson, defaults(), p)
 
@@ -181,7 +181,7 @@ mod TerrainDoc {
                                  shade = JsonCodec.stringOr("shade", fill, h),
                                  clipToFloor = JsonCodec.boolOr("clipToFloor", true, h) })
 
-    /// char の二重宣言を先勝ちで畳む(壊れ扱いにしない = fail-open。Studio 契約: 先の宣言が有効)。
+    /// char の二重宣言を先勝ちでまとめる(壊れ扱いにしない = fail-open。Studio 契約: 先の宣言が有効)。
     def dedupeByChar(entries: List[EntryDoc]): List[EntryDoc] =
         entries |> List.foldLeft((acc, e) ->
             if (List.exists(seen -> seen#char == e#char, acc)) acc else e :: acc, Nil)

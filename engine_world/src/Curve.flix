@@ -15,7 +15,7 @@ mod Curve {
         4.0 * progress * (1.0 - progress)
 
     /// 速さ `speed` で増える量を `span` で折り返し、[0, span) に収めた値。落ち物や流れる
-    /// 帯が端まで来たら反対側から出直す、途切れない周回に使う。
+    /// 絵が端まで来たら反対側から出直す、途切れない周回に使う。
     pub def loop(speed: Float64, span: Float64, t: Float64): Float64 =
         fract(speed * t / span) * span
 
@@ -72,7 +72,7 @@ mod Curve {
             case (t1, v1) :: more =>
                 if (t <= t0) v0                                     // 先頭以前は先頭値で平ら
                 else if (t < t1)
-                    if (t1 - t0 <= 0.0) v1                          // 同時刻は段差として扱う
+                    if (t1 - t0 <= 0.0) v1                          // 同時刻は急な切り替わりとして扱う
                     else v0 + (v1 - v0) * ((t - t0) / (t1 - t0))
                 else walk(t1, v1, more, t)
         }

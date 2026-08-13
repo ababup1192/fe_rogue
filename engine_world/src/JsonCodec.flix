@@ -27,7 +27,7 @@ mod JsonCodec {
             case _                => None
         }
 
-    /// JSON 数値を Int32 として取り出す。`BigDecimal -> Float64 -> Int32` の 2 段変換。
+    /// JSON 数値を Int32 として取り出す。`BigDecimal -> Float64 -> Int32` の 2 段階の変換。
     /// 範囲外 / 小数 / 数値以外は None。
     pub def expectInt(element: Json): Option[Int32] =
         match element {

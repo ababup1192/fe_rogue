@@ -65,12 +65,12 @@ mod TestDocs {
             (doc#player#r != d#player#r, doc#road#r))
 
     // ══════════════════════════════════════════════════════
-    // CourseDoc（区間の表。段数は len の合計 + 段 → 区間の割り当て）
+    // CourseDoc（区間の表。行数は len の合計 + 行 → 区間の割り当て）
     // ══════════════════════════════════════════════════════
 
     @Test
     def testCourseRowCountAndSectionLookup(): Unit \ Assert =
-        // len の合計が段数（2 + 3 = 5 段）。通し段 0 は 1 区間目、通し段 2 は 2 区間目の頭で、
+        // len の合計が行数（2 + 3 = 5 行）。通し行 0 は 1 区間目、通し行 2 は 2 区間目の頭で、
         // 曲がりも坂も道幅もその区間の値になる（width 50% → 半幅は基準の半分）。
         let doc = CourseDoc.fromJson(
                 "{\"version\":1, \"sections\":[{\"len\":2}, "
@@ -83,7 +83,7 @@ mod TestDocs {
 
     @Test
     def testCourseWrapsAndResolvesOutsideRail(): Unit \ Assert =
-        // 段は先頭へ巻き戻して周回する（5 段のコースの通し段 5 は 0 と同じ区間）。
+        // 行は先頭へ巻き戻して周回する（5 行のコースの通し行 5 は 0 と同じ区間）。
         // "out" は曲がりの向きの反対側に壁を立て、直線の区間では立たない。
         let doc = CourseDoc.fromJson(
                 "{\"version\":1, \"sections\":[{\"len\":2, \"rail\":\"out\"}, "
@@ -95,12 +95,12 @@ mod TestDocs {
              CourseDoc.railSideAt(2, doc), CourseDoc.railSideAt(5, doc)))
 
     // ══════════════════════════════════════════════════════
-    // PropsDoc（置き場の表。1 行 = 1 段・1 文字 = 1 レーン）
+    // PropsDoc（置き場の表。rows の 1 行 = コースの 1 行・1 文字 = 1 レーン）
     // ══════════════════════════════════════════════════════
 
     @Test
     def testPropsRowsMapCharsToLanes(): Unit \ Assert =
-        // 行の文字がそのままレーンの物になる。書いていない段は何も無い（fail-open）。
+        // 行の文字がそのままレーンの物になる。書いていない行は何も無い（fail-open）。
         let doc = PropsDoc.fromJson("{\"version\":1, \"rows\":[\"..X......\", \".........\"]}")
             |> Option.getWithDefault(PropsDoc.defaults());
         let kinds = m -> PropsDoc.cellsAt(m, doc) |> List.map(c -> (c#lane, c#kind));

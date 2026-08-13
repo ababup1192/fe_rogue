@@ -53,7 +53,7 @@ mod UiSpec {
     // parse（純粋 — 方言は UiDoc、ここは射影のみ）
     // ========================================================================
 
-    /// ui.json を Spec へ畳む。パースは UiDoc.parse（templates/use・スタイル・全 widget・
+    /// ui.json を Spec へ読み取る。パースは UiDoc.parse（templates/use・スタイル・全 widget・
     /// 色 3 表記・version・ノードパス付きエラー）に委譲し、UiStore 向けの形へ射影する。
     pub def parse(json: Json): Result[JsonError, Spec] =
         UiDoc.parse(json) |> Result.flatMap(spec -> toSpec(spec))

@@ -3,7 +3,7 @@
 // フィルムストリップ・ビューア（ダッシュボードのコマ送り UI）が背景画像 1 枚を
 // background-position で横スクロールしてコマを切り替えるための素材を作る。フレーム i は
 // x = i × frameW に置かれるので、ビューアは -i × (frameW/cssScale) だけ背景をずらせば
-// そのコマだけを窓に見せられる。
+// そのコマだけを表示範囲に見せられる。
 //
 // ゲーム内容は一切知らない。入力は「同じ寸法の BufferedImage 列」と「出力パス」だけ。
 // GifEncoder が同じフレーム列からアニメ GIF を描き出すのと対になる経路で、こちらは 1 枚の
@@ -52,7 +52,7 @@ mod Filmstrip {
         }
 
     /// 1 コマだけをコマ別 PNG に書く（renderFrames の 1 枚ぶんと同じ経路 = 同じバイト列になる）。
-    /// コマを描くたびに 1 枚ずつ書き出したい呼び側（HeadlessRender の GIF 描き出し）の口 — 全コマが
+    /// コマを描くたびに 1 枚ずつ書き出したい呼び側（HeadlessRender の GIF 描き出し）向けの入口 — 全コマが
     /// 揃うのを待たずに、描き出し途中のコマをファイルで見せられる。減量方針も renderFrames と
     /// 同じ（256 色以下なら PNG-8、超えたらフルカラー）。親ディレクトリは無ければ作る。
     pub def renderFrame(img: BufferedImage, outPath: String): Unit \ IO =

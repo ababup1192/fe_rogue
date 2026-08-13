@@ -88,11 +88,11 @@ px_atlas.png を起動時ロード)。区間を box → quad の順に交互に�
 - 検証: 両モードの絵は SoftRaster で全画素バイト一致 (editor_server/test/TestPxSpriteRaster —
   非反転 / flipX とも diff 0)。
 
-## HUD あり構成 (範囲別 2 段ソート) の A/B (2026-08-11, HUD=1 make run)
+## HUD あり構成 (範囲別 2 段階ソート) の A/B (2026-08-11, HUD=1 make run)
 
 シナリオ: 既存の view (movers + SDF テキスト) はそのまま、`HUD=1` で App.withHudView に
 小さな HUD (箱 1 + テキスト 2) を繋ぐ。composeScene が HUD の z を HUD の範囲 (1e9+) へ持ち上げる
-ので、mergedByZ は範囲別 2 段ソート (範囲ごとの counting sort) の経路に入る。背中合わせの 1 対。
+ので、mergedByZ は範囲別 2 段階ソート (範囲ごとの counting sort) の経路に入る。背中合わせの 1 対。
 
 | N | HUD 無し avg / p99 | HUD あり avg / p99 |
 |---|--------------------|--------------------|

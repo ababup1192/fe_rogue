@@ -13,7 +13,7 @@ def testAllKeysCoversAllVariants(): Unit \ Assert =
     Assert.assertEq(expected = 101, List.length(GameEngine.allKeys()))
 
 /// allKeys に同じキーが二重に載っていないか
-/// (重複があると Set に畳んだとき 101 より縮む)
+/// (重複があると Set にまとめたとき 101 より縮む)
 @Test
 def testAllKeysHasNoDuplicates(): Unit \ Assert =
     Assert.assertEq(expected = 101, Set.size(List.toSet(GameEngine.allKeys())))

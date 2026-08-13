@@ -76,7 +76,7 @@ mod TestWorldline {
             (Worldline.current(wl), Worldline.pastLength(wl), Worldline.length(wl)))
 
     /// cap で切り詰められた最古の状態は、いくら undo しても復元されない。
-    /// cap=2 で 0,1,2,3 と進めると past=[2,1]。3 段 undo しても最古は 1（0 は捨て済み）。
+    /// cap=2 で 0,1,2,3 と進めると past=[2,1]。3 回 undo しても最古は 1（0 は捨て済み）。
     @Test
     def testCapDropsOldest(): Unit \ Assert =
         let wl = Worldline.make(0, 2)
@@ -86,7 +86,7 @@ mod TestWorldline {
 
     // ── undoBy の端 clamp（dodge popHistory との等価性の核）──
 
-    /// undoBy(2) は 2 段遡る。
+    /// undoBy(2) は 2 回遡る。
     @Test
     def testUndoByStepsBack(): Unit \ Assert =
         let wl = Worldline.make(1, 10)
@@ -147,7 +147,7 @@ mod TestWorldline {
             (Worldline.current(wl), Worldline.pastLength(wl), Worldline.length(wl)))
 
     /// cap を N より大きく取れば、N 手 record した後 undoBy(N) で seed=0 へ完全に遡れる。
-    /// 1000 段の undo が一瞬で通る＝巻き戻しが履歴長に対して安いことの傍証。
+    /// 1000 回の undo が一瞬で通る＝巻き戻しが履歴長に対して安いことの傍証。
     @Test
     def testDeepHistoryUndoAllReturnsToSeed(): Unit \ Assert =
         let wl = List.range(1, 1001)
@@ -158,7 +158,7 @@ mod TestWorldline {
             (Worldline.current(back), Worldline.canUndo(back)))
 
     // ── 観測系: toList / window / scrubTo（時間順の絶対座標系）──
-    // 共通の題材: seed=1 から 2,3,4 を record し、そこから 2 段 undo。
+    // 共通の題材: seed=1 から 2,3,4 を record し、そこから 2 回 undo。
     // 時間順の平坦列は [1,2,3,4]、現在地 idx=1（current=2）、future=[3,4]。
 
     def scrubbed(): Worldline[Int32] =
