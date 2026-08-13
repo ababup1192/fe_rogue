@@ -1,4 +1,4 @@
-// 入口。同じ scene 宣言（Scenes）を GL と SoftRaster の両方で 1 コマ焼き、画素を突き合わせて
+// 入口。同じ scene 宣言（Scenes）を GL と SoftRaster の両方で 1 コマ描き出し、画素を突き合わせて
 // 1 行 1 scene の表を出す。A 段（バイト一致層）に不一致があれば exit 1。
 //
 // GL の絵はリファレンス画像化しない — 基準は「もう片方の経路」であって過去の絵ではない
@@ -59,7 +59,7 @@ mod ParityMain {
                 else println("[parity] 画面口の絵が無い: debug/gl/frame-${i + 1}.png (${sc#name})")
             })
 
-    // ── SoftRaster 側（headless。GL と同じ scene 宣言から焼く）──
+    // ── SoftRaster 側（headless。GL と同じ scene 宣言から描き出す）──
 
     /// SoftRaster 側の寸法引き（実機の getTextureInfo に当たる口の headless 版）。
     def softTexInfo(name: String): Option[GameEngine.TextureInfo] =
@@ -73,26 +73,26 @@ mod ParityMain {
                    width = Scenes.designW(), height = Scenes.designH() })
         else None
 
-    def cfgOf(atlas: FontAtlas): Bakery.BakeConfig =
+    def cfgOf(atlas: FontAtlas): HeadlessRender.RenderConfig =
         { design = { x = Scenes.designW(), y = Scenes.designH() }, scale = 1,
           background = black(),
           texturePath = Map#{"atlas" => "assets/atlas.png"},
           fontTtf = ttf(), fontAtlas = atlas, outDir = "debug/soft",
           frameW = Scenes.designWi(), frameH = Scenes.designHi(), gifDelayMs = 66, gifFps = 15 }
 
-    def softShoot(cfg: Bakery.BakeConfig, sc: Scenes.Scene): Unit \ IO =
+    def softShoot(cfg: HeadlessRender.RenderConfig, sc: Scenes.Scene): Unit \ IO =
         match sc#via {
             case Scenes.ShotVia.ViaTarget =>
                 let (ds, ps) = toDraw(softTexInfo, sc#items);
-                let spec: Bakery.PassSpec =
+                let spec: HeadlessRender.PassSpec =
                     { name = sc#name, clear = RenderTarget.LoadOp.Clear(black()),
                       drawables = ds, polygons = ps };
-                PixelDiff.writePng(Bakery.bakePassImage(cfg, spec, None), "debug/soft/${sc#name}.png")
+                PixelDiff.writePng(HeadlessRender.renderPassImage(cfg, spec, None), "debug/soft/${sc#name}.png")
             case Scenes.ShotVia.ViaScreen =>
                 let passSpecs = sc#passes |> List.map(p -> Render.passSpecOf(softTexInfo, p));
                 let surfaces = Render.shaderSurfaces(sc#items);
                 let (ds, ps) = toDraw(softTexInfo, sc#items);
-                Bakery.renderPngWithPasses(cfg, passSpecs, ds, ps, surfaces, sc#name)
+                HeadlessRender.renderPngWithPasses(cfg, passSpecs, ds, ps, surfaces, sc#name)
         }
 
     // ── 表と exit code ──

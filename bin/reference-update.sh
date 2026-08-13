@@ -9,19 +9,19 @@ set -eu
 cd "${1:-.}"
 
 if [ ! -d gallery ]; then
-	echo "error: gallery/ がありません。先に make bake を実行してください" >&2
+	echo "error: gallery/ がありません。先に make render を実行してください" >&2
 	exit 1
 fi
 
 count=$(find gallery -maxdepth 1 -name '*.png' | wc -l | tr -d ' ')
 if [ "$count" -eq 0 ]; then
-	echo "error: gallery/*.png が 1 枚もありません。先に make bake を実行してください" >&2
+	echo "error: gallery/*.png が 1 枚もありません。先に make render を実行してください" >&2
 	exit 1
 fi
 
 mkdir -p reference
 cp gallery/*.png reference/
-# 一覧に載せるのは bake が生成した絵（= gallery にある名前）だけ。reference/ へ手で置いた
+# 一覧に載せるのは render が描き出した絵（= gallery にある名前）だけ。reference/ へ手で置いた
 # PNG（Studio のジャンルカードが読む title.png 等）まで載せると、reference-check が gallery と
 # 名前の集合を突き合わせるため「消えた」扱いで必ず落ちる。
 (cd gallery && ls *.png) | sort | (cd reference && xargs shasum -a 256 > SHA256SUMS.txt)

@@ -88,8 +88,8 @@ def main():
             all_defs.setdefault(name, set()).update(defs)
         scanned.append((src_rel, doc_rel, mods))
 
-    # 幽霊参照の照合には bake 側 (engine_tools) の pub def も混ぜる。
-    # 索引が Bakery 等を案内しており、実在確認だけはここでもできるため。
+    # 幽霊参照の照合には描き出し側 (engine_tools) の pub def も混ぜる。
+    # 索引が HeadlessRender 等を案内しており、実在確認だけはここでもできるため。
     for name, defs in scan_package(ROOT / "engine_tools/src").items():
         all_defs.setdefault(name, set()).update(defs)
 

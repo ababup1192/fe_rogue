@@ -87,7 +87,7 @@ mod Render {
 
     /// 中心 center に置いた、縁がふわっと消える円の列（ソフトな光の玉）。
     /// look#alpha は中心の濃さ 0..1、look#blend は重ね方（光り物は Add が定番）。
-    /// 減衰は RadialGlow（グロー bake）と同じ smoothstep カーブに合わせてある —
+    /// 減衰は RadialGlow（グローの描き出し）と同じ smoothstep カーブに合わせてある —
     /// 焼いたハロと絵の系統が揃う。テクスチャに頼らないのは、fx.json（閉形式
     /// パーティクル）が「アセット不要・どの描画部でも同じ絵」を守るため。
     pub def glowAt(center: Vec2.Vec2, radius: Float64, color: Color,
@@ -679,7 +679,7 @@ mod Render {
               regionRect = Some(spec#src), zIndex = spec#z,
               blend = DrawCmd.BlendMode.Normal, maskPolys = Nil }) }
 
-    /// Pass 1 枚を bake 側の宣言（engine_tools の Bakery.PassSpec と同形のレコード）へ
+    /// Pass 1 枚を描き出し側の宣言（engine_tools の HeadlessRender.PassSpec と同形のレコード）へ
     /// 詰め替える。items は withoutShaders で外してから下ろす — ターゲットの中の
     /// Shader 面は GL が描かないので、代表色ベタ塗りを混ぜると実機とズレる。この約束を
     /// 呼び側ごとに書かせない（書き忘れた側だけズレる）ための 1 本。
@@ -776,16 +776,16 @@ mod Render {
             }
         })
 
-    /// GL の無い経路（bake / SoftRaster）が ShaderEval で面を焼くための純データ。
+    /// GL の無い経路（描き出し / SoftRaster）が ShaderEval で面を描くための純データ。
     /// drawShaders（GL 用・program ハンドル入り）の headless 版 — バックエンドに依らない値だけ持つ。
     pub type alias ShaderSurface = {
         rect = Rect2.Rect2, spec = ShaderDoc.Spec, time = Float64,
         mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }
 
-    /// Shader 面を純データ（ShaderSurface）で取り出す（bake / SoftRaster 用）。
+    /// Shader 面を純データ（ShaderSurface）で取り出す（描き出し / SoftRaster 用）。
     /// 座標の扱いは drawShaders と同一: 位置は placed#at、mask は rect 左上相対 + at。
     /// これを SoftRaster の surfaces に渡すと、draw の代表色ベタ塗りの代わりに
-    /// ShaderEval の画素評価で焼ける（draw 側からは withoutShaders で外して二重にしない）。
+    /// ShaderEval の画素評価で描ける（draw 側からは withoutShaders で外して二重にしない）。
     pub def shaderSurfaces(items: List[PlacedItem]): List[ShaderSurface] =
         items |> List.filterMap(placed -> {
             let (leaf, _clip) = unwrapClip(placed#item, None);

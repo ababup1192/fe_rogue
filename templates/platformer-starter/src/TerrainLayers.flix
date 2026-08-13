@@ -4,7 +4,7 @@
 // 「1 マスに何をどの順で貼るか」の権威は cellGroups の 1 箇所だけ:
 //   - specs はそれを TileData に組み、per-tile tint に LightGrid の明度色を渡す
 //     (洞窟の松明の暖色が 1 draw call のまま 1 マスごとに乗る)。
-//   - View.tileItems(bake・全動的経路)は同じ記述を PlacedItem に解釈する。
+//   - View.tileItems(描き出し・全動的経路)は同じ記述を PlacedItem に解釈する。
 // 面は固定サイズ・松明も静的なので、key はステージとアトラスの世代だけ —
 // 層の焼き直しは面の切替と Doc 読み直しの時にしか起きない。
 mod TerrainLayers {

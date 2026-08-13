@@ -1,6 +1,6 @@
 // 2 枚の PNG を RGB で画素比較する（alpha は見ない — pass の alpha は GL のブレンド副産物で
 // 一致保証が無いため。docs/backend-parity.md の tex 場の行を参照）。
-// 不一致があれば「GL | Soft | 違いヒート」を横に並べた 1 枚を debug/diff/ に焼く。
+// 不一致があれば「GL | Soft | 違いヒート」を横に並べた 1 枚を debug/diff/ に描き出す。
 // 画像の合成は Graphics2D を使わず Raster 直コピーだけ — macOS の -XstartOnFirstThread 下で
 // AWT Toolkit の初期化待ちにハングしうるため（ReferenceDiff.sideBySide と同じ理由）。
 mod PixelDiff {

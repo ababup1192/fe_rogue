@@ -35,8 +35,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make debug`  | 保存即反映(watchFile)と F8 を有効にして起動 |
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
-| `make bake`   | ギャラリー PNG を焼く（決定的な 7 場面: title / s1_drift / s2_nitro / s3_crash / s4_uturn / s5_gate / s6_rail） |
-| `make reference-check`  | 焼いた絵をリファレンス画像とバイト比較する |
+| `make render`   | ギャラリー PNG を描き出す（決定的な 7 場面: title / s1_drift / s2_nitro / s3_crash / s4_uturn / s5_gate / s6_rail） |
+| `make reference-check`  | 描き出した絵をリファレンス画像とバイト比較する |
 | `make reference-update` | いまの gallery をリファレンス画像として更新する |
 
 ## 読む順（全体像のつかみ方）
@@ -44,7 +44,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 **遊ぶ → 読む → JSON をいじる** の順で仕組みが見えます。
 
 1. まず `make run` で遊ぶ（コーナーをドリフトで攻め、ゲージを貯めてニトロで抜く）。
-2. コードは **エントリ→状態→描画→入力→焼き** の順で読む:
+2. コードは **エントリ→状態→描画→入力→描き出し** の順で読む:
    1. `src/Main.flix` … init/update/view/reloads を App に繋いで起動する目次。まずここ。
    2. `src/World.flix` … ゲームの規則ぜんぶ（純粋）。冒頭 doc に **5 本柱**と
       **場面の移り変わりの図**（Title→Racing→Win/Lose→Title）がある。
@@ -54,8 +54,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
       状態を絵に写す層たち（空と海 → 路面と縁石 → 車とドット絵 → 粒 → HUD → 幕）。
    5. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
    6. `src/Sfx.flix` … World から「いま鳴らす音」を導く（一発の音と、鳴り続ける音。下の「音」を参照）。
-   7. `src/bake/Bake.flix` … 決定的な 7 場面を PNG に焼く（リファレンス画像比較・目視批評）と、
-      `src/bake/SfxBake.flix` … 効果音 13 本を WAV に焼く。どちらも `make bake` の 1 手で走る。
+   7. `src/render/SceneRender.flix` … 決定的な 7 場面を PNG に描き出す（リファレンス画像比較・目視批評）と、
+      `src/render/SfxRender.flix` … 効果音 13 本を WAV に描き出す。どちらも `make render` の 1 手で走る。
 3. 数値・色・コースをいじる（保存すると走行中のゲームに即反映されます）:
    - `assets/race.rules.json` … 手触りぜんぶ（速度・グリップ・ドリフト・ニトロ・スピン・アイテム）。
    - `assets/race.rivals.json` … 敵の性格（地力・コーナーの上手さ・好みのレーン）とラバーバンドの強さ。
@@ -70,12 +70,12 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 
 黒箱（エンジンの部品）に出会ったら `docs/module-index.md`（エンジンリポ）で
 `Render`（描画）・`Fx` / `FxDoc`（粒）・`PxSprite`（ドット絵）・`App`（ゲームループ）・
-`JsonCodec`（JSON 読み）・`Bakery`（PNG 焼き）を引きます。
+`JsonCodec`（JSON 読み）・`HeadlessRender`（PNG の描き出し）を引きます。
 
 ## 音（何が鳴るか・どこをいじると変わるか）
 
-効果音は録音素材ではなく、`make bake` が `src/bake/SfxBake.flix` の合成レシピから
-`assets/sfx/*.wav` を焼いた生成物です（`.wav` を直接編集しても次の bake で消えます）。
+効果音は録音素材ではなく、`make render` が `src/render/SfxRender.flix` の合成レシピから
+`assets/sfx/*.wav` を描き出した生成物です（`.wav` を直接編集しても次の描き出しで消えます）。
 
 | いつ | 音 | 質感 |
 |---|---|---|
@@ -97,11 +97,11 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
   どちらも純関数なので、「いつ鳴るか」はここだけを読めば分かり、
   テスト（`test/TestSfx.flix`）で固定できます。
 - **音量・高さ・長さ**を変える: `assets/race.sfxtune.json`（音ごとに volume / pitch / speed）。
-  これは WAV に焼き込まれる値なので、保存したら `make bake` して起動し直すと届きます。
+  これは WAV に書き込まれる値なので、保存したら `make render` して起動し直すと届きます。
 - **エンジン音の唸りの幅**を変える: 同じ Doc の `enginePitchLow` / `enginePitchHigh`
-  （止まっているとき / 最高速のときの高さ）。ここだけは焼き直し不要で、保存すると
+  （止まっているとき / 最高速のときの高さ）。ここだけは WAV を描き出し直さなくてよく、保存すると
   走行中のゲームへ即反映されます。
-- **音そのもの**を作り替える: `src/bake/SfxBake.flix`。矩形波・雑音・減衰・重ね・連結だけの語彙です。
+- **音そのもの**を作り替える: `src/render/SfxRender.flix`。矩形波・雑音・減衰・重ね・連結だけの語彙です。
 
 鳴り続ける音は `App.withSustained` で書きます（`App.withAudio` は「この拍で鳴らし始める名前」
 だけを返す口なので、止め時のある音は書けません）。宣言に載っている間その音は鳴り続け、

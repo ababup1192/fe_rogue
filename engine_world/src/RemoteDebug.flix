@@ -371,19 +371,19 @@ mod RemoteDebug {
         else String.takeLeft(limit, text)
              + "\n...(truncated ${String.length(text) - limit} chars; pass rect=x,y,w,h to narrow)"
 
-    // ── POST /bake の応答 ──
+    // ── POST /render の応答 ──
 
-    /// POST /bake の成功応答。1 行目に枚数と所要ミリ秒、続く [baked] ブロックに
-    /// 焼けたファイルパスを焼いた順に 1 行 1 枚で載せる（0 枚ならブロックは省く）。
-    pub def bakeDoneText(ms: Int64, paths: List[String]): String =
-        "ok baked=${List.length(paths)} ms=${ms}\n"
+    /// POST /render の成功応答。1 行目に枚数と所要ミリ秒、続く [rendered] ブロックに
+    /// 描き出したファイルパスを描き出した順に 1 行 1 枚で載せる（0 枚ならブロックは省く）。
+    pub def renderDoneText(ms: Int64, paths: List[String]): String =
+        "ok rendered=${List.length(paths)} ms=${ms}\n"
         + (if (List.isEmpty(paths)) ""
-           else "[baked]\n" + String.intercalate("\n", paths) + "\n")
+           else "[rendered]\n" + String.intercalate("\n", paths) + "\n")
 
-    /// 焼きの実体（App.onBakeRequest）を登録していないゲームへの応答。
-    /// Studio はこの error 行を見て自前の bake 起動（make bake 等）へフォールバックする。
-    pub def bakeUnsupportedText(): String =
-        "error: bake not supported (game does not wire App.onBakeRequest)\n"
+    /// 描き出しの実体（App.onRenderRequest）を登録していないゲームへの応答。
+    /// Studio はこの error 行を見て自前の描き出し起動（make render 等）へフォールバックする。
+    pub def renderUnsupportedText(): String =
+        "error: render not supported (game does not wire App.onRenderRequest)\n"
 
     /// GET /help の本文。プロトコルの自己記述（セッション冒頭に 1 回読む想定）。
     pub def helpText(): String =
@@ -393,8 +393,8 @@ mod RemoteDebug {
         + "GET  /state?view=&rect=       observe without advancing\n"
         + "POST /halt                    pause the game (lockstep mode)\n"
         + "POST /resume                  resume realtime play\n"
-        + "POST /bake                    run the game's registered bake (App.onBakeRequest)\n"
-        + "     on the warm JVM; answers the baked file paths. play state is untouched.\n"
+        + "POST /render                  run the game's registered render (App.onRenderRequest)\n"
+        + "     on the warm JVM; answers the rendered file paths. play state is untouched.\n"
         + "POST /step?view=&rect=&until=&max=&trace=&dt=\n"
         + "     body = input script; runs it frame by frame, then answers.\n"
         + "     auto-halts first if the game is running.\n"
@@ -444,7 +444,7 @@ mod RemoteDebug {
             case ("POST", "/resume") => remoteResume(bridge, ctx)
             case ("GET", "/state")   => remoteState(app, bridge, request, ctx)
             case ("POST", "/step")   => remoteStepCommand(app, bridge, request, ctx)
-            case ("POST", "/bake")   => remoteBakeCommand(app, bridge, ctx)
+            case ("POST", "/render") => remoteRenderCommand(app, bridge, ctx)
             case (m, p)              =>
                 match RemoteDebug.findRoute(p, app#remoteHandlers) {
                     case Some(chosen) => remoteCustom(chosen, bridge, request, ctx)
@@ -499,27 +499,27 @@ mod RemoteDebug {
                    { world = resumed#world, anno = resumed#anno, history = resumed#history, hold = false })
         }
 
-    /// POST /bake: 登録された焼きの実体（App.onBakeRequest）を温まった JVM で実行し、
-    /// 焼けたファイルパスの列を返す。焼きは Docs から決定的な場面を組み立てるだけなので、
+    /// POST /render: 登録された描き出しの実体（App.onRenderRequest）を温まった JVM で実行し、
+    /// 描き出したファイルパスの列を返す。描き出しは Docs から決定的な場面を組み立てるだけなので、
     /// 走行中のプレイ状態（world・停止状態・履歴）には一切触れない — ctx をそのまま返す。
-    /// 未登録のゲームには「未対応」を返す（Studio はそれを見て自前の bake 起動へ
+    /// 未登録のゲームには「未対応」を返す（Studio はそれを見て自前の描き出し起動へ
     /// フォールバックする）。同時に来た 2 発目は /step と同じ排他の流儀 — HTTP 側は
     /// 1 スレッド直列・ゲームループは 1 フレーム 1 件なので、キュー順に必ず直列で捌かれる。
-    def remoteBakeCommand(app: App.App[w, ef], bridge: RemoteDebug.Bridge,
+    def remoteRenderCommand(app: App.App[w, ef], bridge: RemoteDebug.Bridge,
                           ctx: RemoteNext[w]): RemoteNext[w] \ IO =
-        match app#remoteBake {
-            case None => answer(RemoteDebug.bakeUnsupportedText(), bridge, ctx)
-            case Some(bake) =>
-                // 焼き（SoftRaster / HeadlessFont）は Java2D = AWT を使う。macOS の実機起動は
+        match app#remoteRender {
+            case None => answer(RemoteDebug.renderUnsupportedText(), bridge, ctx)
+            case Some(renderScenes) =>
+                // 描き出し（SoftRaster / HeadlessFont）は Java2D = AWT を使う。macOS の実機起動は
                 // -XstartOnFirstThread で GLFW が主スレッドを占有しており、ここで AWT が
                 // AppKit を起こそうとすると永久ハングし得る。このプロセスは AWT のウィンドウを
                 // 開かないので、初回の AWT 初期化前に headless を明示しておく
-                // （bin/flix が test / Bake 実行に付けるのと同じ理由）。
+                // （bin/flix が test / 描き出しの実行に付けるのと同じ理由）。
                 discard System.setProperty("java.awt.headless", "true");
                 let startNs = System.nanoTime();
-                let paths = bake();
+                let paths = renderScenes();
                 let elapsedMs = (System.nanoTime() - startNs) / 1000000i64;
-                answer(RemoteDebug.bakeDoneText(elapsedMs, paths), bridge, ctx)
+                answer(RemoteDebug.renderDoneText(elapsedMs, paths), bridge, ctx)
         }
 
     /// GET /state: 進めずに観測だけ返す。停止中はスクラブで表示中の瞬間を見る。

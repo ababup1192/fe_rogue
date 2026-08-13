@@ -47,7 +47,7 @@ mod Fx {
     /// どの spec の効果かを引く対応表が要らない。時刻管理は Lifetime に委ねる（得点ポップ等と同じ一族）。
     pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, life = Lifetime.Lifetime }
 
-    /// 時刻 bornAt に at で始まる効果を作る(普段は「今」を渡す。bake のように過去生まれを
+    /// 時刻 bornAt に at で始まる効果を作る(普段は「今」を渡す。描き出しのように過去生まれを
     /// 作るときはその時刻を渡す)。seed は「撃つたびに変える通し番号」— 同じ爆発が
     /// 毎回そっくり同じ姿になるのを避ける。ゲームの連番は Int32 が普通なので口は Int32 にし、
     /// sample が食べる Int64 への変換はここが済ませる。寿命は spec の duration。

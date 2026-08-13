@@ -1,4 +1,4 @@
-// SoftRaster — GameEngine.Drawable / PolygonRenderCmd を Java2D で 1 枚の PNG に焼く
+// SoftRaster — GameEngine.Drawable / PolygonRenderCmd を Java2D で 1 枚の PNG に描き出す
 // ソフトウェアラスタライザ。GL を使わないので GL コンテキストの無い場所（スナップショット
 // テスト、将来の IDE ビューポートのプレビュー）で描画結果を目視確認できる。
 //
@@ -40,7 +40,7 @@ mod SoftRaster {
         outPath = String
     }
 
-    /// 追加フォント 1 本（既定フォント以外も混ぜて焼くとき）。ttf = 実サイズ焼き用の TTF、
+    /// 追加フォント 1 本（既定フォント以外も混ぜて描き出すとき）。ttf = 実サイズ描き出し用の TTF、
     /// atlas = その TTF から HeadlessFont.buildAtlas で組んだメトリクス。
     pub type alias FontEntry = { ttf = String, atlas = FontAtlas }
 
@@ -67,7 +67,7 @@ mod SoftRaster {
 
     /// 宣言シェーダー面 1 枚の headless ラスタライズ要求（Render.ShaderSurface と同形の
     /// 構造レコード — GL の program ハンドルを持たない純データ）。ShaderEval で画素ごとに
-    /// 評価して焼く。mask が非空なら多角形の内側だけ塗る（GL のステンシルと同じ意図）。
+    /// 評価して描き出す。mask が非空なら多角形の内側だけ塗る（GL のステンシルと同じ意図）。
     pub type alias SurfaceCmd = {
         rect = Rect2.Rect2,
         spec = ShaderDoc.Spec,
@@ -86,14 +86,14 @@ mod SoftRaster {
     }
 
     // ════════════════════════════════════════════════════════
-    // この経路が描けない指定（焼く前に知らせるための照会）
+    // この経路が描けない指定（描き出す前に知らせるための照会）
     // ════════════════════════════════════════════════════════
 
     /// 「絵に出ない指定」1 種類ぶんの報告。attr は指定の名前、count は件数、hint は逃げ道。
     pub type alias Dropped = { attr = String, count = Int32, hint = String }
 
-    /// この経路が描けずに落とす指定を数える（純粋・焼く前に呼べる）。
-    /// GL の描画規約と揃っていない属性はここに 1 行足すこと — 黙って落とすと、焼いた絵と実機の絵が
+    /// この経路が描けずに落とす指定を数える（純粋・描き出す前に呼べる）。
+    /// GL の描画規約と揃っていない属性はここに 1 行足すこと — 黙って落とすと、描き出した絵と実機の絵が
     /// 食い違ったままスナップショットに固定され、「絵は正しい」という嘘が残る。
     /// 対応表は docs/backend-parity.md。
     pub def dropped(ds: List[GameEngine.Drawable]): List[Dropped] =
@@ -105,15 +105,15 @@ mod SoftRaster {
             String.startsWith({prefix = "font_"}, d#texture) and not Option.isEmpty(d#style));
         List.filter(x -> x#count > 0,
             ({ attr = "style on textured sprite", count = styledSprite,
-               hint = "角丸・枠・縞・市松は単色の box にだけ焼ける。スプライトの枠は box を重ねて作る" }: Dropped) ::
+               hint = "角丸・枠・縞・市松は単色の box にだけ描ける。スプライトの枠は box を重ねて作る" }: Dropped) ::
             ({ attr = "style on text", count = styledGlyph,
                hint = "文字は出力解像度の TTF で直接描くので style は乗らない" }: Dropped) :: Nil)
 
     /// 報告を 1 行の文へ（呼び出し側がそのまま出せる形）。
     pub def droppedLine(x: Dropped): String =
-        "[bake] 焼けない指定: ${x#attr} ×${x#count} — ${x#hint}"
+        "[render] 描き出せない指定: ${x#attr} ×${x#count} — ${x#hint}"
 
-    /// 要求を 1 枚の PNG に焼いて書き出す。
+    /// 要求を 1 枚の PNG に描き出して書き出す。
     pub def render(req: RasterReq): Unit \ IO =
         writePng(renderToImage(req), req#outPath)
 
@@ -127,13 +127,13 @@ mod SoftRaster {
     pub def renderWithSurfaces(req: RasterReq, surfaces: List[SurfaceCmd]): Unit \ IO =
         writePng(renderToImageWith(req, surfaces), req#outPath)
 
-    /// 追加の焼き済み画像（pass のレンダーターゲットなど）も混ぜて焼き、PNG に書き出す render。
+    /// 追加の描き出し済み画像（pass のレンダーターゲットなど）も混ぜて描き、PNG に書き出す render。
     pub def renderFull(req: RasterReq, surfaces: List[SurfaceCmd],
                        extraFonts: Map[String, FontEntry],
                        extraImages: Map[String, BufferedImage]): Unit \ IO =
         writePng(renderToImageFull(req, surfaces, extraFonts, extraImages), req#outPath)
 
-    /// 要求を 1 枚の BufferedImage に焼いて返す（PNG 書き出しはしない）。
+    /// 要求を 1 枚の BufferedImage に描き出して返す（PNG 書き出しはしない）。
     /// PNG スナップショット（render）と GIF アニメ（GifEncoder が 1 フレームずつ集める）の
     /// 共有ラスタライズ経路。`outPath` は使わない。
     pub def renderToImage(req: RasterReq): BufferedImage \ IO =
@@ -151,24 +151,24 @@ mod SoftRaster {
                                extraFonts: Map[String, FontEntry]): BufferedImage \ IO =
         renderToImageFull(req, surfaces, extraFonts, Map.empty())
 
-    /// renderToImageFonts の「追加の焼き済み画像」つき版。`extraImages` はテクスチャ名 →
-    /// 焼き上がりの BufferedImage（pass のレンダーターゲットなど、ファイルに落とさず直接混ぜたい絵）。
+    /// renderToImageFonts の「追加の描き出し済み画像」つき版。`extraImages` はテクスチャ名 →
+    /// 描き出した BufferedImage（pass のレンダーターゲットなど、ファイルに落とさず直接混ぜたい絵）。
     /// texturePath の読み込み結果へ上書き合流する（同名は extraImages が勝つ — ファイルの
-    /// 古い絵より、いま焼いたばかりの絵のほうが実機に近い）。
+    /// 古い絵より、いま描き出したばかりの絵のほうが実機に近い）。
     pub def renderToImageFull(req: RasterReq, surfaces: List[SurfaceCmd],
                               extraFonts: Map[String, FontEntry],
                               extraImages: Map[String, BufferedImage]): BufferedImage \ IO =
         renderToImageLogged(req, surfaces, extraFonts, extraImages, freshTexWarnLog())
 
-    /// tex 場の欠け名を知らせた控え。GIF などコマ列の焼きで同じ物を渡し続けると、
+    /// tex 場の欠け名を知らせた控え。GIF などコマ列の描き出しで同じ物を渡し続けると、
     /// 同じ名前の知らせがコマ数ぶん並ばない（GL 側の missingSurfaceTexRef と同じ「一度だけ」）。
     pub type alias TexWarnLog = Ref[Set[String], Static]
 
-    /// 欠け名の控えを新しく作る（コマ列の焼きの前に 1 本作って持ち回る）。
+    /// 欠け名の控えを新しく作る（コマ列の描き出しの前に 1 本作って持ち回る）。
     pub def freshTexWarnLog(): TexWarnLog \ IO = Ref.fresh(Static, Set.empty())
 
     /// renderToImageFull の欠け名控えつき版。控えは知らせの回数にだけ効き、
-    /// 焼き上がりの画素には一切影響しない（バイト一致はそのまま）。
+    /// 描き出す画素には一切影響しない（バイト一致はそのまま）。
     pub def renderToImageLogged(req: RasterReq, surfaces: List[SurfaceCmd],
                                 extraFonts: Map[String, FontEntry],
                                 extraImages: Map[String, BufferedImage],
@@ -184,8 +184,8 @@ mod SoftRaster {
         drawAllInto(image, req, surfaces, extraFonts, extraImages, warnLog);
         image
 
-    /// pass（レンダーターゲット）焼き用の入口。req#background は使わない — 塗るかどうか
-    /// （clearColor）の判断は呼び出し側（Bakery）が持つので、ここで塗ると判断が二重になる。
+    /// pass（レンダーターゲット）描き出し用の入口。req#background は使わない — 塗るかどうか
+    /// （clearColor）の判断は呼び出し側（HeadlessRender）が持つので、ここで塗ると判断が二重になる。
     /// `base` が Some ならその画像のコピーの上に描き足す（呼び出し側の画像は変異させない —
     /// 前フレームの中身は残像の証拠としてそのまま残したい）、None なら全画素透明から始める。
     pub def renderPassImage(req: RasterReq, base: Option[BufferedImage],
@@ -214,8 +214,8 @@ mod SoftRaster {
         applyQualityHints(g);
         // 組み込みの放射テクスチャを土台に、ゲームのテクスチャ → extraImages の順で重ねる
         //（後から入れた方が勝つ。名前は `__` 予約なので実際に潰し合うことはない）。
-        // GL 側は起動時に必ず GPU へ上げるため、bake 側も配線ゼロで同じ名前が引けないと
-        // 実機と bake の絵がずれる。
+        // GL 側は起動時に必ず GPU へ上げるため、描き出し側も配線ゼロで同じ名前が引けないと
+        // 実機と描き出しの絵がずれる。
         let textures = Map.foldLeftWithKey((acc, name, img) -> Map.insert(name, img, acc),
             Map.foldLeftWithKey((acc, name, img) -> Map.insert(name, img, acc),
                 builtinRadialImages(req#drawables),
@@ -234,7 +234,7 @@ mod SoftRaster {
                     let warned = Ref.get(warnLog);
                     if (Set.memberOf(name, warned)) ()
                     else {
-                        System.err.println("shader tex '${name}' が見つからない — 黒(0)で焼く"
+                        System.err.println("shader tex '${name}' が見つからない — 黒(0)で描く"
                             + "（pass なら passes に同名の宣言があるか確認）");
                         Ref.put(Set.insert(name, warned), warnLog)
                     };
@@ -274,7 +274,7 @@ mod SoftRaster {
         g.dispose()
     }
 
-    /// シェーダー面を画素ごとに焼く。rect を出力ピクセルへ量子化し、各画素の中心を
+    /// シェーダー面を画素ごとに描き出す。rect を出力ピクセルへ量子化し、各画素の中心を
     /// uv（rect 内 0..1）に写して ShaderEval.evalPixelAlphaTex（色と α を 1 回の shared
     /// 先行評価で一緒に返す版 — 別々に呼ぶと bindings を画素ごとに 2 回払う）で評価、
     /// blendPixel で本体へ混ぜる（Normal / Add / Multiply とも GL 側と同じ合成式）。
@@ -362,7 +362,7 @@ mod SoftRaster {
         // スプライト拡大（drawTextured の drawImage）は最近傍固定。実機の GPU 描画はドット絵を
         // 補間せず拡大するため、ここで補間すると実機と見え方がずれる（にじみ・輪郭ボケ）。
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        // 出力解像度で小サイズ文字をくっきり焼くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
+        // 出力解像度で小サイズ文字をくっきり描くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
 
@@ -417,7 +417,7 @@ mod SoftRaster {
     }
 
     /// ARGB 1 画素の合成（src を dst に重ねた結果。out の alpha は dst のまま —
-    /// bake 出力は背景が不透明で埋まっているため）。式は DrawCmd.BlendMode の doc と
+    /// 描き出しの出力は背景が不透明で埋まっているため）。式は DrawCmd.BlendMode の doc と
     /// GL 側（RenderSprite.applyBlend + シェーダの premultiply）に一致させてある:
     ///   Normal   : out = (src×a + dst×(255−a)) / 255           （SrcOver）
     ///   Add      : out = min(255, dst + src×a/255)             （明るく足す・クランプ）
@@ -526,9 +526,9 @@ mod SoftRaster {
         };
         clampAabb(design, p#clip, Rect2.grow(1.0, aabb))
 
-    /// 組み込みの放射テクスチャ（Render.lightAt / darkAt が引く）の表。焼くのは
+    /// 組み込みの放射テクスチャ（Render.lightAt / darkAt が引く）の表。作るのは
     /// drawables がその名前を実際に使うときだけ — 256×256 の画素計算を毎フレームの
-    /// bake に無条件で払わせない（bake の画素ループは既知の性能の池）。
+    /// 描き出しに無条件で払わせない（描き出しの画素ループは既知の性能の池）。
     def builtinRadialImages(drawables: List[GameEngine.Drawable]): Map[String, BufferedImage] \ IO =
         let usedOf = name -> List.exists(d -> d#texture == name, drawables);
         let withEntry = (name: String, pixelsOf: Unit -> Vector[Int32],
@@ -622,7 +622,7 @@ mod SoftRaster {
 
     /// 傾き（ラジアン）を掛けてから描き、終わったら座標系を戻す。回す軸は四角の中心で、
     /// render_gl/Frame の model 行列（pos + size/2 まわり）と同じ点にしてある — ここがズレると
-    /// 焼いた絵と実機の絵が食い違う。
+    /// 描き出した絵と実機の絵が食い違う。
     /// 窓（clip）は device 空間で保たれるので、傾けても窓は画面に平行なまま（Render の約束どおり）。
     def withRotation(g: Graphics2D, sf: Float64, rot: Float64, center: Vec2.Vec2,
                      draw: Unit -> Unit \ ef): Unit \ IO + ef =
@@ -858,7 +858,7 @@ mod SoftRaster {
             }
         }
 
-    /// 頂点色つき多角形を画素ごとに焼く（面の中の線形補間）。Graphics2D を通さないのは、
+    /// 頂点色つき多角形を画素ごとに描き出す（面の中の線形補間）。Graphics2D を通さないのは、
     /// Java2D に三角形内の頂点色補間が無いため。内外は画素中心で判定する（AA なし）—
     /// GL の三角形ラスタライズと同じ硬い縁で、単色多角形（Java2D の AA 塗り）とは縁の写りが違う
     /// （対応表 docs/backend-parity.md に記載）。clip・blend は drawSurface と同じ扱いで

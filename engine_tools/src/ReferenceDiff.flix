@@ -1,9 +1,9 @@
-// ReferenceDiff — 直す前（リファレンス画像）と直した後（gallery）を左右に並べた 1 枚に焼く。
+// ReferenceDiff — 直す前（リファレンス画像）と直した後（gallery）を左右に並べた 1 枚に描き出す。
 //
 // bench はバイトが違うことしか言わないので、「どこがどう変わったか」は人が 2 枚を
 // 切り替えて探すことになる。並べて 1 枚にすれば、目を動かすだけで済む。
 //
-// 焼く先は debug/diff/ —リファレンス画像の外なので、リグレッション防護の基準を汚さない。
+// 描き出す先は debug/diff/ —リファレンス画像の外なので、リグレッション防護の基準を汚さない。
 // ゲーム内容は一切知らない。入力は「どの絵か」の名前だけ。
 mod ReferenceDiff {
     import java.awt.image.BufferedImage
@@ -17,7 +17,7 @@ mod ReferenceDiff {
     /// 仕切りの色（0xRRGGBB）。どちらの絵にも無さそうな彩度で、境目を疑わずに済む。
     def gapColor(): Int32 = 0x00FF00FFi32
 
-    /// 環境変数で受け取って焼く。DIFF_DIR = ゲームのディレクトリ、
+    /// 環境変数で受け取って描き出す。DIFF_DIR = ゲームのディレクトリ、
     /// DIFF_NAMES = 並べたい PNG の名前をカンマで繋いだ物（例 "title.png,talk.png"）。
     /// 名前を呼び側（make）から貰うのは、どれが変わったかを決めるのが cmp の仕事だから。
     pub def pairs(): Unit \ IO =
@@ -36,7 +36,7 @@ mod ReferenceDiff {
         if (Object.isNull(value)) fallback else value
 
     /// 1 枚ぶん: reference/<name> と gallery/<name> を読んで debug/diff/<name> へ並べて書く。
-    /// 寸法が違うときは焼かない — 縮尺の違う 2 枚を並べても比べたことにならない。
+    /// 寸法が違うときは描き出さない — 縮尺の違う 2 枚を並べても比べたことにならない。
     def pairOne(dir: String, name: String): Unit \ IO =
         let beforePath = "${dir}/reference/${name}";
         let afterPath = "${dir}/gallery/${name}";

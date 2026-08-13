@@ -1,4 +1,4 @@
-// Filmstrip.bake の単体テスト。平坦色のフレーム列を横連結スプライトシートに焼き、
+// Filmstrip.render の単体テスト。平坦色のフレーム列を横連結スプライトシートに描き出し、
 // 幅 = フレーム数 × frameW・PNG-8（インデックスカラー）で書けたことを固定する。
 mod TestFilmstrip {
     import java.awt.image.BufferedImage
@@ -22,16 +22,16 @@ mod TestFilmstrip {
         let img = ImageIO.read(new File(path));
         if (Object.isNull(img)) (0i32, 0i32) else (img.getWidth(), img.getHeight())
 
-    /// 一様色フレーム 3 枚（各 8×6）を焼くと、幅 = 3×8 = 24・高 6・PNG-8（indexed=true・3 色）になり、
+    /// 一様色フレーム 3 枚（各 8×6）を描き出すと、幅 = 3×8 = 24・高 6・PNG-8（indexed=true・3 色）になり、
     /// 書き出した PNG も 24×6 で読み戻せる。
     @Test
-    def testBakeIndexedSheet(): Unit \ IO + Assert =
+    def testRenderIndexedSheet(): Unit \ IO + Assert =
         let frames =
             solid(8i32, 6i32, 200i32, 30i32, 40i32) ::
             solid(8i32, 6i32, 30i32, 200i32, 40i32) ::
             solid(8i32, 6i32, 40i32, 30i32, 200i32) :: Nil;
         let out = "build/test/filmstrip_indexed.png";
-        let observed = match Filmstrip.bake(frames, out) {
+        let observed = match Filmstrip.render(frames, out) {
             case None    => (0i32, 0i32, 0i32, 0i32, 0i32, false, 0i32, (0i32, 0i32))
             case Some(r) => (r#frameCount, r#frameW, r#frameH, r#width, r#height, r#indexed, r#colors, readDims(out))
         };
@@ -39,18 +39,18 @@ mod TestFilmstrip {
 
     /// 空フレーム列は None（ファイルも作らない）。
     @Test
-    def testBakeEmptyIsNone(): Unit \ IO + Assert =
-        Assert.assertEq(expected = true, Option.isEmpty(Filmstrip.bake(Nil, "build/test/filmstrip_empty.png")))
+    def testRenderEmptyIsNone(): Unit \ IO + Assert =
+        Assert.assertEq(expected = true, Option.isEmpty(Filmstrip.render(Nil, "build/test/filmstrip_empty.png")))
 
-    /// コマ別 PNG: 3 枚を dir へ焼くと 0.png .. 2.png ができ、各コマとも 8×6 で読み戻せる。
+    /// コマ別 PNG: 3 枚を dir へ描き出すと 0.png .. 2.png ができ、各コマとも 8×6 で読み戻せる。
     @Test
-    def testBakeFramesWritesEachFrame(): Unit \ IO + Assert =
+    def testRenderFramesWritesEachFrame(): Unit \ IO + Assert =
         let frames =
             solid(8i32, 6i32, 200i32, 30i32, 40i32) ::
             solid(8i32, 6i32, 30i32, 200i32, 40i32) ::
             solid(8i32, 6i32, 40i32, 30i32, 200i32) :: Nil;
         let dir = "build/test/filmstrip_frames";
-        let meta = Filmstrip.bakeFrames(frames, dir)
+        let meta = Filmstrip.renderFrames(frames, dir)
             |> Option.map(r -> (r#frameCount, r#frameW, r#frameH));
         Assert.assertEq(
             expected = (Some((3i32, 8i32, 6i32)), (8i32, 6i32), (8i32, 6i32), (8i32, 6i32)),
@@ -58,20 +58,20 @@ mod TestFilmstrip {
 
     /// コマ別 PNG: 空フレーム列は None（ディレクトリもファイルも作らない）。
     @Test
-    def testBakeFramesEmptyIsNone(): Unit \ IO + Assert =
-        Assert.assertEq(expected = true, Option.isEmpty(Filmstrip.bakeFrames(Nil, "build/test/filmstrip_frames_empty")))
+    def testRenderFramesEmptyIsNone(): Unit \ IO + Assert =
+        Assert.assertEq(expected = true, Option.isEmpty(Filmstrip.renderFrames(Nil, "build/test/filmstrip_frames_empty")))
 
     /// 256 色を超えるフレーム（各画素を違う色に塗った 20×20 = 400 色）は
     /// フルカラーへフォールバックする（indexed=false）。幅・コマ数は保つ。
     @Test
-    def testBakeFallbackFullColor(): Unit \ IO + Assert =
+    def testRenderFallbackFullColor(): Unit \ IO + Assert =
         let img = new BufferedImage(20i32, 20i32, 1i32);
         List.forEach(y ->
             List.forEach(x ->
                 img.setRGB(x, y, y * 20i32 + x),   // 0..399 の相異なる RGB
                 List.range(0i32, 20i32)),
             List.range(0i32, 20i32));
-        let observed = match Filmstrip.bake(img :: Nil, "build/test/filmstrip_fallback.png") {
+        let observed = match Filmstrip.render(img :: Nil, "build/test/filmstrip_fallback.png") {
             case None    => (true, 0i32, 0i32)
             case Some(r) => (r#indexed, r#frameCount, r#width)
         };

@@ -21,8 +21,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make debug`  | 保存即反映(watchFile)と F8 を有効にして起動 |
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
-| `make bake`   | ギャラリー PNG を焼く（決定的な 4 場面: s1_start / s2_stack / s3_clear / s4_over） |
-| `make reference-check`  | 焼いた絵をリファレンス画像とバイト比較する |
+| `make render`   | ギャラリー PNG を描き出す（決定的な 4 場面: s1_start / s2_stack / s3_clear / s4_over） |
+| `make reference-check`  | 描き出した絵をリファレンス画像とバイト比較する |
 | `make reference-update` | いまの gallery をリファレンス画像として更新する |
 
 ## 読む順（全体像のつかみ方）
@@ -30,7 +30,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 **遊ぶ → 読む → JSON をいじる** の順で仕組みが見えます。
 
 1. まず `make run` で遊ぶ（ミノを寄せ・回し・そろえて消す）。
-2. コードは **エントリ→状態→形→描画→入力→焼き** の順で読む:
+2. コードは **エントリ→状態→形→描画→入力→描き出し** の順で読む:
    1. `src/Main.flix` … 3 つを App に繋いで起動する目次。冒頭 doc に**ゲームループの全体像**
       （init・update・view・reloads がどれか）が書いてある。まずここ。
    2. `src/World.flix` … ゲームの状態そのものと、次の状態を作る規則（重力・移動・回転・
@@ -42,13 +42,13 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    4. `src/View.flix` … 状態を絵に写す（盤・固定セル・落下中ミノ・ゴースト・NEXT・スコア・
       ライン消しの閃光を、何をどこに描くか）。
    5. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
-   6. `src/bake/Bake.flix` … 決定的な 4 場面を PNG に焼く（リファレンス画像比較・目視批評）。
+   6. `src/render/SceneRender.flix` … 決定的な 4 場面を PNG に描き出す（リファレンス画像比較・目視批評）。
 3. 数値と色をいじる（保存すると走行中のゲームに即反映されます）:
    - `assets/tetris.rules.json` … 落下速度・接地の猶予・得点。
    - `assets/tetris.theme.json` … 盤・枠・ミノ・閃光の色。
 
 黒箱（エンジンの部品）に出会ったら `docs/module-index.md`（エンジンリポ）で
-`Render`（描画）・`App`（ゲームループ）・`JsonCodec`（JSON 読み）・`Bakery`（PNG 焼き）を引きます。
+`Render`（描画）・`App`（ゲームループ）・`JsonCodec`（JSON 読み）・`HeadlessRender`（PNG の描き出し）を引きます。
 
 ## いちばん小さな変え方（保存即反映）
 

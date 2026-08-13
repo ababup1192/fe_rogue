@@ -1,10 +1,10 @@
-// GifEncoder — BufferedImage 列をアニメーション GIF ファイルに焼くエンコーダ。
+// GifEncoder — BufferedImage 列をアニメーション GIF ファイルに描き出すエンコーダ。
 //
 // 外部依存を足さず javax.imageio の GIF ImageWriter でフレーム列を書き出す。各フレームの
 // 表示時間は GraphicControlExtension の delayTime（センチ秒）で、無限ループは
 // ApplicationExtension（NETSCAPE2.0・loop count 0）で設定する定石実装。
 //
-// SoftRaster.renderToImage が 1 フレームずつ焼いた BufferedImage を集め、ここで 1 本の
+// SoftRaster.renderToImage が 1 フレームずつ描き出した BufferedImage を集め、ここで 1 本の
 // GIF にまとめる。GL 無しの操作リプレイ動画（呼び出し側が outPath を渡し、任意の場所へ永続化
 // する）を作る経路。
 mod GifEncoder {
@@ -23,12 +23,12 @@ mod GifEncoder {
     import javax.imageio.stream.FileImageOutputStream
     import org.w3c.dom.Node
 
-    /// アニメ GIF とコマ送りビューア用のコマ別 PNG（`Filmstrip.bakeFrames`）をペアで焼く。
+    /// アニメ GIF とコマ送りビューア用のコマ別 PNG（`Filmstrip.renderFrames`）をペアで描き出す。
     /// ギャラリーの定石（GIF は流し見・コマ別 PNG は 1 コマずつ精査）を 1 呼び出しにする。
     pub def encodeWithFrames(frames: List[BufferedImage], delayMs: Int32,
                              gifPath: String, framesDir: String): Unit \ IO =
         encode(frames, delayMs, gifPath);
-        discard Filmstrip.bakeFrames(frames, framesDir)
+        discard Filmstrip.renderFrames(frames, framesDir)
 
     /// アニメ GIF を `outPath` へ書き出す。`frames` は同寸の BufferedImage 列、`delayMs` は各フレームの
     /// 表示時間（ms）。無限ループ再生に設定する。frames が空なら何もしない（呼び側の sanity 用）。

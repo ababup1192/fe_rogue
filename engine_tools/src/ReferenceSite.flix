@@ -40,9 +40,9 @@ mod ReferenceSite {
     }
 
     /// フィルムストリップ（コマ送りビューア）に要る情報。素材は 2 形態のどちらか:
-    ///   シート方式   … Filmstrip.bake の横連結 PNG 1 枚。`strip` はそのファイル名（outDir 相対）。
+    ///   シート方式   … Filmstrip.render の横連結 PNG 1 枚。`strip` はそのファイル名（outDir 相対）。
     ///                  ビューアは background-position でずらしてコマを切り替える。
-    ///   コマ別方式   … Filmstrip.bakeFrames のコマ別 PNG（`0.png` .. `N-1.png`）。`strip` は
+    ///   コマ別方式   … Filmstrip.renderFrames のコマ別 PNG（`0.png` .. `N-1.png`）。`strip` は
     ///                  そのディレクトリを **末尾 "/"** で渡す（例 "frames/pocket/"）。ビューアは
     ///                  canvas に 1 コマずつ描く。シートはブラウザが幅 65,535px 超を描けないので、
     ///                  コマ数の多いシナリオはこちらを使う。
@@ -289,7 +289,7 @@ mod ReferenceSite {
             "<details class=\"lint-detail\"><summary>${head}</summary><ul>${items}</ul></details>"
         }
 
-    /// 本体メディア。filmstrip 情報があってストリップ画像も焼けていればコマ送りビューアを、
+    /// 本体メディア。filmstrip 情報があってストリップ画像も描き出せていればコマ送りビューアを、
     /// 無ければ従来メディア（img / generateHint 案内）を出す（後方互換）。
     def mediaHtml(config: Config, item: Item): String \ IO =
         match item#filmstrip {
@@ -365,7 +365,7 @@ mod ReferenceSite {
         run { discard Fs.WriteFile.write({str = content}, path) } with Fs.WriteFile.runWithFileWrite
 
     // ════════════════════════════════════════════════════════
-    // 共有スタイル（ダーク配色・ドット絵を補間なしで焼き付ける）
+    // 共有スタイル（ダーク配色・ドット絵を補間なしで拡大する）
     // ════════════════════════════════════════════════════════
 
     /// index / page で共有する <style>。ドット絵は image-rendering: pixelated で補間しない。

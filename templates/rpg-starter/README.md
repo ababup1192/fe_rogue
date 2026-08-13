@@ -20,10 +20,10 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make debug` | 保存即反映（watchFile）+ F8 検分 + fps 表示つきで起動 |
 | `make check` / `make test` | 型検査 / テスト（36 本） |
 | `make palette` | Studio 用の色の写し（`assets/rpg.palette.json`）を作り直す |
-| `make bake` | リファレンス画像用の決定的な 6 場面を `gallery/` に焼く |
-| `make bake-town` / `bake-house` / `bake-motion` / `bake-seam` | 街の全景 / 建物の寄り / 動き物 / 継ぎ目検分を `debug/` に焼く |
+| `make render` | リファレンス画像用の決定的な 6 場面を `gallery/` に描き出す |
+| `make render-town` / `render-house` / `render-motion` / `render-seam` | 街の全景 / 建物の寄り / 動き物 / 継ぎ目検分を `debug/` に描き出す |
 | `make reference-check` / `make reference-update` | リファレンス画像とバイト比較 / いまの gallery を更新 |
-| `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
+| `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に描き出す |
 
 - **F1** … Doc を全部読み直す（保存即反映が効かない時の手動リロード）。
 - **F8**（`make debug` 中のみ）… 時間停止 + ←→で時間スクラブ + 矩形を囲って注釈チケット。
@@ -42,7 +42,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    3. `src/View.flix` … 状態を絵に写す（タイル・建物・水面・ふきだしを、何をどこに描くか）。
       街タイルの縁・角・橋の選定は `src/TownMap.flix`（rows には素材しか書かない）。
    4. `src/Controls.flix` … キーの割り当て(InputMap)と Doc の読み直し。
-   5. `src/bake/Bake.flix` … 決定的な 6 場面を PNG に焼く（リファレンス画像とアトリエ）。
+   5. `src/render/SceneRender.flix` … 決定的な 6 場面を PNG に描き出す（リファレンス画像とアトリエ）。
 3. 手触り・色・絵・盤面は下の `assets/` の Doc を保存即反映でいじる。
 
 **いちばん小さい変え方**（保存即反映を体験する）: `make debug` で起動したまま
@@ -70,9 +70,9 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 それぞれに Studio 用の schema が並んでいて、`project.json` の `editor.resources` が宣言しています。
 Studio で開けばそのまま編集できます。
 
-## リファレンス画像の焼き方
+## リファレンス画像の描き出し方
 
-- `make bake` で `gallery/` に決定的な PNG を焼き、`make reference-update` で更新、`make reference-check` で防護。
+- `make render` で `gallery/` に決定的な PNG を描き出し、`make reference-update` で更新、`make reference-check` で防護。
 - 見た目を意図して変えたら: `make reference-check` で差分を確認（意図した変化だけが DIFF に
   なっていること）→ `make reference-update` で更新 → もう一度 `make reference-check` が全 OK。
-- 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に焼いて目視。
+- 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に描き出して目視。

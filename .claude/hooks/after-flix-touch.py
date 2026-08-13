@@ -4,13 +4,18 @@
 after-flix-work.py（Stop / SubagentStop hook）は「作業ツリーで汚れている
 パッケージ全部」を見る。複数エージェントが並行で走っていると、他のセッションが
 編集中の（赤くて当然の）パッケージまで拾ってしまい、無関係な赤で他人のターンを
-止めることになる。ここでは検査を一切せず（常駐にも触らず・JVM も起こさない）、
+止めることになる。ここでは検査を一切せず（常駐へ CHECK は送らない）、
 「session_id がこのパッケージの .flix を書いた」という印を
 ~/.cache/flix-checkd/<パッケージのハッシュ>/touched-<session_id のハッシュ>
 へ置くだけの薄い hook にする。保存のたびに走っても軽い。
 
 この印がある session_id だけが、after-flix-work.py で exit 2 の対象になる
 （印が無いパッケージは「他人の赤」とみなし、検査そのものをしない）。
+
+印を置くついでに、そのパッケージの常駐がまだ居なければ起動だけ頼む。作業の
+区切りで初めて頼んでいた頃は、その回の検査は必ず冷たいまま（次の区切りから
+やっと温かい）だった。増殖の歯止めは reserve_daemon → too_busy が持つ
+（上限 MAX_DAEMONS・90 秒に 1 回・load が高ければ見送り）。
 
 編集されたファイルの取り出し口は 2 つある。エージェントによって編集ツールの
 入力の形が違うため、両方を読む:
@@ -150,6 +155,11 @@ def main():
             open(marker, "a").close()
             os.utime(marker, None)  # 既にある印も「まだ触っている」印として鮮度を更新する
             sweep_old_markers(sd)
+            if not afe.pid_alive(pkg):
+                # 温め直しの数秒を作業の区切りまで持ち越さない。増殖の歯止めは
+                # reserve_daemon → too_busy が持つ（上限 MAX_DAEMONS・90 秒に 1 回・
+                # load が高ければ見送り）ので、ここでは「居なければ頼む」だけ。
+                afe.reserve_daemon(pkg)
     except OSError:
         pass
     return 0

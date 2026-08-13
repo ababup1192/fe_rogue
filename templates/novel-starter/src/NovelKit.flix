@@ -117,7 +117,7 @@ mod NovelKit {
     pub def uiPaths(): List[String] =
         "assets/ui/dialog.ui.json" :: "assets/ui/choices.ui.json" :: Nil
 
-    /// キットの ui.json 一式を 1 つの UiStore へ spawn する（起動と bake が同じレジストリを見る）。
+    /// キットの ui.json 一式を 1 つの UiStore へ spawn する（起動と描き出しが同じレジストリを見る）。
     pub def spawnAssets(): UiStore.UiWorld \ Fs.FileRead =
         List.foldLeft((ui, path) -> spawnOne(path, ui), UiStore.empty(), uiPaths())
 

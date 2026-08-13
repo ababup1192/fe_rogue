@@ -15,7 +15,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 | 煙・雪・葉・木くず | `Fx`/`FxDoc`(fx.json) | emitter 種の追加のみ(新モジュール禁止) |
 | 風揺れ | `Sway` | 無し |
 | 夜のとばり・ビネット・寒色 | `Render.shaderFill` 全画面1枚+blend Multiply | ShaderDoc.Field に `radial` 程度 |
-| ギャラリー/リファレンス画像 | Bakery + make bake/reference-check/reference-update | コンタクトシートのターゲット追加 |
+| ギャラリー/リファレンス画像 | HeadlessRender + make render/reference-check/reference-update | コンタクトシートのターゲット追加 |
 | エディタ編集 | editor_server の Preview* の並び | PreviewSprite 追加 |
 | 性能計測 | bench/sprite_stress(A/B背中合わせの流儀) | シナリオ1本追加 |
 
@@ -101,7 +101,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       1 体に絞る = クリップ再生は静止コマ列で代替)。themes は [{name?, colors:{key:"#rrggbb"}}]、
       無いキーは決定的フォールバック色(fail-open)。返り値は既存 Preview の流儀
       (ok/png(base64)/width/height/sprites メタ/warnings/error)。特化ビューは状態を持たない。
-    - **村のギャラリー**: Bake.prologue の末尾で debug/sprites.png(全スプライト×全コマ×
+    - **村のギャラリー**: SceneRender.prologue の末尾で debug/sprites.png(全スプライト×全コマ×
       2 resolver: villager 既定/wanderer 体色+赤傘)。c1_/c2_ 接頭辞を持たないので
       all.png には合流しない。**スナップショット化はまだしない(絵が動く時期のため)—
       安定後に代表場面+sprites.png をスナップショット昇格すること**。
@@ -142,7 +142,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
     - **ポスト面の headless 経路**: Render.blended が Item.Shader にも効くように
       +`Render.shaderSurfaces`(Shader 面の純データ抽出 — drawShaders の headless 版)、
       SoftRaster に `SurfaceCmd`/`renderWithSurfaces`(ShaderEval の画素評価 +
-      blendPixel で z 合流 — mask は偶奇 point-in-polygon)、`Bakery.renderPngWith`。
+      blendPixel で z 合流 — mask は偶奇 point-in-polygon)、`HeadlessRender.renderPngWith`。
       既存 renderPng/renderToImage は署名不変(surfaces = Nil に委譲)。
     - **村の暗がりのポスト面化(見た目が変わってよい唯一の箇所)**:
       PrologueView.darkItems の「額縁ビネット(帯12枚)+霧の柱(12本)+全画面とばり」を
@@ -151,7 +151,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       プログラムキャッシュも分岐) = smoothstep(U:0.708→1.0)×smoothstep(V:0.30→0.36)×0.38、
       とばり = maxDarkness × max(0, -sin(2πt/dayLen))(Night.rawNight と同式)を
       **uTime からシェーダー内で組む — spec が時刻に依らず一定なので GLSL の
-      再コンパイルはテーマ/開放状態の変化時だけ**。生成は Bake.shootPro
+      再コンパイルはテーマ/開放状態の変化時だけ**。描き出しは SceneRender.shootPro
       (shaderSurfaces + renderPngWith)で GL と同じ数式(ShaderEval)を生成する。
       目視確認済み: 帯の縞・額縁の継ぎ目が消え、角へ滑らかに沈むビネットと
       右肩上がりの霧のグラデになった。夜は Normal 重ねから Multiply になり
@@ -159,7 +159,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
     - **ギャラリー差分**: debug/ 27枚中、c1_01..c2_10 の26枚が暗がりの差分で変化
       (全場面にポスト面が乗るため — 差分はこの1系統のみ)、sprites.png はバイト一致。
       スナップショット(本編10枚)は経路を触っていないので全バイト一致(bench green)。
-    - **性能予算の確定(動的 PlacedItem/フレーム — Bake.shootPro の機械計測)**:
+    - **性能予算の確定(動的 PlacedItem/フレーム — SceneRender.shootPro の機械計測)**:
       | 場面 | 動的 items | 静的(毎フレーム描かない) |
       |---|---|---|
       | 第1章 min(c1_08 凍える夜) | 683 | 2441 |

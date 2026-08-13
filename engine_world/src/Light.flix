@@ -8,17 +8,17 @@ mod Light {
     pub type alias Light = { at = Vec2.Vec2, radius = Float64, color = Color, halo = Float64 }
 
     /// RadialGlow で焼いた既定テクスチャの参照一式。sprite 名・元 px サイズ・穴の広さは
-    /// 「焼く側（bake の RadialGlow 呼び出し）」と「読む側（items のスケール計算）」で
+    /// 「描き出す側（RadialGlow の呼び出し）」と「読む側（items のスケール計算）」で
     /// 値が揃っていないと穴のサイズがずれるため、1 レコードにまとめて受け渡しの分裂を防ぐ。
     pub type alias GlowAssets = {
         maskSprite = String, maskSourceSize = Float64, maskHoleFrac = Float64,
         haloSprite = String, haloSourceSize = Float64
     }
 
-    /// RadialGlow の既定値で焼いたときの GlowAssets（sprite名は bake 側の慣習
+    /// RadialGlow の既定値で焼いたときの GlowAssets（sprite名は描き出し側の慣習
     /// "glow_mask"/"glow_halo" 固定）。別名のテクスチャを焼いたゲームは自分で
     /// GlowAssets を組み立てて items に渡せばよい。
-    /// maskHoleFrac=0.5 は engine_tools（bake 専用パッケージ、engine_world から依存できない）
+    /// maskHoleFrac=0.5 は engine_tools（描き出し専用パッケージ、engine_world から依存できない）
     /// の RadialGlow.defaultHoleFrac() と同じ値 — 焼く側を変えたらここも合わせて直すこと。
     pub def defaultGlowAssets(): GlowAssets =
         { maskSprite = "glow_mask", maskSourceSize = 512.0, maskHoleFrac = 0.5,

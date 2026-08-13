@@ -11,7 +11,7 @@
 //   reloads = 保存で読み直す Doc（各 1 本の watchFile に展開される）。
 // 場面（表紙・クリア等）が増えたら World にフェーズを持たせ、step / frame を分岐させる。
 // 音（withAudio）や複数システムの明示的な列挙が要る高度なゲームは、make から始める従来の
-// ビルダー（addSystem / withView / …）へ降りる。App.game の外側の口（reloadOn・onBakeRequest・
+// ビルダー（addSystem / withView / …）へ降りる。App.game の外側の口（reloadOn・onRenderRequest・
 // withDebug）は戻り値の App に後ろから pipe で足す。
 
 def main(): Unit \ IO =
@@ -42,8 +42,8 @@ def main(): Unit \ IO =
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
-                // 走行中の POST /bake（Studio の「生成して」）は Bake.all と同じ実体を呼ぶ。
-                |> App.onBakeRequest(Bake.allShots)
+                // 走行中の POST /render（Studio の「生成して」）は SceneRender.all と同じ実体を呼ぶ。
+                |> App.onRenderRequest(SceneRender.allShots)
                 |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")

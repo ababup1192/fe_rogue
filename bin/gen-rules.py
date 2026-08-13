@@ -27,7 +27,7 @@ RULES = {
         "docs/drawing-floor.md",
         [
             "**/View*.flix",
-            "**/src/bake/*.flix",
+            "**/src/render/*.flix",
             "**/*.sprite.json",
             "**/*.theme.json",
             "**/*.palette.json",

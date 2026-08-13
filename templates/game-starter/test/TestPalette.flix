@@ -6,7 +6,7 @@ mod TestPalette {
 
     @Test
     def testPaletteMirrorIsFresh(): Unit \ {Assert, IO} =
-        // 食い違ったら `make palette`（`make bake` でも作り直される）。
+        // 食い違ったら `make palette`（`make render` でも作り直される）。
         let (sprites, theme) = run {
             (PxSpriteDoc.load(World.spritePath()), ThemeDoc.load(ThemeDoc.path()))
         } with Fs.FileRead.runWithIO;

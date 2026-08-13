@@ -1,4 +1,4 @@
-// Filmstrip — 同寸の BufferedImage 列を横 1 列に連結したスプライトシート PNG に焼く。
+// Filmstrip — 同寸の BufferedImage 列を横 1 列に連結したスプライトシート PNG に描き出す。
 //
 // フィルムストリップ・ビューア（ダッシュボードのコマ送り UI）が背景画像 1 枚を
 // background-position で横スクロールしてコマを切り替えるための素材を作る。フレーム i は
@@ -6,7 +6,7 @@
 // そのコマだけを窓に見せられる。
 //
 // ゲーム内容は一切知らない。入力は「同じ寸法の BufferedImage 列」と「出力パス」だけ。
-// GifEncoder が同じフレーム列からアニメ GIF を焼くのと対になる経路で、こちらは 1 枚の
+// GifEncoder が同じフレーム列からアニメ GIF を描き出すのと対になる経路で、こちらは 1 枚の
 // 静的スプライトシートにする（file:// でも動く素の JS ビューアが扱える）。
 //
 // 減量: フレームは平坦色のドット絵なので、使われている色が 256 以下なら
@@ -21,12 +21,12 @@ mod Filmstrip {
     import java.lang.{Object => JObject}
     import javax.imageio.ImageIO
 
-    /// bake の結果（呼び側が HTML ビューアのメタデータに使う）。
+    /// 描き出しの結果（呼び側が HTML ビューアのメタデータに使う）。
     /// `frameCount`/`frameW`/`frameH`: コマ数と 1 コマの実ピクセル寸法。
     /// `width`/`height`: 出力スプライトシート全体の実ピクセル寸法（width = frameCount × frameW）。
     /// `indexed`: PNG-8（インデックスカラー）で書けたか（false ならフルカラーへフォールバックした）。
     /// `colors`: シート内の相異なる色数（indexed のときのパレット長。フォールバック時は 257 で頭打ち）。
-    pub type alias BakeResult = {
+    pub type alias RenderResult = {
         frameCount = Int32, frameW = Int32, frameH = Int32,
         width = Int32, height = Int32, indexed = Bool, colors = Int32
     }
@@ -34,28 +34,28 @@ mod Filmstrip {
     /// パレット判定の上限（PNG-8 は 8bit = 256 色まで）。
     def maxColors(): Int32 = 256
 
-    /// bakeFrames の結果（呼び側がビューアのメタデータに使う）。
+    /// renderFrames の結果（呼び側がビューアのメタデータに使う）。
     pub type alias FramesResult = { frameCount = Int32, frameW = Int32, frameH = Int32 }
 
     /// `frames` を 1 コマ 1 ファイルのコマ別 PNG として `dirPath` へ書き出す（`0.png` .. `n-1.png`）。
     /// 横連結シートはブラウザが描ける幅の上限（65,535px 超で真っ黒）に当たるので、コマ数の多い
-    /// シナリオはこちらで焼き、ビューアがコマ別にめくる。各コマは bake と同じ減量方針
+    /// シナリオはこちらで描き出し、ビューアがコマ別にめくる。各コマはシートと同じ減量方針
     /// （256 色以下なら PNG-8、超えたらフルカラー）。frames が空なら None（ファイルは作らない）。
-    pub def bakeFrames(frames: List[BufferedImage], dirPath: String): Option[FramesResult] \ IO =
+    pub def renderFrames(frames: List[BufferedImage], dirPath: String): Option[FramesResult] \ IO =
         match frames {
             case Nil        => None
             case first :: _ =>
                 let fw = Int32.max(1i32, first.getWidth());
                 let fh = Int32.max(1i32, first.getHeight());
-                List.forEachWithIndex((i, img) -> bakeFrame(img, "${dirPath}/${i}.png"), frames);
+                List.forEachWithIndex((i, img) -> renderFrame(img, "${dirPath}/${i}.png"), frames);
                 Some({ frameCount = List.length(frames), frameW = fw, frameH = fh })
         }
 
-    /// 1 コマだけをコマ別 PNG に書く（bakeFrames の 1 枚ぶんと同じ経路 = 同じバイト列になる）。
-    /// コマを描くたびに 1 枚ずつ書き出したい呼び側（Bakery の GIF 焼き）の口 — 全コマが
-    /// 揃うのを待たずに、焼き途中のコマをファイルで見せられる。減量方針も bakeFrames と
+    /// 1 コマだけをコマ別 PNG に書く（renderFrames の 1 枚ぶんと同じ経路 = 同じバイト列になる）。
+    /// コマを描くたびに 1 枚ずつ書き出したい呼び側（HeadlessRender の GIF 描き出し）の口 — 全コマが
+    /// 揃うのを待たずに、描き出し途中のコマをファイルで見せられる。減量方針も renderFrames と
     /// 同じ（256 色以下なら PNG-8、超えたらフルカラー）。親ディレクトリは無ければ作る。
-    pub def bakeFrame(img: BufferedImage, outPath: String): Unit \ IO =
+    pub def renderFrame(img: BufferedImage, outPath: String): Unit \ IO =
         let fw = Int32.max(1i32, img.getWidth());
         let fh = Int32.max(1i32, img.getHeight());
         let file = new File(outPath);
@@ -71,7 +71,7 @@ mod Filmstrip {
     /// `frames`（同寸の BufferedImage 列）を横連結して `outPath` へ PNG で書き出す。
     /// 256 色以下なら PNG-8（インデックスカラー）、超えたらフルカラーで書く。
     /// frames が空なら None（呼び側の sanity 用・ファイルは作らない）。
-    pub def bake(frames: List[BufferedImage], outPath: String): Option[BakeResult] \ IO =
+    pub def render(frames: List[BufferedImage], outPath: String): Option[RenderResult] \ IO =
         match frames {
             case Nil        => None
             case first :: _ =>

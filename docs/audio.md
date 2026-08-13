@@ -160,12 +160,12 @@ App.make(initialWorld)
 | `rasp(samples)` | 隣り合うサンプルの差分を取り、擦れた質感にする（noise にかけると太い「ドッ」が「シャッ」に変わる） |
 | `sequence(voices)` | 複数の声を順につなげる。上昇音・下降音・ファンファーレのような音階の並びを作る |
 
-ゲーム側は `src/bake/SfxBake.flix` に「音のデザイン」だけを書き、`Bake.all` から
-`bakeAll` を呼んで `assets/sfx/` へ WAV を書き出す（`make bake`）。合成と WAV エンコードは
-engine_tools 側の `SfxSynth.wavBytes` / `writeBytes` / `bakeSet` が持つので、ゲーム側は
+ゲーム側は `src/render/SfxRender.flix` に「音のデザイン」だけを書き、`SceneRender.all` から
+`renderAll` を呼んで `assets/sfx/` へ WAV を書き出す（`make render`）。合成と WAV エンコードは
+engine_tools 側の `SfxSynth.wavBytes` / `writeBytes` / `renderSet` が持つので、ゲーム側は
 波形の足し算だけ書けばよい。
 
-`templates/race-starter/src/bake/SfxBake.flix` と同じ組み立て方の抜粋:
+`templates/race-starter/src/render/SfxRender.flix` と同じ組み立て方の抜粋:
 
 ```flix
 def cfg(): SfxSynth.Config = { sampleRate = 22050 }
@@ -187,8 +187,8 @@ def clearFanfare(): List[Float64] =
         SfxSynth.fade(SfxSynth.tone(cfg(), 783.99, 0.15, 90)) ::
         SfxSynth.fade(SfxSynth.tone(cfg(), 1046.5, 0.2, 240)) :: Nil)
 
-pub def bakeAll(): Unit \ IO =
-    SfxSynth.bakeSet(cfg(), "assets/sfx",
+pub def renderAll(): Unit \ IO =
+    SfxSynth.renderSet(cfg(), "assets/sfx",
         ("paddle", paddleBlip()) :: ("chip", chipClang()) :: ("clear", clearFanfare()) :: Nil)
 ```
 

@@ -7,7 +7,7 @@
 
 **API の型・引数を調べるとき**は、ソースを grep する前にまず [api-digest.md](api-digest.md)
 （全 pub 宣言の自動生成一覧）を引く。ソースの丸読みより桁違いに安い。
-**新しい場所でヘッドレス生成を組むとき**は [headless-bake-recipe.md](headless-bake-recipe.md) を写経する。
+**新しい場所でヘッドレスの描き出しを組むとき**は [headless-render-recipe.md](headless-render-recipe.md) を写経する。
 
 **初学者向け概念ノート**（黒箱に見えがちな再利用パーツを1画面で解説）:
 - `docs/dual-grid.md` — チップ絵なしでマップ地形を描く仕組み（DualGrid / Material / Terrain の分業と「角の4セル→16ケース」）。
@@ -117,7 +117,7 @@
 | 鳴り続ける音を出したい（走行音・風・雨・炎・足音のループ） | App.withSustained（World から「鳴り続けていてほしい音」を宣言。音量と高さを毎フレーム与える。詳しくは [audio.md](audio.md)。実例: `templates/race-starter/src/Sfx.flix`） |
 | BGM を流す・止める・音量やループを変える | AudioStreamPlayer（play / stop / setVolume / setLooping。詳しくは [audio.md](audio.md)） |
 | BGM をだんだん出す・消す・入れ替える（音量カーブ） | AudioFade |
-| 効果音の素材を録音なしで作りたい（波形合成） | SfxSynth（engine_tools。詳しくは [audio.md](audio.md)。実例: `templates/race-starter/src/bake/SfxBake.flix`） |
+| 効果音の素材を録音なしで作りたい（波形合成） | SfxSynth（engine_tools。詳しくは [audio.md](audio.md)。実例: `templates/race-starter/src/render/SfxRender.flix`） |
 | 揺れる演出を作る（浮遊・風のなびき） | Sway（実例: `templates/tetris-starter/src/View.flix`） |
 | リソース JSON の形（型・必須・既定値）を公式スキーマ方言で宣言する | Schema（実例: `templates/race-starter/project.schema.json`） |
 | 見下ろしで「足元が下にある物ほど手前」に並べる（人が木の裏に回る） | Depth（実例: `templates/rpg-starter/src/View.flix`） |
@@ -131,14 +131,14 @@
 | 見下ろしの落ち影を置く（接地の暗がり + 時刻で回る日影） | Daylight.groundShadow |
 | 見えている範囲に重なるマスだけ並べる（盤が広くても仕事は画面ぶん） | Grid.cellsIn |
 | ドット絵を握るところで回す・左上でそろえて並べる | PxSprite.drawQuadTurned / drawQuadTopLeft |
-| 走行中に生成した絵を静止画の生成でも同じ絵にする | Bakery.imagePngs / imageTextureInfo（実例: `templates/race-starter/src/bake/Bake.flix`） |
+| 走行中に生成した絵を静止画の描き出しでも同じ絵にする | HeadlessRender.imagePngs / imageTextureInfo（実例: `templates/race-starter/src/render/SceneRender.flix`） |
 | 光側は暖色・影側は寒色へ寄せて階調を増やす | Color.warm / Color.cool |
 | 生成したドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases（実例: `templates/race-starter/src/Main.flix`） |
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped（実例: `templates/platformer-starter/src/Main.flix`） |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
 | 画面を素材にする・複数光源・残像を作る（レンダーターゲットに描いてテクスチャとして貼り戻す） | Pass（`App.withPasses`）。ターゲットは design 解像度・宣言順に本編より先に描かれ、`Render.sprite(name, z)` で貼れる |
-| Pass を生成（Bakery の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf |
+| Pass を描き出し（HeadlessRender の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf |
 | 全面でない面（帯など）から pass を等倍・鏡像で読む（陽炎の帯・水面の映り込み） | Render.passBandDy（Shift の dy 場を作る） |
 
 ## 症状 → モジュール（重い・fps が落ちる）
@@ -240,7 +240,7 @@
 - **Grid** — 正方タイルの「何列目・何行目」と画面上のピクセル位置を相互に変換する。セル座標の規約は 2 つ: 左上原点・tileSize 割りの系（cellAt）と、セル中心が整数・境界 ±0.5 の系（cellAtCentered — GridRay / WallFaces が使う）。
 - **TileState** — マス目の「いま」を持つ疎な表（耕した・濡れた・置いた）。日ごとの一斉更新とセーブの往復を持つ。地図の形（読むだけの設計図）とは置き場所を分ける。
 - **GridSearch** — マス目の上で「どこまで行けるか・何歩かかるか・どこが射程か」を求める。
-- **Steering** — 距離場（GridSearch）の 1 歩 chase / flee / wander。「入れるか」は canEnter で注入。敵 AI とイベントシーンが同じ 1 歩を使う。乱数を持たず同着は固定順 — 焼けば毎回同じ。
+- **Steering** — 距離場（GridSearch）の 1 歩 chase / flee / wander。「入れるか」は canEnter で注入。敵 AI とイベントシーンが同じ 1 歩を使う。乱数を持たず同着は固定順 — 何度描き出しても毎回同じ。
 - **GridRay** — マス目の世界で「start から goal の間に壁が挟まるか」（視線の遮蔽）。壁の向こうの松明を消す・敵から主人公が見えるか、の見通し判定。solid の判定は関数で注入する。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
 - **MapResource**（legacy/） — タイルセット PNG + 自前の map.json でマップを貼る旧世代層。新規は DualGrid / Material / TerrainDoc を使う(棲み分けは docs/dual-grid.md)。
@@ -288,5 +288,5 @@
 - **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジの窓口。同じ内容なら書かない）。
 - **DocTable** — Doc の一覧表（id・パス・読み直し）1 枚から、watchFile の配線・一括リロード・ActiveDocs の名乗りを導出する。一覧の手写しを 1 か所に。
 - **Annotate** — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲んで記録する。
-- **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /bake は App.onBakeRequest で登録した「生成の実体」を温まった JVM で実行し、生成したパス列を返す（プレイ状態には触れない）。
+- **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /render は App.onRenderRequest で登録した「描き出しの実体」を温まった JVM で実行し、描き出したパス列を返す（プレイ状態には触れない）。
 - **GameLogger** — 起きたことを 1 行ずつログに積み、あとでまとめて取り出す effect。

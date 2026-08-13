@@ -2,16 +2,16 @@
 """音の名前が 3 つの置き場でそろっているかを検査するゲート。
 
 音 1 つには名前の置き場が 3 つある:
-  (a) bake 名     — src/bake/ の SfxSynth.bakeSet に書くタプルの左側 (生成する WAV のファイル名になる)
+  (a) 書き出し名  — src/render/ の SfxSynth.renderSet に書くタプルの左側 (生成する WAV のファイル名になる)
   (b) project.json — sounds の "name" (ゲームから鳴らすときの論理名) と "path" (WAV の場所)
   (c) コード内リテラル — AudioStreamPlayer.play("x") や withAudio が返す "x"
 この 3 つがずれると、エラーは出ないのに音だけ鳴らない・別の音が鳴る。
-名前は 1 本にそろえる (論理名 = WAV ファイル名の茎 = bake 名)。
+名前は 1 本にそろえる (論理名 = WAV ファイル名の茎 = 書き出し名)。
 
 検査 (1 つでも NG なら終了コード 1):
   1. sounds の論理名と path のファイル名の茎が違う
-  2. sounds の path の WAV が無く、bake でも作られない (鳴らせない)
-  3. bake で生成する WAV がどの sounds の path からも参照されない (生成するだけで鳴らせない)
+  2. sounds の path の WAV が無く、書き出しでも作られない (鳴らせない)
+  3. 書き出しで作る WAV がどの sounds の path からも参照されない (生成するだけで鳴らせない)
   4. 再生呼び出し (AudioStreamPlayer.* / GameEngine.Audio.*) のリテラルが sounds に無い
 注意 (止めない):
   5. sounds の論理名がコードのどこにも文字列リテラルとして現れない
@@ -35,8 +35,8 @@ CALL_RE = re.compile(
     r'(?:play|stop|playAudio|stopAudio|setVolume|setPitch|setLooping)\(\s*"([^"]+)"'
 )
 
-BAKE_TUPLE_RE = re.compile(r'\(\s*"([^"]+)"\s*,')
-BAKE_DIR_RE = re.compile(r'bakeSet\([^)"]*"([^"]+)"')
+SFX_TUPLE_RE = re.compile(r'\(\s*"([^"]+)"\s*,')
+SFX_DIR_RE = re.compile(r'renderSet\([^)"]*"([^"]+)"')
 
 
 def read_json(path):
@@ -68,22 +68,22 @@ def flix_files(game_dir):
     return found
 
 
-def baked_paths_of(files):
-    """bakeSet が生成する WAV の game_dir 相対パス (dir/name.wav) を集める。"""
-    baked = set()
+def rendered_paths_of(files):
+    """renderSet が生成する WAV の game_dir 相対パス (dir/name.wav) を集める。"""
+    rendered = set()
     for _, text in files:
-        if "bakeSet" not in text:
+        if "renderSet" not in text:
             continue
-        tail = text[text.index("bakeSet"):]
-        dir_match = BAKE_DIR_RE.search(tail)
+        tail = text[text.index("renderSet"):]
+        dir_match = SFX_DIR_RE.search(tail)
         out_dir = dir_match.group(1) if dir_match else "assets/sfx"
-        for name in BAKE_TUPLE_RE.findall(tail):
-            baked.add(f"{out_dir}/{name}.wav")
-    return baked
+        for name in SFX_TUPLE_RE.findall(tail):
+            rendered.add(f"{out_dir}/{name}.wav")
+    return rendered
 
 
-def is_bake_file(rel):
-    return f"{os.sep}bake{os.sep}" in rel or rel.startswith(f"src{os.sep}bake{os.sep}")
+def is_render_file(rel):
+    return f"{os.sep}render{os.sep}" in rel or rel.startswith(f"src{os.sep}render{os.sep}")
 
 
 def check_game(root, game, problems, warnings):
@@ -95,8 +95,8 @@ def check_game(root, game, problems, warnings):
         return 0
 
     files = flix_files(game_dir)
-    game_files = [(rel, text) for rel, text in files if not is_bake_file(rel)]
-    baked = baked_paths_of(files)
+    game_files = [(rel, text) for rel, text in files if not is_render_file(rel)]
+    rendered = rendered_paths_of(files)
     declared = {}
     for entry in sounds:
         if not isinstance(entry, dict):
@@ -110,15 +110,15 @@ def check_game(root, game, problems, warnings):
             problems.append(
                 f'{game}/project.json: 論理名 "{name}" と WAV の茎 "{stem}" が違う'
                 f" (path={path}。名前は 1 本にそろえる)")
-        if not os.path.isfile(os.path.join(game_dir, path)) and path not in baked:
+        if not os.path.isfile(os.path.join(game_dir, path)) and path not in rendered:
             problems.append(
-                f'{game}/project.json: "{name}" の {path} が無く、bake でも作られない')
+                f'{game}/project.json: "{name}" の {path} が無く、書き出しでも作られない')
 
     declared_paths = set(declared.values())
-    for path in sorted(baked):
+    for path in sorted(rendered):
         if path not in declared_paths:
             problems.append(
-                f"{game}: bake が生成する {path} がどの sounds の path からも参照されない")
+                f"{game}: 書き出しが作る {path} がどの sounds の path からも参照されない")
 
     for rel, text in game_files:
         for name in CALL_RE.findall(text):
@@ -168,7 +168,7 @@ def main():
             print(line)
         print(f"NG: {len(problems)} 個の音名のずれ (sounds {sound_count} 件を検査)")
         return 1
-    print(f"OK: sounds {sound_count} 件すべて 3 つの置き場 (bake 名 / project.json / コード) でそろっている")
+    print(f"OK: sounds {sound_count} 件すべて 3 つの置き場 (書き出し名 / project.json / コード) でそろっている")
     return 0
 
 

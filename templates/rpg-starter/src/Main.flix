@@ -5,7 +5,7 @@
 // ゲーム 1 本の標準形は App.game の 1 レコードに宣言する — ここを読めばループの全体像
 // （出発点 init・毎フレームの更新 update・描画 view・保存で読み直す Doc reloads）が掴める。
 // update は「1 本の合成関数」: 複数のシステムを `w |> step |> interact |> …` と中で繋いで渡す
-// （繋ぎが Main に見えるのが教育的）。App.game の外側の口（reloadOn・onBakeRequest・withDebug）は
+// （繋ぎが Main に見えるのが教育的）。App.game の外側の口（reloadOn・onRenderRequest・withDebug）は
 // 戻り値の App に従来どおり後ろから pipe で足す。
 
 def main(): Unit \ IO =
@@ -53,8 +53,8 @@ def main(): Unit \ IO =
                 |> App.withPixelSnap(_ -> 1.0)
                 |> App.withHudView((ctx, w) -> checked_ecast(View.hud(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
-                // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
-                |> App.onBakeRequest(Bake.allShots)
+                // 走行中の POST /render（Studio の「生成して」）は SceneRender.all と同じ実体を呼ぶ。
+                |> App.onRenderRequest(SceneRender.allShots)
                 |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")

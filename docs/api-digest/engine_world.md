@@ -100,14 +100,14 @@
   `pub def axis(negative: {negative = GameEngine.Key}, positive: {positive = GameEngine.Key}, frame: Frame): Float64`
 - view / hudView が受け取る「この 1 フレームの見え方」。atlas は文字描画用の既定フォント、
   `pub type alias ViewCtx = { atlas = FontAtlas, fontOf = String -> FontAtlas, visible = Rect2.Rect2 }`
-- bake（headless）から view を呼ぶときの ViewCtx。画面全体が見えている扱いにする。
+- ヘッドレス描き出しから view を呼ぶときの ViewCtx。画面全体が見えている扱いにする。
   `pub def viewCtxOf(atlas: FontAtlas, design: Vec2.Vec2): ViewCtx`
 - viewCtxOf の複数フォント版。fontOf には実機と同じ名前で引ける関数を渡す
   `pub def viewCtxOfFonts(atlas: FontAtlas, fontOf: String -> FontAtlas, design: Vec2.Vec2): ViewCtx`
 - 焼いたドット絵アトラス 1 枚ぶんの受け渡し。
   `pub type alias AtlasUpload = { texture = String, key = String, baked = PxSpriteAtlas.Baked }`
 - ゲーム 1 本の宣言。make で空を作り、addStartup / addSystem / reloadOn / withView /
-  `pub type alias App[w: Type, ef: Eff] = { init = Vec2.Vec2 -> w \ ef, startupSystems = List[w -> w \ ef], updateSystems = List[(Frame, w) -> w \ ef], reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], watch = List[(String, w -> w \ {Fs.FileRead})], view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef], passes = w -> List[Render.Pass] \ ef, fonts = List[String], camera = Option[w -> Vec2.Vec2 \ ef], zoom = Option[w -> Float64 \ ef], cameraBounds = Option[w -> Rect2.Rect2 \ ef], parallaxLayers = List[(Float64, (ViewCtx, w) -> List[Render.PlacedItem] \ ef)], hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef], audio = { before = w, after = w } -> List[String] \ ef, sustained = w -> List[Sustain] \ ef, quit = (Frame, w) -> Bool \ ef, debug = Bool, debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)], worldDump = Option[(Rect2.Rect2, w) -> String \ ef], staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }], tileLayers = Option[w -> List[TileLayerSpec]], spriteAtlases = w -> List[AtlasUpload], pixelSnap = w -> Float64, statusLine = Option[w -> String \ ef], remoteBake = Option[Unit -> List[String] \ IO], remoteHandlers = List[(String, (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead})], fixedStep = Option[Float64] }`
+  `pub type alias App[w: Type, ef: Eff] = { init = Vec2.Vec2 -> w \ ef, startupSystems = List[w -> w \ ef], updateSystems = List[(Frame, w) -> w \ ef], reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], watch = List[(String, w -> w \ {Fs.FileRead})], view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef], passes = w -> List[Render.Pass] \ ef, fonts = List[String], camera = Option[w -> Vec2.Vec2 \ ef], zoom = Option[w -> Float64 \ ef], cameraBounds = Option[w -> Rect2.Rect2 \ ef], parallaxLayers = List[(Float64, (ViewCtx, w) -> List[Render.PlacedItem] \ ef)], hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef], audio = { before = w, after = w } -> List[String] \ ef, sustained = w -> List[Sustain] \ ef, quit = (Frame, w) -> Bool \ ef, debug = Bool, debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)], worldDump = Option[(Rect2.Rect2, w) -> String \ ef], staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }], tileLayers = Option[w -> List[TileLayerSpec]], spriteAtlases = w -> List[AtlasUpload], pixelSnap = w -> Float64, statusLine = Option[w -> String \ ef], remoteRender = Option[Unit -> List[String] \ IO], remoteHandlers = List[(String, (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead})], fixedStep = Option[Float64] }`
 - 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
   `pub def make(init: w): App[w, ef]`
 - 初期 World を design 解像度（project.json の designWidth/Height）から組む入口。
@@ -166,8 +166,8 @@
   `pub def withWorldDump(f: (Rect2.Rect2, w) -> String \ ef, app: App[w, ef]): App[w, ef]`
 - World の 1 行サマリ（例: "phase=Playing ball=(163.2,207.9) lives=3"）を繋ぐ。
   `pub def withStatusLine(f: w -> String \ ef, app: App[w, ef]): App[w, ef]`
-- リモートデバッグ（HTTP）の POST /bake が実行する「焼きの実体」を繋ぐ。
-  `pub def onBakeRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef]`
+- リモートデバッグ（HTTP）の POST /render が実行する「描き出しの実体」を繋ぐ。
+  `pub def onRenderRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef]`
 - リモートデバッグ（HTTP）の任意パス（例: "/save"）に応えるハンドラを繋ぐ。
   `pub def onRequest(path: String, f: (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead}, app: App[w, ef]): App[w, ef]`
 - 物理・当たり判定を固定刻み（dtSeconds 秒）で進める accumulator 方式を有効にする。
@@ -599,7 +599,7 @@
   `pub def sampleAt(spec: FxDoc.Spec, seed: Int64, t: Float64, at: Vec2.Vec2): List[Render.PlacedItem]`
 - 進行中の効果 1 つ。「どの spec を・どの種で・どこで」に加え、誕生時刻＋寿命を Lifetime で持つ。
   `pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, life = Lifetime.Lifetime }`
-- 時刻 bornAt に at で始まる効果を作る(普段は「今」を渡す。bake のように過去生まれを
+- 時刻 bornAt に at で始まる効果を作る(普段は「今」を渡す。描き出しのように過去生まれを
   `pub def burst(spec: FxDoc.Spec, seed: Int32, at: Vec2.Vec2, bornAt: Float64): Burst`
 - 寿命内（経過が寿命まで）の burst だけ残す。毎フレーム呼んで、終わった効果でリストが
   `pub def expire(now: Float64, bursts: List[Burst]): List[Burst]`
@@ -820,7 +820,7 @@
   `pub type alias Light = { at = Vec2.Vec2, radius = Float64, color = Color, halo = Float64 }`
 - RadialGlow で焼いた既定テクスチャの参照一式。sprite 名・元 px サイズ・穴の広さは
   `pub type alias GlowAssets = { maskSprite = String, maskSourceSize = Float64, maskHoleFrac = Float64, haloSprite = String, haloSourceSize = Float64 }`
-- RadialGlow の既定値で焼いたときの GlowAssets（sprite名は bake 側の慣習
+- RadialGlow の既定値で焼いたときの GlowAssets（sprite名は描き出し側の慣習
   `pub def defaultGlowAssets(): GlowAssets`
 - シーン全体の光源設定（items の唯一の入口）。lights は 0〜N 個、occluders は
   `pub type alias SceneLightConfig = { lights = List[Light], occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2, glow = GlowAssets, darkness = Float64, z = Int32, rimWidth = Float64, rimStrength = Float64, haloDiameterFactor = Float64 }`
@@ -1078,7 +1078,7 @@
   `pub def regionOf(baked: Baked, sprite: String, frame: String): Option[Rect2.Rect2]`
 - 画素 1 個(ARGB)。範囲外・未 bake は透明 0。PNG 書き出し(SoftRaster.writeRadialPng)の
   `pub def pixelAt(baked: Baked, x: Int32, y: Int32): Int32`
-- 生成した絵の一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
+- 生成した絵の一覧を「正方形の絵の一覧」へ写す（HeadlessRender.imagePngs / imageTextureInfo 用）。
   `pub def asImages(uploads: List[{ texture = String, baked = Baked | r }]): List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }]`
 - シェルフパッキング(棚詰め): items を与えられた順に左→右へ詰め、行に収まらなければ
   `pub def shelfPack(side: Int32, items: List[(k, (Int32, Int32))]): Option[Map[k, (Int32, Int32)]] with Order[k]`
@@ -1221,10 +1221,10 @@
   `pub def fmt1(value: Float64): String`
 - view=full の本文の安全弁。矩形無指定の worldDump は数万文字になり得る
   `pub def capBody(text: String): String`
-- POST /bake の成功応答。1 行目に枚数と所要ミリ秒、続く [baked] ブロックに
-  `pub def bakeDoneText(ms: Int64, paths: List[String]): String`
-- 焼きの実体（App.onBakeRequest）を登録していないゲームへの応答。
-  `pub def bakeUnsupportedText(): String`
+- POST /render の成功応答。1 行目に枚数と所要ミリ秒、続く [rendered] ブロックに
+  `pub def renderDoneText(ms: Int64, paths: List[String]): String`
+- 描き出しの実体（App.onRenderRequest）を登録していないゲームへの応答。
+  `pub def renderUnsupportedText(): String`
 - GET /help の本文。プロトコルの自己記述（セッション冒頭に 1 回読む想定）。
   `pub def helpText(): String`
 - リモートコマンド処理が次の実フレームへ持ち回す状態。
@@ -1336,7 +1336,7 @@
   `pub def blit(name: String, design: Vec2.Vec2, z: Int32): PlacedItem`
 - レンダーターゲット name の一部 src（ターゲット上の px 矩形）を、at を中心に size の
   `pub def blitRegion(spec: { name = String, design = Vec2.Vec2, src = Rect2.Rect2, at = Vec2.Vec2, size = Vec2.Vec2, z = Int32 }): PlacedItem`
-- Pass 1 枚を bake 側の宣言（engine_tools の Bakery.PassSpec と同形のレコード）へ
+- Pass 1 枚を描き出し側の宣言（engine_tools の HeadlessRender.PassSpec と同形のレコード）へ
   `pub def passSpecOf(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef, p: Pass): { name = String, clear = RenderTarget.LoadOp, drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd] } \ ef`
 - draw list 全体を描画命令へ（zIndex 順は render_gl が stable sort する）。
   `pub def draw(items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])`
@@ -1348,9 +1348,9 @@
   `pub def missingGlyphs(items: List[PlacedItem]): Map[String, Set[Int32]]`
 - Shader 面だけを取り出して eff Shader が食える描画依頼へ変換する（GL 経路専用）。
   `pub def drawShaders(programOf: ShaderDoc.Spec -> GpuHandle.ShaderProgram \ ef, items: List[PlacedItem]): List[ShaderEffect.ShaderRenderCmd] \ ef`
-- GL の無い経路（bake / SoftRaster）が ShaderEval で面を焼くための純データ。
+- GL の無い経路（描き出し / SoftRaster）が ShaderEval で面を描くための純データ。
   `pub type alias ShaderSurface = { rect = Rect2.Rect2, spec = ShaderDoc.Spec, time = Float64, mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }`
-- Shader 面を純データ（ShaderSurface）で取り出す（bake / SoftRaster 用）。
+- Shader 面を純データ（ShaderSurface）で取り出す（描き出し / SoftRaster 用）。
   `pub def shaderSurfaces(items: List[PlacedItem]): List[ShaderSurface]`
 - Shader 面を除いた PlacedItem 列（GL 経路で draw に渡す前に外す — 本物のシェーダーは
   `pub def withoutShaders(items: List[PlacedItem]): List[PlacedItem]`

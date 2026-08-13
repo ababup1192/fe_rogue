@@ -4,7 +4,7 @@
 ##   engine/       ─ 契約層 flix_engine_core（Game/Audio effect・共有描画型・土台型・描画語彙）
 ##   render_gl/    ─ engine（契約層）を実装する GL バックエンド
 ##   engine_world/ ─ App/World/UI ランタイム。ゲームが利用する
-##   engine_tools/ ─ ヘッドレス bake/reference 工具箱。ゲームが利用する
+##   engine_tools/ ─ ヘッドレス描き出し/reference 工具箱。ゲームが利用する
 ##   engine_full/  ─ 上4つのソースを1つに集めた自己完結の全部入り flix_game_engine（配布物）
 ##   editor_server/─ ui.json/hitbox.json エディタの常駐 HTTP バックエンド（make editor で起動）
 ##   templates/    ─ 新しいゲームの写し元。各テンプレは `cd templates/<name> && flix ...` で直接動く
@@ -82,14 +82,14 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-game-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop lint-audio rules check-docs-sync checkd-stop
+.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-game-builds test test-par render render-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop lint-audio rules check-docs-sync checkd-stop
 
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
 # 実行や変更は一切せず、残っている記録 (.test-logs/ スナップショット チケット git) を集めるだけ。
 status:
 	@python3 bin/status.py
 
-# コミット時のゲート (焼いた絵の混入・規約の配線ずれ・矩形だけの View を止める)。
+# コミット時のゲート (描き出した絵の混入・規約の配線ずれ・矩形だけの View を止める)。
 # .git/hooks は git 管理外なので、clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 .PHONY: hooks
 hooks:
@@ -109,13 +109,13 @@ help:
 	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
 	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
-	@echo "  make lint-audio           音名が bake 名・project.json・コードの 3 か所でそろっているか検査"
+	@echo "  make lint-audio           音名が SfxRender の名・project.json・コードの 3 か所でそろっているか検査"
 	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
-	@echo "  make bake                 bake ターゲットを持つ全 template の生成物を焼き直す"
-	@echo "  make bake-par             同上を並列実行"
-	@echo "  make diff DIR=<dir>       直す前(スナップショット)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
+	@echo "  make render               render ターゲットを持つ全 template の生成物を描き出し直す"
+	@echo "  make render-par           同上を並列実行"
+	@echo "  make diff DIR=<dir>       直す前(スナップショット)と後(gallery)を左右に並べて <dir>/debug/diff/ に描き出す"
 	@echo "  make gl-parity            GL と SoftRaster が同じ絵を出すかを隠し窓で突き合わせ (不一致で exit 1)"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (依存する各パッケージへ)"
@@ -164,7 +164,7 @@ clean-game-builds:
 # ── テスト ────────────────────────────────────────────────
 # 検査・生成の対象になるテンプレ。game-starter だけ外すのは、あれが __NAME__ / __W__ の
 # トークンを入れたままの写し元で、そのままではコンパイルできないため
-# (トークンを置換したコピー側で make new-game が check / test / bake を通す)。
+# (トークンを置換したコピー側で make new-game が check / test / render を通す)。
 TEMPLATE_DIRS := $(filter-out templates/game-starter,$(wildcard templates/*))
 
 # 全パッケージのテストを順に回す。1 つでも赤ならそこで止まり exit 1。
@@ -204,50 +204,50 @@ test-par:
 	fi; \
 	echo "[test-par] all green ($$ran packages)"
 
-# ── bake ──────────────────────────────────────────────────
-# 各テンプレのギャラリー・効果音などの生成物を一括で焼き直す。
-# 対象は「Makefile に bake ターゲットを持つ template」だけ。
-bake:
+# ── render ────────────────────────────────────────────────
+# 各テンプレのギャラリー・効果音などの生成物を一括で描き出し直す。
+# 対象は「Makefile に render ターゲットを持つ template」だけ。
+render:
 	@for dir in $(TEMPLATE_DIRS:%=%/); do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^bake:" "$$dir/Makefile"; then \
+		if [ -f "$$dir/Makefile" ] && grep -q "^render:" "$$dir/Makefile"; then \
 			echo "===== $$dir ====="; \
-			(cd "$$dir" && make bake) || exit 1; \
+			(cd "$$dir" && make render) || exit 1; \
 		fi \
 	done
 
-# 並列 bake。テンプレ同士は生成物が交わらないので同時に焼ける。ログ・失敗の扱いは test-par と同じ。
-BAKE_PAR_JOBS ?= 4
-bake-par:
-	@mkdir -p .test-logs; rm -f .test-logs/bake-*.log .test-logs/bake-*.fail; \
+# 並列の描き出し。テンプレ同士は生成物が交わらないので同時に走れる。ログ・失敗の扱いは test-par と同じ。
+RENDER_PAR_JOBS ?= 4
+render-par:
+	@mkdir -p .test-logs; rm -f .test-logs/render-*.log .test-logs/render-*.fail; \
 	for dir in $(TEMPLATE_DIRS:%=%/); do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^bake:" "$$dir/Makefile"; then echo "$$dir"; fi; \
-	done | xargs -P $(BAKE_PAR_JOBS) -n 1 sh -c ' \
+		if [ -f "$$dir/Makefile" ] && grep -q "^render:" "$$dir/Makefile"; then echo "$$dir"; fi; \
+	done | xargs -P $(RENDER_PAR_JOBS) -n 1 sh -c ' \
 		dir="$$0"; name=$$(basename "$$dir"); \
-		if (cd "$$dir" && make bake) > ".test-logs/bake-$$name.log" 2>&1; then \
-			echo "[bake-par] DONE $$dir"; \
+		if (cd "$$dir" && make render) > ".test-logs/render-$$name.log" 2>&1; then \
+			echo "[render-par] DONE $$dir"; \
 		else \
-			echo "[bake-par] FAIL $$dir"; touch ".test-logs/bake-$$name.fail"; \
+			echo "[render-par] FAIL $$dir"; touch ".test-logs/render-$$name.fail"; \
 		fi'; \
-	ran=$$(ls .test-logs/bake-*.log 2>/dev/null | wc -l | tr -d ' '); \
-	if [ "$$ran" -eq 0 ]; then echo "[bake-par] 1 本も実行されていない (xargs 失敗の疑い)"; exit 1; fi; \
-	if ls .test-logs/bake-*.fail > /dev/null 2>&1; then \
-		echo "===== 失敗した bake のログ末尾 ====="; \
-		for f in .test-logs/bake-*.fail; do base=$${f%.fail}; echo "--- $$base"; tail -40 "$$base.log"; done; \
+	ran=$$(ls .test-logs/render-*.log 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$ran" -eq 0 ]; then echo "[render-par] 1 本も実行されていない (xargs 失敗の疑い)"; exit 1; fi; \
+	if ls .test-logs/render-*.fail > /dev/null 2>&1; then \
+		echo "===== 失敗した描き出しのログ末尾 ====="; \
+		for f in .test-logs/render-*.fail; do base=$${f%.fail}; echo "--- $$base"; tail -40 "$$base.log"; done; \
 		exit 1; \
 	fi; \
-	echo "[bake-par] all done ($$ran templates)"
+	echo "[render-par] all done ($$ran templates)"
 
-# 直した絵の「前 (リファレンス画像)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
+# 直した絵の「前 (リファレンス画像)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に描き出す。
 # bench はバイトが違うことしか言わないので、どこがどう変わったかを目で追えるようにする物。
-# 焼くのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
+# 描き出すのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
 #
 # リファレンス画像の PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
-# 「前」が手元に無い。その時は一度 make bake && make reference-update で今の絵を基準に置く。
+# 「前」が手元に無い。その時は一度 make render && make reference-update で今の絵を基準に置く。
 diff:
 	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
 	@ls "$(DIR)"/reference/*.png > /dev/null 2>&1 || { \
 		echo "[diff] $(DIR)/reference に比べる前の絵がありません。"; \
-		echo "       リファレンス画像の PNG は git 管理外です。まず make -C $(DIR) bake && make -C $(DIR) reference-update で基準を置いてください。"; \
+		echo "       リファレンス画像の PNG は git 管理外です。まず make -C $(DIR) render && make -C $(DIR) reference-update で基準を置いてください。"; \
 		exit 1; }
 	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
 		n=$$(basename "$$f"); \
@@ -259,8 +259,8 @@ diff:
 			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint ReferenceDiff.pairs; \
 	fi
 
-# GL と SoftRaster の突き合わせ (bench/gl_parity)。隠し窓で GL を 1 コマずつ焼き、
-# 同じ scene 宣言を SoftRaster でも焼いて画素比較する。A 段 (バイト一致層) に不一致が
+# GL と SoftRaster の突き合わせ (bench/gl_parity)。隠し窓で GL を 1 コマずつ描き出し、
+# 同じ scene 宣言を SoftRaster でも描き出して画素比較する。A 段 (バイト一致層) に不一致が
 # あれば exit 1。描画経路 (render_gl / SoftRaster / Frame / ShaderEval) を触ったら回す。
 gl-parity:
 	@$(MAKE) -C bench/gl_parity run
@@ -286,7 +286,7 @@ lint-palette:
 	@python3 bin/lint-palette.py
 
 # ── ゲート: 音の名前 ────────────────────────────────────────
-# bake 名・project.json の sounds・コード内リテラルの 3 か所で音名がそろっているか検査する
+# SfxRender の名・project.json の sounds・コード内リテラルの 3 か所で音名がそろっているか検査する
 # (ずれてもエラーは出ず、音だけ鳴らない・別の音が鳴る)。音を足した・改名したら通す。
 lint-audio:
 	@python3 bin/lint-audio.py
@@ -547,7 +547,7 @@ api:
 lint-view:
 	@python3 bin/lint-view.py
 
-# git に入れる絵が増えすぎていないか（焼いた絵が紛れ込んでいないか）の検査。
+# git に入れる絵が増えすぎていないか（描き出した絵が紛れ込んでいないか）の検査。
 .PHONY: lint-images
 lint-images:
 	@python3 bin/lint-images.py
@@ -570,7 +570,7 @@ lint-ui:
 	@python3 bin/lint-ui-overflow.py --self-test >/dev/null
 	@python3 bin/lint-ui-overflow.py
 
-# ループ GIF の継ぎ目（最終コマ→0 コマ）が浮かないかの検査。bake 済みコマが前提なので
+# ループ GIF の継ぎ目（最終コマ→0 コマ）が浮かないかの検査。描き出し済みのコマが前提なので
 # 保存時フックや pre-commit には乗せない（手動で回す）。
 .PHONY: lint-loop
 lint-loop:
@@ -685,7 +685,7 @@ check-docs-sync:
 # マシンをまたいで共有できる形のまま。別のマシンでは local.mk を 1 度だけ書き直す）。
 # lib/ をエンジン手元の成果物から
 # 種付け（初回ダウンロード不要）、git init（commit はしない）、
-# sync-agents を配ってから check → test → bake を通して「生きて産まれた」ことを証明する。
+# sync-agents を配ってから check → test → render を通して「生きて産まれた」ことを証明する。
 NG_TEMPLATE := $(if $(TEMPLATE),$(TEMPLATE),game-starter)
 NG_W := $(if $(W),$(W),480)
 NG_H := $(if $(H),$(H),300)
@@ -710,7 +710,7 @@ engine-full-fresh:
 	fi
 	@newer=$$(find $(ROOT_SRC_PKGS:%=%/src) -name '*.flix' -newer "$(ENGINE_FULL_FPKG_SRC)" 2>/dev/null | head -5); \
 	 if [ -n "$$newer" ]; then \
-	   echo "error: $(ENGINE_FULL_FPKG_SRC) がソースより古いです。make sync-engine-full で焼き直してください"; \
+	   echo "error: $(ENGINE_FULL_FPKG_SRC) がソースより古いです。make sync-engine-full で作り直してください"; \
 	   echo "$$newer" | sed 's/^/  新しい: /'; exit 1; \
 	 fi
 
@@ -754,10 +754,10 @@ new-game: engine-full-fresh
 	git -C "$(GAME)" init -q; \
 	git -C "$(GAME)" config core.hooksPath bin/githooks; \
 	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
-	echo "[new-game] 産声の確認: check → test → bake"; \
+	echo "[new-game] 産声の確認: check → test → render"; \
 	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
 	$(MAKE) --no-print-directory -C "$(GAME)" test ENGINE="$(CURDIR)"; \
-	$(MAKE) --no-print-directory -C "$(GAME)" bake ENGINE="$(CURDIR)"; \
+	$(MAKE) --no-print-directory -C "$(GAME)" render ENGINE="$(CURDIR)"; \
 	echo ""; \
 	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
 	echo "  次にやること:"; \

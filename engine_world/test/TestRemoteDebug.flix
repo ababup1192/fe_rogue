@@ -188,17 +188,17 @@ mod TestRemoteDebug {
                      + "sprite ball pos=(148.9,44.3) size=(6.0,6.0) z=30",
             RemoteDebug.sceneBlock(rect, hits))
 
-    // /bake の成功応答: 1 行目に枚数と所要 ms、[baked] ブロックに生成した順のパス 1 行 1 枚。
+    // /render の成功応答: 1 行目に枚数と所要 ms、[rendered] ブロックに描き出した順のパス 1 行 1 枚。
     @Test
-    def testBakeDoneTextListsPathsInOrder(): Unit \ Assert =
+    def testRenderDoneTextListsPathsInOrder(): Unit \ Assert =
         Assert.assertEq(
-            expected = "ok baked=2 ms=845\n[baked]\ngallery/title.png\ngallery/ending.png\n",
-            RemoteDebug.bakeDoneText(845i64, "gallery/title.png" :: "gallery/ending.png" :: Nil))
+            expected = "ok rendered=2 ms=845\n[rendered]\ngallery/title.png\ngallery/ending.png\n",
+            RemoteDebug.renderDoneText(845i64, "gallery/title.png" :: "gallery/ending.png" :: Nil))
 
-    // 生成の実体が未登録なら error 応答（Studio はこの 1 行目を見て自前 bake へフォールバック）。
+    // 描き出しの実体が未登録なら error 応答（Studio はこの 1 行目を見て自前の描き出しへフォールバック）。
     @Test
-    def testBakeUnsupportedTextIsError(): Unit \ Assert =
+    def testRenderUnsupportedTextIsError(): Unit \ Assert =
         Assert.assertEq(
             expected = true,
-            String.startsWith(prefix = "error:", RemoteDebug.bakeUnsupportedText()))
+            String.startsWith(prefix = "error:", RemoteDebug.renderUnsupportedText()))
 }

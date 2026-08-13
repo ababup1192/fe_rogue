@@ -59,7 +59,7 @@ mod World {
         crash = FxDoc.Spec    // クラッシュの閃光と破片
     }
 
-    /// 起動時と bake が同じ形で読む Doc の束。
+    /// 起動時と描き出しが同じ形で読む Doc の束。
     pub type alias Docs = {
         rules = RulesDoc.Doc, rivalsCfg = RivalsDoc.Doc, theme = ThemeDoc.Doc,
         course = CourseDoc.Doc, props = PropsDoc.Doc, palette = PaletteDoc.Doc,
@@ -701,14 +701,14 @@ mod World {
         { atlas = PxSpriteAtlas.bake(w#sprites, PaletteDoc.carInk(w#palette, w#theme#player)),
           atlasGen = w#atlasGen + 1 | w }
 
-    /// ドット絵アトラスの論理名（GL の TextureRegistry と bake の texturePath が同じ鍵で引く）。
+    /// ドット絵アトラスの論理名（GL の TextureRegistry と描き出しの texturePath が同じ鍵で引く）。
     pub def atlasName(): String = "px"
 
     /// アトラスの世代鍵。App はこの鍵の変化で GPU へ上げ直す。
     pub def atlasKey(w: World): String = "gen${w#atlasGen}"
 
     /// 効果音のつまみ。走らせたまま効くのは鳴らす間隔だけで、音量・高さ・長さは
-    /// 生成した WAV に入っている（make bake で生成し直して起動し直すと届く）。
+    /// 生成した WAV に入っている（make render で生成し直して起動し直すと届く）。
     pub def withSfxTune(sfxtune: SfxTuneDoc.Doc, w: World): World = { sfxtune = sfxtune | w }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。Studio の「表示中」バッジの材料。

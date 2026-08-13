@@ -1,7 +1,7 @@
 // SfxSynth — 短い効果音を、波形の足し算だけで一から作る。録音もサンプル素材も要らず、
 // 矩形波・雑音・減衰・重ね・連結という最小の語彙で「歩く音」「押す音」を組み立て、
 // そのまま 16bit モノラル PCM の WAV バイト列にする。
-// 利用例: ゲームの効果音をテストで焼いてアセットに置く / 値を変えて即座に鳴らし比べる。
+// 利用例: ゲームの効果音をテストで描き出してアセットに置く / 値を変えて即座に鳴らし比べる。
 // 注意: 各サンプルは番号の純粋な関数で決定論的（毎回同じ音）。周波数や長さといった音の
 //   デザインはすべて呼び側が渡す値で、ここは合成の仕組みだけを持つ。バイト列を作る純粋部と、
 //   それをファイルへ書く関数を分けてある。
@@ -101,9 +101,9 @@ mod SfxSynth {
         List.forEach(b -> out.write(b), bytes);
         out.close()
 
-    /// 音のセットをまとめて `dir` へ焼く。`(名前, サンプル列)` ごとに `dir/名前.wav` を書き出す
-    /// （ディレクトリは無ければ作る）。ゲームの bake 入口はデザイン（音の中身）だけ持てばよい。
-    pub def bakeSet(cfg: Config, dir: String, sounds: List[(String, List[Float64])]): Unit \ IO =
+    /// 音のセットをまとめて `dir` へ描き出す。`(名前, サンプル列)` ごとに `dir/名前.wav` を書き出す
+    /// （ディレクトリは無ければ作る）。ゲームの描き出し入口はデザイン（音の中身）だけ持てばよい。
+    pub def renderSet(cfg: Config, dir: String, sounds: List[(String, List[Float64])]): Unit \ IO =
         discard (new File(dir)).mkdirs();
         List.forEach(sound -> {
             let (name, samples) = sound;

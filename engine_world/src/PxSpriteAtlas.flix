@@ -69,7 +69,7 @@ mod PxSpriteAtlas {
         if (x < 0 or y < 0 or x >= baked#side or y >= baked#side) 0
         else Vector.get(y * baked#side + x, baked#pixels)
 
-    /// 生成した絵の一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
+    /// 生成した絵の一覧を「正方形の絵の一覧」へ写す（HeadlessRender.imagePngs / imageTextureInfo 用）。
     /// 生成の道具は engine_world の型を知らないので、素の形に直してから渡す。
     pub def asImages(uploads: List[{ texture = String, baked = Baked | r }]):
             List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }] =

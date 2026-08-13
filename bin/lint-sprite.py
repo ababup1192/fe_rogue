@@ -436,7 +436,7 @@ def check_doc(doc, legend_hexes):
         frames = spec["frames"]
         sizes = {}
         used_keys = set()
-        baked = {}
+        seen_frames = {}
         for frame_name in sorted(frames):
             rows = frames[frame_name]
             where = f"{name}/{frame_name}"
@@ -456,10 +456,10 @@ def check_doc(doc, legend_hexes):
             sizes[frame_name] = (width, height)
             used_keys |= set(cells.values())
             key = tuple(rows)
-            if key in baked:
-                report("structure", True, f"{name}: コマ \"{baked[key]}\" と \"{frame_name}\" が完全に同じ (コピペ?)")
+            if key in seen_frames:
+                report("structure", True, f"{name}: コマ \"{seen_frames[key]}\" と \"{frame_name}\" が完全に同じ (コピペ?)")
             else:
-                baked[key] = frame_name
+                seen_frames[key] = frame_name
 
             texture = len(cells) / (width * height) >= TEXTURE_FILL
             if texture:

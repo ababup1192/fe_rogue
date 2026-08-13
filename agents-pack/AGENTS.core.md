@@ -15,7 +15,7 @@
 
 ## 名前の付け方（モジュール・関数・変数）
 
-**英語にすれば安全、ではない。** `bless` `bake` `carve` のように、英単語でも
+**英語にすれば安全、ではない。** `bless` `carve` のように、英単語でも
 このリポジトリだけの意味を持たせると、初めて読む人にも海外の人にも通じない。
 上の言葉づかいの決まりは、そのまま識別子にも当てはまる。
 
@@ -86,7 +86,7 @@
 ## make の入口
 
 - `make run` / `make debug`（watchFile・F8 有効）/ `make check`（型検査・一番速い確認）
-- `make test` / `make bake`（決定的な絵を生成する）/ `make reference-check`（gallery/ vs reference/ のバイト比較）
+- `make test` / `make render`（決定的な絵を描き出す）/ `make reference-check`（gallery/ vs reference/ のバイト比較）
 - `make reference-update`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
   `make gallery-sounds` の sounds.png / music.png）で**目と耳で確かめて**批評する。

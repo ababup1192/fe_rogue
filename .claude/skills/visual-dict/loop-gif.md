@@ -2,9 +2,9 @@
 
 ## 生成する
 
-- 配管: `Bakery.bakeGif(cfg, frames, stride, toCmds, name)`。シェーダ面を使う場合は
-  チャンネルが無いので `SoftRaster.renderToImageWith` + `Filmstrip.bakeFrame` +
-  `GifEncoder.encode` を手組みする（シェーダ面つきは `Bakery.bakeGifWith`）
+- 配管: `HeadlessRender.renderGif(cfg, frames, stride, toCmds, name)`。シェーダ面を使う場合は
+  チャンネルが無いので `SoftRaster.renderToImageWith` + `Filmstrip.renderFrame` +
+  `GifEncoder.encode` を手組みする（シェーダ面つきは `HeadlessRender.renderGifWith`）
 - ループを閉じる: 周期項はループ長の整数倍周期だけ / 降下・スクロールはラップ幅の
   整数倍 / フラッシュ・揺れはループ境界で振幅 0
 - 尺は 4〜6 秒に一番動きのある拍を 1 つ（20 秒を全部生成しない）

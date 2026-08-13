@@ -68,7 +68,7 @@
 
 ### スナップショット / 生成の独立性（R1）
 
-- ゲーム側のテストはスナップショット比較で、 `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。生成も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えてもスナップショットは動かない = retained の退行を検知できない（R1 の核心）。**
+- ゲーム側のテストはスナップショット比較で、 `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。描き出しも `HeadlessRender.renderPng`→`SoftRaster`。→ **GL 経路を変えてもスナップショットは動かない = retained の退行を検知できない（R1 の核心）。**
 
 ### 切り分けトグルの前例
 
@@ -105,7 +105,7 @@ gl_Position = projection * vec4(screenPos, 0, 1);
 
 - `viewOffset` = camera center（`World.cameraCenter`）、`viewScale` = zoom（dungeon では常に 1.0）。
 - **dungeon は zoom=1 固定**なので `viewScale=(1,1)`。CPU の `centerOn`（`Vec2.sub(at, center)` + `Vec2.add(half)`）と式が一致し、頂点乗算は起きない。
-- **但し書き（R3）**: CPU 経路は Float64 で引いてから Float32 化、retained はワールド座標を Float32 で焼いてから Float32 で引く。**Float64/Float32 の精度差は式の順序合わせでは消えない。** dungeon（zoom=1・平行移動のみ）では 1px ずれる可能性は低いが、ゼロではない → §4.2 の glReadPixels diff で 1px でも差が出たら失格にして担保する。**zoom を使う横展開では `Render.scaled`(Float64 乗算) と `viewScale`(Float32 乗算) が割れるので、v1 は dungeon 限定とし横展開時に再検証（§5 段階5）。**
+- **但し書き（R3）**: CPU 経路は Float64 で引いてから Float32 化、retained はワールド座標を Float32 で確定してから Float32 で引く。**Float64/Float32 の精度差は式の順序合わせでは消えない。** dungeon（zoom=1・平行移動のみ）では 1px ずれる可能性は低いが、ゼロではない → §4.2 の glReadPixels diff で 1px でも差が出たら失格にして担保する。**zoom を使う横展開では `Render.scaled`(Float64 乗算) と `viewScale`(Float32 乗算) が割れるので、v1 は dungeon 限定とし横展開時に再検証（§5 段階5）。**
 
 ### 2.3 z 順が保存されることの型と擬似コード
 
@@ -222,7 +222,7 @@ def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
 
 ### 3.3 SoftRaster（snapshot/生成）は変更しない
 
-SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retained は GPU 提出方式の話。**SoftRaster・Bakery・スナップショットテストには手を触れない。** これが「GPU 側だけ変える」境界。ただしこの独立性は §4 の通り「安全証明にならない」ので、GL 経路は別途 glReadPixels で検証する。
+SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retained は GPU 提出方式の話。**SoftRaster・HeadlessRender・スナップショットテストには手を触れない。** これが「GPU 側だけ変える」境界。ただしこの独立性は §4 の通り「安全証明にならない」ので、GL 経路は別途 glReadPixels で検証する。
 
 ---
 

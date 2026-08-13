@@ -4,7 +4,7 @@
 **どの画風で満たすかは自由**。下は手の一例で、選択肢の全部ではない。
 
 名前空間（`RawDraw` = 図形プリミティブ）は「気軽に使うと足かせになる」摩擦を作る仕切り。
-満たすべき造形の下限は本書が定め、実際に絵が良いかどうかは `/critique-bake` の目視が決める。
+満たすべき造形の下限は本書が定め、実際に絵が良いかどうかは `/critique-render` の目視が決める。
 
 | 満たす性質 | 手の例 |
 |---|---|
@@ -12,7 +12,7 @@
 | 主役が背景から分離して読める | `PxShade`（ふち光・接地影）/ `Render.lightAt`・`darkAt` / `Render.glowAt` / `Render.outline` / 明度差・色相差 |
 | 層が分かれている（奥・主役・手前） | `Render.zShifted`・`zShiftedAll` / `Depth` / `Transition` の覆い / `Pass`（光マップを別の紙に集めて Multiply で本編に掛ける） |
 | 時間が流れている | `Fx`・`FxDoc`（粒）/ `Sway`（揺れ）/ `Anim`（コマ替え）/ `Curve`（sine・tri・arch01・pieces・dampedSpring）/ `Scatter` / `Daylight` |
-| 形が物として読める（シルエットだけで何か分かる / 部品同士の接続が破綻していない — 入り口・持ち手・関節 / 接地している / 比率が対象らしい） | シルエット生成（`Bakery.silhouettePng` — 対象を黒・背景を白で生成して、形だけを取り出して目視する） |
+| 形が物として読める（シルエットだけで何か分かる / 部品同士の接続が破綻していない — 入り口・持ち手・関節 / 接地している / 比率が対象らしい） | シルエットの描き出し（`HeadlessRender.silhouettePng` — 対象を黒・背景を白で描き出して、形だけを取り出して目視する） |
 
 記号・幾何が画風なら 5 つ目は「記号として一意に読める」で判定する（接地・関節は具象物の場合の言い換え）。
 
@@ -51,13 +51,13 @@ sprite Doc 直下の `palette` のどれかに**実体が無いと Studio が仮
 実際に画面を見る人だけ。エージェントが「良い絵になりました」と締めない。
 
 - 絵・背景・見た目を作った / 変えたら、**生成して人に見せて確認を取る**
-  （`make bake DIR=<game>`、直した物は `make diff DIR=<game>` で左=前・右=後）
+  （`make render DIR=<game>`、直した物は `make diff DIR=<game>` で左=前・右=後）
 - **ファイル名や層の一覧を並べるだけにしない** — 人が絵を探す羽目になる
 - 直す所が複数見えたら、目立つ順に**候補を 3 つまで**出して番号で選んでもらう。
   自分で選んで手を広げない（一度に直すのは 1 つだけ）
 - **壊れている物だけは聴かずに先に直す** — 落ちる・黒い穴・スナップショットの退行は好みの問題ではない
 
-進め方の詳しくは `.claude/skills/bake-loop/SKILL.md`。
+進め方の詳しくは `.claude/skills/render-loop/SKILL.md`。
 
 ## 機械で確かめる（人に見せる前の下ごしらえ）
 
@@ -79,11 +79,11 @@ lint-sprite の意図的な例外は、スプライトに理由付きで
 
 「形が物として読める」が怪しいときは、対象を黒・背景を白だけにして生成すると、
 色や質感に紛れていた形の破綻（浮き・つながらない接続・崩れた比率）が浮き上がる。
-既存の生成の配管（`docs/headless-bake-recipe.md` の cfg と描画コマンド列）にそのまま流せる:
+既存の描き出しの配管（`docs/headless-render-recipe.md` の cfg と描画コマンド列）にそのまま流せる:
 
 ```flix
 // 既定は「主役の z-index の範囲だけ」= world の範囲(ゲームの絵)。UI・HUD は形の検査の対象外。
-Bakery.silhouettePng(cfg, Bakery.SilhouetteScope.WorldBand, drawables, polygons, "scene_sil")
+HeadlessRender.silhouettePng(cfg, HeadlessRender.SilhouetteScope.WorldBand, drawables, polygons, "scene_sil")
 ```
 
 `SilhouetteScope.All`（全アイテム黒）も選べるが、画面全体が 1 つの塊に融けて個々の形は

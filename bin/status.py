@@ -76,7 +76,7 @@ def section_git(out):
 
 def section_tests(out):
     logs = sorted(glob.glob(os.path.join(".test-logs", "*.log")))
-    logs = [p for p in logs if not os.path.basename(p).startswith("bake-")]
+    logs = [p for p in logs if not os.path.basename(p).startswith("render-")]
     if not logs:
         out.append("テスト   記録なし (make test / make test-par を一度も通していない)")
         return
@@ -91,9 +91,9 @@ def section_tests(out):
         out.append("  OK: " + " ".join(greens[:8]) + (" 他%d" % (len(greens) - 8) if len(greens) > 8 else ""))
     for r in reds:
         out.append("  NG: %s — 詳細は .test-logs/ の同名ログ" % r)
-    bake_fails = glob.glob(os.path.join(".test-logs", "bake-*.fail"))
-    for p in bake_fails:
-        out.append("  NG(bake): %s" % os.path.basename(p)[:-5])
+    render_fails = glob.glob(os.path.join(".test-logs", "render-*.fail"))
+    for p in render_fails:
+        out.append("  NG(render): %s" % os.path.basename(p)[:-5])
 
 
 def reference_pairs():

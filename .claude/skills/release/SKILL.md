@@ -21,11 +21,11 @@ allowed-tools: Read, Grep, Glob, Bash
 **`gallery/` は git 管理外なので `git status` では見えない。** 生成した絵の一致は
 `make reference-check` の SHA 突き合わせで見る。
 
-1. `make bake-par`（不審なら逐次の `make bake`）
+1. `make render-par`（不審なら逐次の `make render`）
 2. `git status` で assets/sfx の差分ゼロを確認（音や素材の退行はここに出る）
 3. `for d in templates/*/; do make -C "$d" bench; done` で全テンプレの絵が基準と一致するか確認
 4. 基準を持たない絵は、生成し直した `gallery/` を自分で目視する
-   （`.claude/skills/critique-bake` の手順）
+   （`.claude/skills/critique-render` の手順）
 
 `python3 bin/lint-images.py` も併せて通す（生成した絵が git に紛れ込んでいないか）。
 

@@ -73,7 +73,7 @@ mod View {
             case _                  => village(ctx, w)
         }
 
-    /// 画面固定側の絵（camera を掛けない。App.withHudView と Bake が同じ物を読む）。
+    /// 画面固定側の絵（camera を掛けない。App.withHudView と SceneRender が同じ物を読む）。
     pub def hud(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         match w#phase {
             case World.Phase.Battle =>

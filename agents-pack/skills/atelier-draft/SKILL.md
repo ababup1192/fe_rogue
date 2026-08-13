@@ -1,6 +1,6 @@
 ---
 name: atelier-draft
-description: "assets のスロットに対する素材候補を atelier/ に複数案つくり、焼いて自己批評して報告する（assets/ には書かない）。素材の案を見比べたいとき、「もっと暖かい色で」「短く鋭い音で」のように方向性だけ言われたとき、assets を差し替える前に候補を並べたいときに使う。"
+description: "assets のスロットに対する素材候補を atelier/ に複数案つくり、描き出して自己批評して報告する（assets/ には書かない）。素材の案を見比べたいとき、「もっと暖かい色で」「短く鋭い音で」のように方向性だけ言われたとき、assets を差し替える前に候補を並べたいときに使う。"
 ---
 
 # atelier-draft — 素材候補づくり
@@ -14,9 +14,9 @@ description: "assets のスロットに対する素材候補を atelier/ に複�
 2. `atelier/` に N 案の Doc を書く。命名は `<名前>.a.<種類>.json` / `.b` / `.c` …。
    `version`・`entityId` はスロットと合わせ、`note` に方向性の意図を書く。
    **`assets/` には絶対に書かない。**
-3. headless bake で焼く。絵なら `make bake` か `make gallery-prologue`、
+3. headless で描き出す。絵なら `make render` か `make gallery-prologue`、
    音なら `make gallery-sounds` など、その候補が映る適切なターゲットを選ぶ
-   （候補を一時的にスロットへ差して焼く場合は、焼き終わったら必ず元に戻す）。
+   （候補を一時的にスロットへ差して描き出す場合は、描き出し終わったら必ず元に戻す）。
 4. `debug/` のコンタクトシート（all.png）や波形・スペクトログラム
    （sounds.png / music.png）を目視・目聴して、案ごとに自己批評する
    （方向性に合うか、既存素材とのなじみ、ゲームの設計原則との整合）。

@@ -15,7 +15,7 @@
 //               (静止画でも雲と旗が別位相なので、止まった絵にならない)
 //
 // 静的な地形は GPU タイル層(TerrainLayers.specs)が敷くので、実機(frameLive)は
-// 「動く物 + 層に乗れなかった絵の補完」だけを毎フレーム組む。bake(frame)は
+// 「動く物 + 層に乗れなかった絵の補完」だけを毎フレーム組む。描き出し(frame)は
 // GPU が無いので同じ記述(cellGroups)を全部動的に解釈する — 2 経路の絵は同じ。
 mod View {
 
@@ -29,7 +29,7 @@ mod View {
 
     def scale(): Int32 = 1
 
-    /// 設計解像度(px)。空・幕・bake・probe の「画面いっぱい」はここが唯一の権威。
+    /// 設計解像度(px)。空・幕・描き出し・probe の「画面いっぱい」はここが唯一の権威。
     pub def design(): Vec2.Vec2 = { x = 640.0, y = 360.0 }
 
 
@@ -122,9 +122,9 @@ mod View {
             }
         }
 
-    // ── 実機とbakeの入口 ──
+    // ── 実機と描き出しの入口 ──
 
-    /// bake・全動的経路: 地形も動的に解釈する(GPU 層と同じ cellGroups が源)。
+    /// 描き出し・全動的経路: 地形も動的に解釈する(GPU 層と同じ cellGroups が源)。
     pub def frame(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         tileItems(ctx#visible, w) ::: worldItems(ctx#visible, w)
 
@@ -183,7 +183,7 @@ mod View {
 
     // ── 地形(cellGroups の解釈)──
 
-    /// 見えているマスを動的に描く(bake 用)。洞窟は 1 マスごとに明度で沈める —
+    /// 見えているマスを動的に描く(描き出し用)。洞窟は 1 マスごとに明度で沈める —
     /// GPU 層の per-tile tint と同じ丸め(LightGrid.toColor)を通す。
     pub def tileItems(visible: Rect2.Rect2, w: World.World): List[Render.PlacedItem] =
         forM (c <- cellsIn(visible, w);
@@ -228,7 +228,7 @@ mod View {
     /// 以前はここで PxSprite.draw を使い、画素の並びごとに CPU で色を作っていた —
     /// コイン 1 枚が箱数十個へ膨らみ、洞窟だけ 1 フレームが桁違いに重かった。
     /// GPU タイル層(TerrainLayers)が使っている tint と同じ値なので、
-    /// 焼きと実機の絵が構造的に一致する(前は 2 経路で明度の載せ方が違った)。
+    /// 描き出しと実機の絵が構造的に一致する(前は 2 経路で明度の載せ方が違った)。
     def lit(w: World.World, x: Int32, y: Int32,
             items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         if (w#stage#kind != "cave") items
@@ -242,7 +242,7 @@ mod View {
                   Float32.toFloat64(color#g) * bg,
                   Float32.toFloat64(color#b) * bb)
 
-    // ── 動く物(実機・bake 共通)──
+    // ── 動く物(実機・描き出し共通)──
 
     def gimmickItems(vis: Rect2.Rect2, w: World.World): List[Render.PlacedItem] =
         platformItems(vis, w) ::: blinkItems(vis, w) ::: springItems(vis, w)

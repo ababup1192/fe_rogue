@@ -47,7 +47,7 @@ English の列は、将来この UI を英語化するときの対訳。日本�
 | バージョン(v1, v2…) | Version | 保存・採用のたび積まれる過去の中身。前の中身は消えない(「↩ v3 に戻す」) | `atelier/archive/<base>.vN.<kind>.json` / `draft/sketch/<名前>/vN.json` |
 | 手直し | Quick edit | 素材をその場で直すポップアップ(グリッド・カーブ・音のスライダー) | PixelEditor / MapEditor |
 | ゲームを広げる | Extend game | ゲームの構造(コードと Doc の形)が変わるプロンプト。検査つき | extend(/prompt/extend) |
-| 場面を足す / 仕組みを足す / 素材の種類を足す | Add scene / mechanic / material | 「ゲームを広げる」の 3 つの入口 | kind=scene / mechanic / material |
+| 場面を足す / 仕組みを足す / 素材の種類を足す | Add scene / mechanic / asset type | 「ゲームを広げる」の 3 つの入口 | kind=scene / mechanic / material |
 | アーカイブ(する) | Archive | 使わない候補と過去バージョンの置き場(へ送る)。何も捨てない | atelier/archive/ |
 | 候補に戻す | Restore | アーカイブから候補の列へ | /atelier/restore |
 | 選んだ組み合わせで試す | Try combination | 複数の候補を、何も書き換えずに組み合わせて走らせて比べる(◇これから) | — |

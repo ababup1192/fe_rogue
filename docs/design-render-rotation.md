@@ -83,7 +83,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
   - `turnedAll` で pivot＝自分の中心なら `at` が動かない
   - `turnedAll(0.5, pivot)` を 2 回かけると元に戻る（往復）
   - Text を回すと文字の四角の中心が `at` まわりに回っている
-- **今の絵が変わらない証明**: 回転 0 のままの `make bake-par` → `git status` で
+- **今の絵が変わらない証明**: 回転 0 のままの `make render-par` → `git status` で
   gallery / スナップショットの差分ゼロ（単位の読み替えが無害だと機械的に示す）。
 - **回転が効く証明**: neon_deck に傾けたカードの生成シーンを 1 枚足して目視 →スナップショットを更新。
   GL 実機（`make run`）と生成した絵が同じ傾きに見えるかも確認する（SoftRaster と GL の式が揃っているか）。
@@ -113,7 +113,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 ### 検証の結果
 
 - engine_world 678 / engine_tools 34 / neon_deck 55 とも green。
-- `make bake-par` 後の gallery / スナップショットの差分ゼロ = 単位（ラジアン→回転数）の読み替えが
+- `make render-par` 後の gallery / スナップショットの差分ゼロ = 単位（ラジアン→回転数）の読み替えが
   既存の絵を 1 バイトも変えていない。
 - neon_deck のカードを扇状に傾けて生成し、箱・文字・スート記号が一緒に回ることを目視で確認 →
   スナップショット更新済み。GL 実機（`make run`）との見比べも確認済み。

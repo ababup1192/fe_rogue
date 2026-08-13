@@ -67,7 +67,7 @@ mod TestSoftRaster {
             argb(128, 200, 0, 0), argb(255, 0, 200, 0));
         Assert.assertEq(expected = (255, 100, 99, 0), channels(out))
 
-    // ── 焼けない指定の報告（バックエンド同値の見張り） ──
+    // ── 描き出せない指定の報告（バックエンド同値の見張り） ──
 
     /// 最小の Drawable（属性は個々のテストで上書きする）。
     def drawable(texture: String, style: Option[GameEngine.BoxStyle]): GameEngine.Drawable =
@@ -79,7 +79,7 @@ mod TestSoftRaster {
     def someStyle(): Option[GameEngine.BoxStyle] =
         Some(DrawCmd.defaultStyle({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }))
 
-    /// 単色の box に付けた style は焼ける（＝報告に出ない）。テクスチャと文字に付けた style は
+    /// 単色の box に付けた style は描ける（＝報告に出ない）。テクスチャと文字に付けた style は
     /// この経路では絵に出ないので、件数つきで報告される。
     @Test
     def testDroppedReportsStyleOnTexturedAndText(): Unit \ Assert =
@@ -90,7 +90,7 @@ mod TestSoftRaster {
         let got = SoftRaster.dropped(ds) |> List.map(x -> (x#attr, x#count));
         Assert.assertEq(expected = ("style on textured sprite", 1) :: ("style on text", 1) :: Nil, got)
 
-    /// 落とす物が無ければ報告は空（毎回の bake に無意味な行を出さない）。
+    /// 落とす物が無ければ報告は空（毎回の描き出しに無意味な行を出さない）。
     @Test
     def testDroppedIsEmptyWhenNothingLost(): Unit \ Assert =
         let ds = drawable("", someStyle()) :: drawable("hero", None) :: Nil;
@@ -141,12 +141,12 @@ mod TestSoftRaster {
             expected = (Some((1.0f32, 0.0f32, 0.25f32)), Some((0.0f32, 1.0f32, 0.5f32))),
             (sampleAt({ x = 0.0, y = 0.0 }), sampleAt({ x = 4.0, y = 0.0 })))
 
-    /// 縦グラデ四角を 4×4 の PNG 画素に焼くと、各行の画素中心 (y+0.5)/4 の位置の
+    /// 縦グラデ四角を 4×4 の PNG 画素に描き出すと、各行の画素中心 (y+0.5)/4 の位置の
     /// 中間色が出る（0..255 へは argb の四捨五入。黒→白なら 32 / 96 / 159 / 223）。
     /// フォントは描かないが RasterReq の配管上 TTF の実パスが要るため、リポジトリ内の
     /// 資産を相対参照する（テストの cwd = engine_tools/ 前提）。
     @Test
-    def testVgradBakesMiddleColors(): Unit \ {Assert, IO} =
+    def testVgradRendersMiddleColors(): Unit \ {Assert, IO} =
         let img: BufferedImage = SoftRaster.renderToImage({
             drawables = Nil, polygons = vgradQuad(black(), white()) :: Nil,
             design = { x = 4.0, y = 4.0 }, scale = 1, background = black(),

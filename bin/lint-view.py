@@ -120,7 +120,7 @@ def hud_smell(project_dir: Path):
             continue
         if "withHudView" in body:
             has_hud = True
-        if p.parent.name != "bake" and re.search(r"Render\.text|TextDraw\.", body):
+        if p.parent.name != "render" and re.search(r"Render\.text|TextDraw\.", body):
             uses_text = True
     if uses_text and not has_hud:
         return (

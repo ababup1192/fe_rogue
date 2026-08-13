@@ -4,14 +4,14 @@
 #   make test   … テストを実行する（記録は .test-logs/）
 #   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
-#   make bake   … ギャラリー PNG を焼く（決定的）
+#   make render   … ギャラリー PNG を描き出す（決定的）
 #   make reference-check  … 生成した絵をリファレンス画像とバイト比較する
 #   make reference-update … いまの gallery をリファレンス画像として更新する
-#   make atelier-preview … atelier/ の候補と assets/ の現行を debug/atelier/ に焼く
+#   make atelier-preview … atelier/ の候補と assets/ の現行を debug/atelier/ に描き出す
 #
 # Flix コンパイラの呼び方は OS で変える:
 #   - macOS/Linux … エンジンリポの bin/flix ラッパ（nix store の flix.jar 解決と JVM フラグ
-#     （-XstartOnFirstThread、test/Bake の headless）を面倒みる）
+#     （-XstartOnFirstThread、test/render の headless）を面倒みる）
 #   - Windows … ラッパ（bash）が無いので、JRE の java で bin/flix.jar を直接叩く
 # エンジンや java の場所はマシンごとに違うので、git に入れない local.mk に書く
 # （make new-game / Studio が生成する。別のマシンで clone したら 1 度だけ書き直す）:
@@ -37,7 +37,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check bake reference-check reference-update atelier-preview api hooks check-docs-sync
+.PHONY: status run debug test build check render reference-check reference-update atelier-preview api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -85,17 +85,17 @@ api:
 	if [ -n "$$out" ]; then printf '%s\n' "$$out"; \
 	else echo "[api] '$(Q)' に当たりなし。$(ENGINE)/docs/module-index.md で別名を探す"; fi
 
-bake:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
+render:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.all
 
-reference-check: bake
+reference-check: render
 	"$(ENGINE)/bin/reference-check.sh"
 
 reference-update:
 	"$(ENGINE)/bin/reference-update.sh"
 
 atelier-preview:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.atelier
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.atelier
 
 # 現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない。
 # .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
@@ -113,7 +113,7 @@ status:
 engine-upgrade:
 	@$(MAKE) -C "$(ENGINE)" upgrade-game GAME="$(CURDIR)"
 
-# コミット時のゲート (焼いた絵の混入・矩形だけの View・規約の配線ずれを止める)。
+# コミット時のゲート (描き出した絵の混入・矩形だけの View・規約の配線ずれを止める)。
 # .git/hooks は git 管理外なので clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 hooks:
 	@git config core.hooksPath bin/githooks

@@ -60,8 +60,8 @@ def main(): Unit \ IO =
                 // 鳴り続ける音: 走っている間のエンジンの唸りと、滑っている間の擦れ。
                 // 宣言が消えた拍で App が止めるので、ここは「今どう鳴っていてほしいか」だけ書く。
                 |> App.withSustained(w -> checked_ecast(Sfx.hums(w)))
-                // 走行中の POST /bake（Studio の「生成して」）は Bake.all と同じ実体を呼ぶ。
-                |> App.onBakeRequest(Bake.allShots)
+                // 走行中の POST /render（Studio の「生成して」）は SceneRender.all と同じ実体を呼ぶ。
+                |> App.onRenderRequest(SceneRender.allShots)
                 |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")

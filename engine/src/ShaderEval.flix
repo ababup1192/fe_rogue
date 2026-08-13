@@ -6,7 +6,7 @@
 mod ShaderEval {
 
     /// テクスチャ 1 枚ぶんの画素（ARGB・正立・行優先）。Tex ノードが CPU 側で標本する素材。
-    /// GL の pass ターゲットは上下逆格納だが bake の pass 画像は正立なので、CPU 側は反転しない
+    /// GL の pass ターゲットは上下逆格納だが描き出しの pass 画像は正立なので、CPU 側は反転しない
     /// （反転の吸収は GL の uTexFlip だけが持つ既存の非対称と同型）。
     pub type alias TexData = { width = Int32, height = Int32, pixels = Vector[Int32] }
 
@@ -266,7 +266,7 @@ mod ShaderEval {
                 let uv2 = { x = fract(uv#x * tl#tiles#x), y = fract(uv#y * tl#tiles#y) };
                 evalFieldEnv(tl#of, uv2, t, env, texEnv)
             case ShaderDoc.Field.Snap(sn) =>
-                // GLSL の (floor(uv*cells)+0.5)/cells と同じ形（bake と実機で塊の位置を割らない）。
+                // GLSL の (floor(uv*cells)+0.5)/cells と同じ形（描き出しと実機で塊の位置を割らない）。
                 let cx = snapCells(sn#cells#x);
                 let cy = snapCells(sn#cells#y);
                 let uv2 = { x = (Float64.floor(uv#x * cx) + 0.5) / cx,

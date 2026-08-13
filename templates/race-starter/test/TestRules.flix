@@ -11,7 +11,7 @@ mod TestRules {
     // 場面を組む土台
     // ══════════════════════════════════════════════════════
 
-    /// 既定の Doc の束（World.initial と bake が読むのと同じ形）。
+    /// 既定の Doc の束（World.initial と描き出しが読むのと同じ形）。
     def docs(): World.Docs =
         { rules = RulesDoc.defaults(), rivalsCfg = RivalsDoc.defaults(), theme = ThemeDoc.defaults(),
           course = CourseDoc.defaults(), props = PropsDoc.defaults(), palette = PaletteDoc.defaults(), sprites = PxSpriteDoc.empty(),

@@ -55,7 +55,7 @@ mod Enemies {
         let cy = Physics.tileOf(probeY);
         not (t#solid(cx, cy) or t#oneWay(cx, cy))
 
-    /// 上下の揺れは時刻の純関数(巻き戻し・bake と相性が良い)。
+    /// 上下の揺れは時刻の純関数(巻き戻し・描き出しと相性が良い)。
     def fly(doc: EnemyDoc.Doc, time: Float64, e: Enemy): Enemy =
         let amp = doc#flyAmpTiles * Physics.tileSize();
         let phase = 2.0 * 3.14159265 * time / doc#flyPeriod;

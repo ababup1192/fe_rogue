@@ -56,14 +56,14 @@ mod App {
     /// 渡すと、字の増減が 1 か所で済む。
     pub type alias ViewCtx = { atlas = FontAtlas, fontOf = String -> FontAtlas, visible = Rect2.Rect2 }
 
-    /// bake（headless）から view を呼ぶときの ViewCtx。画面全体が見えている扱いにする。
+    /// ヘッドレス描き出しから view を呼ぶときの ViewCtx。画面全体が見えている扱いにする。
     /// フォント 1 本だけの版 — どの名前で引いても同じ本が返る。
     pub def viewCtxOf(atlas: FontAtlas, design: Vec2.Vec2): ViewCtx =
         viewCtxOfFonts(atlas, _ -> atlas, design)
 
     /// viewCtxOf の複数フォント版。fontOf には実機と同じ名前で引ける関数を渡す
     /// （HeadlessFont.buildAtlas に実機と同じ name を渡して組んだ本を返す関数）。
-    /// 名前が実機と食い違うと、焼いた絵だけ別の字になる。
+    /// 名前が実機と食い違うと、描き出した絵だけ別の字になる。
     pub def viewCtxOfFonts(atlas: FontAtlas, fontOf: String -> FontAtlas, design: Vec2.Vec2): ViewCtx =
         { atlas = atlas, fontOf = fontOf,
           visible = { position = { x = 0.0, y = 0.0 }, size = design } }
@@ -143,11 +143,11 @@ mod App {
         pixelSnap = w -> Float64,
         // World の 1 行サマリ。リモートデバッグ（HTTP）の view=status と trace の源。
         statusLine = Option[w -> String \ ef],
-        // リモートデバッグ（HTTP）の POST /bake が実行する「焼きの実体」。Docs から決定的な
-        // 場面を組み立てて PNG に焼き、焼けたファイルパスの列を返す（各ゲームの Bake.all の
+        // リモートデバッグ（HTTP）の POST /render が実行する「描き出しの実体」。Docs から決定的な
+        // 場面を組み立てて PNG に描き出し、そのファイルパスの列を返す（各ゲームの SceneRender.all の
         // 中身を、温まった JVM で実行するだけ）。走行中のプレイ状態には一切触れないこと。
-        // None のゲームへの /bake は「未対応」の応答になる（Studio はそれでフォールバック）。
-        remoteBake = Option[Unit -> List[String] \ IO],
+        // None のゲームへの /render は「未対応」の応答になる（Studio はそれでフォールバック）。
+        remoteRender = Option[Unit -> List[String] \ IO],
         // リモートデバッグ（HTTP）の任意パスに応える、ゲーム登録のハンドラ（onRequest で足す）。
         // (パス, (クエリ, World) -> Ok(次の World) / Err(理由)) の列。既定ルートに無いパスだけが
         // ここへ来て、パスの完全一致・登録順の先勝ちで 1 本選ばれる。
@@ -191,7 +191,7 @@ mod App {
           debugView = None,
           worldDump = None,
           statusLine = None,
-          remoteBake = None,
+          remoteRender = None,
           remoteHandlers = Nil,
           fixedStep = None }
 
@@ -244,7 +244,7 @@ mod App {
     /// （繋ぎが Main に見えて教育的。App.game 側は複数システムを受け取らない）。
     /// reloads の各要素は watchFile 1 本に展開される。内部では
     /// make(init) |> addSystem(update) |> watchFile(各 reload) |> withView(view) に展開されるだけ。
-    /// 戻り値は App なので、reloadOn（F1 リロード）・onBakeRequest（走行中 bake）・withDebug
+    /// 戻り値は App なので、reloadOn（F1 リロード）・onRenderRequest（走行中の描き出し）・withDebug
     /// などの高度な口は、この後ろに従来どおり pipe で足せる。
     /// この入口が担うのは「最も普通の 1 本道」だけ — 音（withAudio）や HUD（withHudView）や
     /// quit の差し替え・複数システムの明示的な列挙が要る高度なゲームは、make から始める
@@ -318,7 +318,7 @@ mod App {
     /// 効果多相にしないため）。camera は動的な絵と同じ値でエンジンが掛ける。
     /// zIndex は動的な絵と同じ z 空間で解釈される — キャラより大きい zIndex を与えれば、
     /// キャラを隠す屋根・庇もタイル層で置ける（同じ zIndex ならタイル層が奥）。CPU 投影
-    /// （TileScene.toItems・F8 の凍結画面・headless bake）は zIndex をそのまま動的アイテムに
+    /// （TileScene.toItems・F8 の凍結画面・ヘッドレス描き出し）は zIndex をそのまま動的アイテムに
     /// 載せるので、GPU と CPU で重なりの解釈は一致する。タイルのコマ替えアニメは持てない —
     /// 水面・旗のように動く絵は動的側かシェーダー面で描く。view = None のゲームでは効かない。
     pub def withTileLayers(f: w -> List[TileLayerSpec], app: App[w, ef]): App[w, ef] =
@@ -431,13 +431,13 @@ mod App {
     pub def withStatusLine(f: w -> String \ ef, app: App[w, ef]): App[w, ef] =
         { statusLine = Some(f) | app }
 
-    /// リモートデバッグ（HTTP）の POST /bake が実行する「焼きの実体」を繋ぐ。
-    /// f は Docs から決定的な場面を組み立てて PNG に焼き、焼けたファイルパスの列を返す
-    /// （Bake.all の中身をそのまま渡せる形）。走行中のプレイ状態を読んだり変えたりしない
-    /// 関数に限る — /bake はゲームの進行に触れず、温まった JVM で焼き直すだけの口。
-    /// 繋がないゲームへの /bake は「未対応」の応答になる。
-    pub def onBakeRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef] =
-        { remoteBake = Some(f) | app }
+    /// リモートデバッグ（HTTP）の POST /render が実行する「描き出しの実体」を繋ぐ。
+    /// f は Docs から決定的な場面を組み立てて PNG に描き出し、そのファイルパスの列を返す
+    /// （SceneRender.all の中身をそのまま渡せる形）。走行中のプレイ状態を読んだり変えたりしない
+    /// 関数に限る — /render はゲームの進行に触れず、温まった JVM で描き直すだけの口。
+    /// 繋がないゲームへの /render は「未対応」の応答になる。
+    pub def onRenderRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef] =
+        { remoteRender = Some(f) | app }
 
     /// リモートデバッグ（HTTP）の任意パス（例: "/save"）に応えるハンドラを繋ぐ。
     /// f はクエリ（?slot=1 → Map。+ と %20 は空白に戻る）と今の World を受け取り、

@@ -1,6 +1,6 @@
 // TownMap — 街のタイル盤（TownMapDoc）をタイル層の宣言（TileLayerSpec）へ写す純関数。
 // 盤の正典は Doc（assets/town.map.json）— ここには rows を持たない。
-// GPU 経路（App.withTileLayers）も headless bake（TileScene.toItems / PxSprite.draw）も
+// GPU 経路（App.withTileLayers）も headless の描き出し（TileScene.toItems / PxSprite.draw）も
 // 同じ関数を読む — 絵柄の正を 2 箇所に写経しないため。
 mod TownMap {
 

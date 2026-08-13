@@ -53,10 +53,10 @@ SoftRaster が指定を黙って落とすと、**スナップショットは「�
 3. **この表を更新する**。
 4. 軸や式が両者で揃っているかを、数値のテストか生成した絵の見比べで確かめる。
 
-`SoftRaster.dropped` の報告は `Bakery` が生成するたびに出す:
+`SoftRaster.dropped` の報告は `HeadlessRender` が描き出すたびに出す:
 
 ```
-[bake] 焼けない指定: style on textured sprite ×3 — 角丸・枠・縞・市松は単色の box にだけ焼ける（title）
+[render] 描き出せない指定: style on textured sprite ×3 — 角丸・枠・縞・市松は単色の box にだけ描ける（title）
 ```
 
 ## 機械での突き合わせ（bench/gl_parity）

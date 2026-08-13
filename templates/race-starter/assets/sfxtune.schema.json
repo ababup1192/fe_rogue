@@ -1,5 +1,5 @@
 {
-  "//": "race.sfxtune.json の形の宣言（Studio の sections 方言）。音の中身（どんな波を重ねるか）は src/bake/SfxBake.flix のデザインで、ここはそれに掛ける倍率だけを持つ。音 1 つ = セクション 1 つ（record）で、入れ子の record にはしない — 方言では record の fields に入れられるのは type を持つ欄だけ。つまみは WAV を焼くときに効くので、保存したら make bake して起動し直す（engine の高さの振れ幅だけは即反映）。",
+  "//": "race.sfxtune.json の形の宣言（Studio の sections 方言）。音の中身（どんな波を重ねるか）は src/render/SfxRender.flix のデザインで、ここはそれに掛ける倍率だけを持つ。音 1 つ = セクション 1 つ（record）で、入れ子の record にはしない — 方言では record の fields に入れられるのは type を持つ欄だけ。つまみは WAV を描き出すときに効くので、保存したら make render して起動し直す（engine の高さの振れ幅だけは即反映）。",
   "version": 1,
   "sections": {
     "note": {
@@ -14,7 +14,7 @@
       "type": "float",
       "label": "止まっているときのエンジン音の高さ",
       "unit": "倍",
-      "help": "ここと enginePitchHigh の 2 つだけ焼き直し不要で、保存すると走行中のゲームへ即反映される。",
+      "help": "ここと enginePitchHigh の 2 つだけ WAV を描き出し直さなくてよく、保存すると走行中のゲームへ即反映される。",
       "order": 2,
       "min": 0.3,
       "max": 2.0,

@@ -77,19 +77,19 @@ mod World {
     pub def cols(): Int32 = 10
     pub def rows(): Int32 = 20
 
-    /// 起動時と bake が同じ形で読む Doc の束。
+    /// 起動時と描き出しが同じ形で読む Doc の束。
     pub type alias Docs = { doc = RulesDoc.Doc, theme = ThemeDoc.Doc, shader = ShaderDoc.Spec }
 
     pub def shaderPath(): String = "assets/tetris.shader.json"
 
     /// ゲーム開始時の状態。空の盤に最初のミノが涌いた状態から始まる。
-    /// seed は固定の定数から出発する（bake が決定的になる・遊びも毎回同じ並びで再現できる）。
+    /// seed は固定の定数から出発する（描き出しが決定的になる・遊びも毎回同じ並びで再現できる）。
     pub def initial(docs: Docs): World =
         // 最初のミノと NEXT を bag から引いて据える（spawnNext を 2 回まわす）。
         spawnNext(spawnNext(blank(docs)))
 
     /// まだ何も涌いていない空の World（initial だけが使う下ごしらえ）。
-    /// seed は固定の定数から出発する（bake が決定的になる・遊びも毎回同じ並びで再現できる）。
+    /// seed は固定の定数から出発する（描き出しが決定的になる・遊びも毎回同じ並びで再現できる）。
     def blank(docs: Docs): World =
         { doc = docs#doc, theme = docs#theme, shader = docs#shader, t = 0.0, board = Map.empty(),
           current = spawnPiece(Kind.I), nextKind = Kind.I, bag = Nil,
@@ -189,7 +189,7 @@ mod World {
             let (fresh, s1) = shuffle(Pieces.all(), s);
             refill(List.append(bag, fresh), s1)
 
-    // LCG（線形合同法・Knuth）。純粋・決定的。bake の seed 固定で毎回同じ絵になる。
+    // LCG（線形合同法・Knuth）。純粋・決定的。描き出しの seed 固定で毎回同じ絵になる。
     def nextSeed(s: Int64): Int64 =
         s * 6364136223846793005i64 + 1442695040888963407i64
 

@@ -1,7 +1,7 @@
 /// タイル層の宣言（App.withTileLayers が受け取る値）と、その CPU 投影。
 ///
 /// GPU 経路（インスタンシング・全タイル 1 draw call）はエンジンが面倒を見るが、
-/// headless bake（SoftRaster）と F8 停止中の凍結画面はタイルチャンネルを持たない。
+/// ヘッドレス描き出し（SoftRaster）と F8 停止中の凍結画面はタイルチャンネルを持たない。
 /// そこでは toItems の CPU 投影（regionRect 付き Sprite の列）で同じ絵を出す。
 /// 両経路が同じ Spec から派生するので、絵柄の正は 1 箇所に保たれる。
 ///
@@ -25,7 +25,7 @@ pub type alias TileLayerSpec = {
 mod TileScene {
 
     /// Spec を regionRect 付き Sprite の PlacedItem 列に写す（world 座標のまま）。
-    /// headless bake・F8 停止画面・スナップショットテストが GPU 抜きで同じ絵を得るための投影。
+    /// ヘッドレス描き出し・F8 停止画面・スナップショットテストが GPU 抜きで同じ絵を得るための投影。
     /// 走行中の毎フレームには使わない — タイル数ぶんの動的 item を数えてしまう。
     pub def toItems(spec: TileLayerSpec): List[Render.PlacedItem] =
         let atlas = spec#tileSet#atlasSource;

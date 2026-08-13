@@ -64,7 +64,7 @@ mod Controls {
 
     // ── Doc の読み込み・読み直し（watchFile / F1） ──
 
-    /// 起動時と bake が同じ形で読む Doc の束。
+    /// 起動時と描き出しが同じ形で読む Doc の束。
     pub def loadDocs(): World.Docs \ Fs.FileRead =
         { story = StoryDoc.load(StoryDoc.path()),
           kind = KindDoc.load(KindDoc.path()),

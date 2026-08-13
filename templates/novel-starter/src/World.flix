@@ -27,7 +27,7 @@ mod World {
         case Story
     }
 
-    /// 起動時に読む Doc の束（Main と Bake が同じ形で組む）。
+    /// 起動時に読む Doc の束（Main と SceneRender が同じ形で組む）。
     pub type alias Docs = {
         story = StoryDoc.Doc,
         kind = KindDoc.Doc,

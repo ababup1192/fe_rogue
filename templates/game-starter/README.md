@@ -2,7 +2,7 @@
 
 flix_game_engine のスターター。主人公（ドット絵）を矢印キーで動かせるだけの、
 「ここから自分のゲームを育てる」ための骨組みが入っています。
-`make new-game` で生成された時点で check / test / bake が全部通る状態です。
+`make new-game` で生成された時点で check / test / render が全部通る状態です。
 
 ## 始め方
 
@@ -16,10 +16,10 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
 | `make palette` | Studio 用の色の写し(`assets/__NAME__.palette.json`)を作り直す |
-| `make bake`   | ギャラリー PNG を焼く（決定的） |
-| `make reference-check`  | 焼いた絵をリファレンス画像とバイト比較する |
+| `make render`   | ギャラリー PNG を描き出す（決定的） |
+| `make reference-check`  | 描き出した絵をリファレンス画像とバイト比較する |
 | `make reference-update` | いまの gallery をリファレンス画像として更新する |
-| `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
+| `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に描き出す |
 
 ## 読む順（全体像のつかみ方）
 
@@ -33,7 +33,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    3. `src/View.flix` … 状態を絵に写す（何をどこに描くか）。冒頭 doc に**画面の層**
       （背景・主役・粒がどの関数か）が並べてある。
    4. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
-   5. `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（リファレンス画像とアトリエ）。
+   5. `src/render/SceneRender.flix` … 決定的な場面を PNG に描き出す（リファレンス画像とアトリエ）。
 3. 手触り・色・絵は下の `assets/` の Doc を保存即反映でいじる。
 
 数値・色・絵は `assets/` の Doc（保存即反映）:
@@ -55,8 +55,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 
 - **画風は最初に決めて `AGENTS.local.md` に書く**。この骨組みの見た目は一例で、
   そのまま引き継ぐ物ではありません（決め方は `.claude/skills/visual-dict`）。
-- `make bake` で `gallery/` に決定的な PNG を焼き、`make reference-update` で更新、`make reference-check` で防護。
-- 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に焼いて目視。
+- `make render` で `gallery/` に決定的な PNG を描き出し、`make reference-update` で更新、`make reference-check` で防護。
+- 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に描き出して目視。
 
 ## AI エージェント向け指針の配布（sync-agents）
 

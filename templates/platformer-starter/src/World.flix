@@ -3,7 +3,7 @@
 // ── 毎フレームの 1 周(Main の App.game から見た地図)──
 //   入力: Controls.inputOf が Frame を Input へ写す
 //   更新: World.step — hitstop → 動く床 → 主役(Player) → バネ/コイン/旗 → 敵と弾 → 収支 → カメラ
-//   描画: View.frame(全動的・bake)/ View.frameLive(GPU レイヤー + 動的補完)
+//   描画: View.frame(全動的・描き出し)/ View.frameLive(GPU レイヤー + 動的補完)
 //
 // 場面(phase)は 3 つだけ: play → clear(旗) → 次の面 / play → over(残機 0) → 最初から。
 // 加点と場面替えの「規則」はここに書き、その規則が読む数値は rules Doc に置く。

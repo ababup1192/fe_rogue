@@ -56,7 +56,7 @@ mod World {
         outcome = Option[Outcome]
     }
 
-    /// 起動時に読む Doc の束（Main と Bake が同じ形で組む）。
+    /// 起動時に読む Doc の束（Main と SceneRender が同じ形で組む）。
     pub type alias Docs = {
         map = MapDoc.Doc,
         kind = KindDoc.Doc,
@@ -359,7 +359,7 @@ mod World {
     //     └────勝ち / 逃げ / 負け(leaveBattle)──────┘
     //
     // 乱数は持ち込まない: 何歩めで出会うかも、一撃の重さも Doc の数から決まる。
-    // 決定的なので bake の絵もテストの期待値も揺れない（強さの調整は Doc 側で足りる）。
+    // 決定的なので描き出した絵もテストの期待値も揺れない（強さの調整は Doc 側で足りる）。
 
     /// この歩数で魔物と出会うか。encounterSteps 歩ごとに 1 回。0 以下なら出会わない。
     pub def meetsFoeAt(steps: Int32, doc: BattleDoc.Doc): Bool =

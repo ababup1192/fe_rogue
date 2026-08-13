@@ -109,6 +109,64 @@ def find_checkd(pkg):
     return None
 
 
+def load_checkd(pkg):
+    """bin/checkd を読み込んで返す。読めなければ None。
+
+    常駐の数の上限とプロセスの生存判定は checkd 側にしか持たない
+    (2 か所に置くと、機械を変えたとき片方だけ古い値が残る)。
+    """
+    import importlib.machinery
+    import importlib.util
+
+    path = find_checkd(pkg)
+    if not path:
+        return None
+    try:
+        loader = importlib.machinery.SourceFileLoader("checkd_mod", path)
+        spec = importlib.util.spec_from_loader("checkd_mod", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def read_pid(sd):
+    try:
+        with open(os.path.join(sd, "pid"), encoding="utf-8") as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def pid_alive(pkg):
+    """そのパッケージの常駐が生きているか。落ちた常駐も pid ファイルを残すので、
+    ファイルの有無ではなくプロセスの存在で確かめる
+    (Windows の os.kill は相手を止めてしまうので checkd.pid_alive に任せる)。"""
+    pid = read_pid(state_dir(pkg))
+    if pid is None:
+        return False
+    checkd = load_checkd(pkg)
+    if not checkd:
+        return False  # 判定できない → 「居ない」に倒す (歯止めは too_busy が別に持つ)
+    return checkd.pid_alive(pid)
+
+
+def live_daemons(checkd):
+    """今生きている常駐の数。"""
+    root = os.path.expanduser("~/.cache/flix-checkd")
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return 0
+    live = 0
+    for name in names:
+        pid = read_pid(os.path.join(root, name))
+        if pid is not None and checkd.pid_alive(pid):
+            live += 1
+    return live
+
+
 def too_busy(pkg):
     """起動予約を見送る条件。JVM 1 つで 1 コア食うので、無条件に増やすと機械が死ぬ。
 
@@ -122,26 +180,17 @@ def too_busy(pkg):
     except OSError:
         pass
     try:
-        if os.getloadavg()[0] > 2 * (os.cpu_count() or 4):
+        if os.getloadavg()[0] > (os.cpu_count() or 4):
             return True
     except (OSError, AttributeError):
         pass
-    # 常駐は JVM を抱えたまま眠り続ける (1 つで 0.5〜1GB)。パッケージの数だけ
-    # 増やすと機械のメモリが尽きるので、生きている数で上限を切る。
-    # 落ちた常駐も pid ファイルを残すので、生きているかを見てから数える。
-    root = os.path.expanduser("~/.cache/flix-checkd")
-    live = 0
-    try:
-        for name in os.listdir(root):
-            try:
-                with open(os.path.join(root, name, "pid"), encoding="utf-8") as f:
-                    os.kill(int(f.read().strip()), 0)
-                live += 1
-            except (OSError, ValueError):
-                continue
-    except OSError:
-        live = 0
-    if live >= 3:
+    # 常駐は JVM を抱えたまま眠り続ける。パッケージの数だけ増やすと機械の
+    # メモリが尽きるので、生きている数で上限を切る (上限は機械の大きさから
+    # checkd.memory_budget() が決める)。
+    checkd = load_checkd(pkg)
+    if not checkd:
+        return True  # checkd が読めない機械では起動を頼まない (素の CLI で足りる)
+    if live_daemons(checkd) >= checkd.MAX_DAEMONS:
         return True
     try:
         os.makedirs(os.path.dirname(stamp), exist_ok=True)
