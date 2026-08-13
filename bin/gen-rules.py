@@ -39,6 +39,10 @@ RULES = {
         "docs/flix-conventions.md",
         ["**/*.flix"],
     ),
+    "error-handling.md": (
+        "docs/error-handling.md",
+        ["**/*.flix"],
+    ),
 }
 
 
