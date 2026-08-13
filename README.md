@@ -77,8 +77,8 @@ Games are built around a single immutable `World` value: systems are pure
 functions run each frame by a Bevy-style `App`, and every frame is rendered from
 the `World`. Rendering, input, and audio are a from-scratch implementation on top
 of LWJGL (OpenGL 3.3 Core / GLFW / OpenAL). The engine ships as a reusable
-library, with real games living under `examples/`, in a monorepo layout. The
-recommended one is **fe_rogue** (a Fire Emblem-style SRPG + roguelike).
+library, with ready-to-run starter games living under `templates/`, in a monorepo
+layout. `make new-game` copies a template into a new repository of your own.
 
 > 日本語版は[下](#flix-game-engine-日本語)にあります。
 
@@ -97,10 +97,10 @@ Set up the toolchain and build the engine packages:
 
 ```bash
 devbox shell        # fetch JDK 21 + make + Flix compiler, and add bin/ to PATH
-make sync            # build-pkg all engine packages and distribute (via symlink) to examples & ide
+make sync            # build-pkg all engine packages and distribute (via symlink) to templates & bench
 ```
 
-Run `make sync` **once on first setup**. Each example resolves the engine through
+Run `make sync` **once on first setup**. Each template resolves the engine through
 a relative symlink under `lib/github/ababup1192/.../0.1.0/`, so without it the
 dependency cannot be resolved. After editing an engine package, re-run `make sync`
 (or the per-package `sync-*` targets; note that `engine_world` / `engine_tools`
@@ -110,57 +110,33 @@ build on `engine`, so re-sync them too after editing `engine`).
 make help            # list other targets (sync-engine, etc.)
 ```
 
-## Recommended game: play fe_rogue
+## Starter games (templates)
 
-A Fire Emblem-style turn-based strategy RPG (SRPG) with roguelike elements.
+Each template is a complete, playable game with its own art style, Docs, and
+tests — read one to learn the engine, or copy it with `make new-game` to start
+your own.
 
-- Progress through dungeon floors (move between floors via stairs)
-- Player turn → enemy turn cycle, with enemy AI acting automatically
-- Equip/use units, weapons, and staves (magic); battle forecast (hit rate / predicted damage)
-- Experience and level-ups, consumable items such as potions
-
-### Run
-
-```bash
-devbox shell
-make sync                 # first time only
-cd examples/fe_rogue
-flix run                  # bin/flix wrapper (adds -XstartOnFirstThread automatically on macOS)
-```
-
-### Controls
-
-| Action | Keyboard | Gamepad (Xbox layout) |
-|---|---|---|
-| Move cursor | Arrow keys | D-pad / left stick |
-| Confirm (move / attack / menu select) | Z | A |
-| Menu confirm | Enter | Start |
-| Cancel / back | X | B |
-| Minimap | M | Y |
-| Toggle danger range | Shift | LB |
-
-> Esc is intentionally unmapped, since it triggers quitting the game on the map.
-
-### Packaging for distribution
-
-See [`examples/fe_rogue/DISTRIBUTION.md`](examples/fe_rogue/DISTRIBUTION.md) for
-building a JRE-bundled `.dmg` / `.exe` or a jar + launcher.
-
-## Other examples
-
-| Game | Description |
+| Template | Description |
 |---|---|
-| **breakout** | Breakout clone — the value-based entry tutorial (start here; see its README) |
-| **sokoban** | Sokoban with unlimited undo (Worldline) — has a full build-it-yourself TUTORIAL (EN/JA) |
-| **fe_rogue** | Fire Emblem-style turn-based SRPG + roguelike (recommended) |
-| **liars_room** | Liar logic puzzle — every stage is machine-proven solvable (Datalog) |
+| **game-starter** | The bare skeleton: move a pixel-art hero with the arrow keys. The default for `make new-game` |
+| **platformer-starter** | Feel-first platformer (coyote time, 3 stages, coins and a flag) |
+| **rpg-starter** | Top-down RPG/adventure: a sunlit castle town, townsfolk to talk to, an errand to run |
+| **novel-starter** | Visual novel / mystery: a branching script written entirely in JSON rows |
+| **race-starter** | Top-down racing on a summer coastal highway; only risky driving fills the nitro gauge |
+| **tetris-starter** | Falling-block puzzle |
 
-Every example runs and tests the same way:
+Every template runs and tests the same way:
 
 ```bash
-cd examples/<name>
+cd templates/<name>
 flix run             # launch
 flix test            # test
+```
+
+To start a game of your own (a new directory with its own git repository):
+
+```bash
+make new-game GAME=/abs/path/to/mygame NAME=mygame TITLE="My Game" TEMPLATE=rpg-starter
 ```
 
 ## Game data (Docs)
@@ -190,7 +166,7 @@ engine/        contract layer (GL-free, no native deps): the GameEngine.Game/Aud
 render_gl/     OpenGL/OpenAL backend implementing engine's contract: LWJGL window/input/audio, shaders, textures, SDF fonts (depends on engine)
 engine_world/  value-based game framework: Bevy-style App run-loop, ECS queries, physics, UI widgets, camera rig, Worldline undo/replay, and frontend services (asset loading, save data, JSON, logging) (depends on engine)
 engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF baking, reference viewer, render lint, SFX synth (depends on engine)
-examples/      individual games (depend on engine, render_gl, engine_world, engine_tools)
+templates/     starter games, ready to run and to copy with make new-game (depend on the all-in-one flix_game_engine package)
 bin/           the flix wrapper script (the compiler jar comes from devbox/nix)
 flix.toml
 src/           root project for the Flix community build: per-file symlinks bundling
@@ -198,7 +174,8 @@ src/           root project for the Flix community build: per-file symlinks bund
 ```
 
 Dependency chain: `engine` is the foundation (no deps); `render_gl`, `engine_world`, and
-`engine_tools` each depend on it; `examples` depend on all four.
+`engine_tools` each depend on it; `engine_full` (published as `flix_game_engine`)
+bundles all four into the single package games depend on.
 `make sync` runs `build-pkg` on each package and distributes it to dependents via
 relative symlinks (symlink, not cp — so rebuilding the engine is reflected instantly).
 
@@ -211,7 +188,7 @@ make sync-engine-world   # build-pkg & distribute engine_world only
 make sync-engine-tools   # build-pkg & distribute engine_tools only
 make sync-root-src       # regenerate the root src/ symlinks for the Flix community build
 make clean-locks         # remove stale *.lock left in the Maven cache by an interrupted flix check
-make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loading)
+make clean-game-builds   # delete templates/*/build/ and bench/*/build/ (speeds up IDE scene loading)
 make boot-font           # re-bake the built-in splash font & logo into engine sources
 make clean-font-cache    # drop the cached font atlases (next launch re-bakes them)
 ```
@@ -340,8 +317,8 @@ AI がコードを書けば、どのエンジンでも敷居は下がる。差�
 ゲームは不変の `World` 値を中心に組み立てる: システムは Bevy 風 `App` が毎フレーム実行する
 純粋関数で、各フレームは `World` から描画を導出する。描画・入力・音声は
 LWJGL（OpenGL 3.3 Core / GLFW / OpenAL）を直接叩く自前実装。エンジンを再利用ライブラリとして
-提供し、`examples/` 配下に実際のゲームが並ぶ monorepo 構成。おすすめは
-**fe_rogue**（ファイアーエムブレム風 SRPG + ローグライク）。
+提供し、`templates/` 配下にそのまま動くスターターゲームが並ぶ monorepo 構成。
+`make new-game` でテンプレを写して、自分のリポジトリとして新しいゲームを始められる。
 
 ## 必要環境
 
@@ -358,10 +335,10 @@ devbox の JDK 21 で実行する（必要に応じて `-XstartOnFirstThread`・
 
 ```bash
 devbox shell        # JDK 21 + make + Flix コンパイラを取得し、bin/ を PATH に追加
-make sync            # 全エンジンパッケージを build-pkg し、examples・ide へ symlink 配布
+make sync            # 全エンジンパッケージを build-pkg し、templates・bench へ symlink 配布
 ```
 
-`make sync` は **初回に必ず一度実行する**。各 example はエンジンを
+`make sync` は **初回に必ず一度実行する**。各テンプレはエンジンを
 `lib/github/ababup1192/.../0.1.0/` への相対 symlink 経由で解決するため、これが無いと依存を解決できない。
 エンジンパッケージを編集したら `make sync`（またはパッケージ別の `sync-*` ターゲット。
 `engine_world` / `engine_tools` は `engine` の上に載るので、`engine` 編集後はそれらも再 sync する）で反映する。
@@ -370,57 +347,32 @@ make sync            # 全エンジンパッケージを build-pkg し、example
 make help            # 他ターゲット（sync-engine など）を一覧表示
 ```
 
-## おすすめゲーム: fe_rogue を遊ぶ
+## スターターゲーム（templates）
 
-ファイアーエムブレム風のターン制シミュレーション RPG（SRPG）＋ローグライク。
+テンプレはどれも「そのまま遊べる 1 本のゲーム」で、画風・Doc・テストが一式そろっている。
+エンジンの使い方を読むならここを読み、自分のゲームを始めるなら `make new-game` で写す。
 
-- ダンジョン階層を進行（階段でフロア移動）
-- プレイヤーターン → 敵ターンのサイクル、敵 AI が自動行動
-- ユニット／武器／杖（魔法）の装備・使用、戦闘予報（命中率・予想ダメージ）
-- 経験値・レベルアップ、ポーション等の消費アイテム
-
-### 実行
-
-```bash
-devbox shell
-make sync                 # 初回のみ
-cd examples/fe_rogue
-flix run                  # bin/flix ラッパ（macOS では -XstartOnFirstThread を自動付与）
-```
-
-### 操作方法
-
-| 操作 | キーボード | ゲームパッド（Xbox 配列） |
-|---|---|---|
-| カーソル移動 | 矢印キー | D-pad / 左スティック |
-| 決定（移動確定・攻撃・メニュー選択） | Z | A |
-| メニュー確定 | Enter | Start |
-| キャンセル / 戻る | X | B |
-| ミニマップ | M | Y |
-| 危険範囲トグル | Shift | LB |
-
-> Esc はマップ上でゲーム終了を誘発するため、操作には割り当てていない。
-
-### 配布パッケージ化
-
-JRE 同梱の `.dmg` / `.exe` や jar + ランチャの作り方は
-[`examples/fe_rogue/DISTRIBUTION.md`](examples/fe_rogue/DISTRIBUTION.md) を参照。
-
-## その他の examples
-
-| ゲーム | 内容 |
+| テンプレ | 内容 |
 |---|---|
-| **breakout** | ブロック崩し — 値ベースの入口教材（最初に読むならこれ。README あり） |
-| **sokoban** | 無制限アンドゥ（Worldline）の倉庫番 — 組み立て式 TUTORIAL 英日つき |
-| **fe_rogue** | FE 風ターン制 SRPG + ローグライク（おすすめ） |
-| **liars_room** | 嘘つき論理パズル — 全ステージ機械証明済み（Datalog） |
+| **game-starter** | 骨組みだけ。主人公（ドット絵）を矢印キーで動かせる。`make new-game` の既定 |
+| **platformer-starter** | 手触り重視のプラットフォーマー（コヨーテタイム・3 つの面・コインと旗） |
+| **rpg-starter** | 見下ろし RPG・アドベンチャー。陽だまりの城下町を歩き、住人に話しかけ、おつかいをこなす |
+| **novel-starter** | ノベル・推理。台本（文章・分岐・結末）は全部 JSON の rows |
+| **race-starter** | 真夏の海岸ハイウェイの見下ろしレース。危険な走りだけがニトロゲージを貯める |
+| **tetris-starter** | 落ち物パズル |
 
-どの example も同じ手順で実行・テストできる:
+どのテンプレも同じ手順で実行・テストできる:
 
 ```bash
-cd examples/<name>
+cd templates/<name>
 flix run             # 起動
 flix test            # テスト
+```
+
+自分のゲームを始める（別ディレクトリに、独立した git リポジトリとして産む）:
+
+```bash
+make new-game GAME=/abs/path/to/mygame NAME=mygame TITLE=題名 TEMPLATE=rpg-starter
 ```
 
 ## ゲームデータ（Doc）
@@ -448,7 +400,7 @@ engine/        契約層（GL 非依存・ネイティブ無し）: GameEngine.G
 render_gl/     engine の契約を実装する OpenGL/OpenAL バックエンド: LWJGL の窓/入力/音声・シェーダ・テクスチャ・SDF フォント（engine 依存）
 engine_world/  値ベースのゲームフレームワーク: Bevy 風 App ループ・ECS クエリ・物理・UI 部品・カメラリグ・Worldline undo/リプレイ・frontend サービス（アセット読み込み・セーブ・JSON・ログ）（engine 依存）
 engine_tools/  開発・テスト用ツール: headless ソフトラスタライザ・コマ撮り/GIF bake・スナップショットビューア・RenderLint・効果音合成（engine 依存）
-examples/      各ゲーム（engine・render_gl・engine_world・engine_tools 依存）
+templates/     スターターゲーム。そのまま動き、make new-game の写し元になる（全部入りの flix_game_engine 1 つに依存）
 bin/           flix ラッパスクリプト（コンパイラ jar は devbox/nix が供給）
 flix.toml
 src/           Flix コミュニティビルド用のルートプロジェクト: 全エンジンパッケージを
@@ -456,7 +408,8 @@ src/           Flix コミュニティビルド用のルートプロジェクト
 ```
 
 依存関係は `engine` が土台（依存ゼロ）で、`render_gl`・`engine_world`・`engine_tools` が
-それぞれ engine に依存し、`examples` はその 4 つすべてに依存する。
+それぞれ engine に依存する。ゲームが依存するのは、その 4 つを 1 つに束ねた
+`engine_full`（配布名 `flix_game_engine`）だけ。
 `make sync` が各パッケージを `build-pkg` し、依存先へ相対 symlink で配布する
 （cp ではなく symlink なので、エンジンを再ビルドすれば即座に反映される）。
 
@@ -469,7 +422,7 @@ make sync-engine-world   # engine_world だけ build-pkg & 配布
 make sync-engine-tools   # engine_tools だけ build-pkg & 配布
 make sync-root-src       # コミュニティビルド用ルート src/ symlink 集を再生成
 make clean-locks         # flix check 中断で残った Maven cache の *.lock を削除
-make clean-example-builds # examples/*/build/ を削除（IDE のシーン読み込み高速化用）
+make clean-game-builds   # templates/*/build/ と bench/*/build/ を削除（IDE のシーン読み込み高速化用）
 make boot-font           # 起動画面の組み込みフォント・ロゴを engine のソースへ焼き直す
 make clean-font-cache    # フォントの焼き上がりのキャッシュを捨てる（次の起動は焼き直し）
 ```

@@ -14,7 +14,7 @@
   必ずこちら**を使う。位置つきの絵を値として返すだけの宣言的な組み方で、CameraRig・
   DualGrid・Fx など engine_world の道具はすべてこの経路の上に乗る。
 - **Drawable 経路**（`engine/src/render/Camera.flix` と `Projection.flix`、および
-  `view = None` で `GameEngine.Drawable` を自分で組むゲーム）。**examples/fe_rogue だけが
+  `view = None` で `GameEngine.Drawable` を自分で組むゲーム）。**一部のゲームだけが
   使う古い経路**で、新規のゲームでは使わない。Sprite / Rect / Polygon / Arc / Text /
   TileLayer / Tileset / Transform / Visual といった `render/` 配下の描画物の型も、
   もともとはこの経路のノード型（Godot のノードに近い作り）で、PlacedItem 経路は
@@ -70,7 +70,7 @@
 | 今フレーム押されているキー・マウスボタンの集合を取りたい | InputEvent |
 | HUD を本体より確実に手前に出す zIndex の基準が欲しい | CanvasLayer |
 | 放射グラデの組み込みテクスチャ（`__radial_light` / `__radial_dark`）の画素・名前・寸法を知りたい | RadialBuiltin（ゲーム側の窓口は engine_world の `Render.lightAt` / `Render.darkAt`） |
-| Drawable 経路のカメラ・投影を知りたい（fe_rogue 以外では使わない） | Camera / Projection |
+| Drawable 経路のカメラ・投影を知りたい（`view = None` のゲーム以外では使わない） | Camera / Projection |
 | 画面でなくレンダーターゲットに描いてテクスチャとして読み返したい（`eff Target`） | RenderTarget（GL 実装は render_gl の Target.flix / RenderTargetGl。ゲーム側の窓口は engine_world の `Render.Pass` + `App.withPasses`、[逆引き](module-index.md)を参照） |
 | いま bind 中のフレームバッファ（FBO でも既定でも）を画像 / PNG に吸い出したい | GlReadback（render_gl の Readback.flix。`readBoundImage`（RGBA・左上原点）/ `readBoundImageRgb`（RGB に落とす皮）/ `readBoundPng`。splashShot・注釈スクショ・GL 突き合わせ（bench/gl_parity）が共有する読み出しの核） |
 
@@ -103,7 +103,7 @@
 - **GpuHandle** — バックエンドが割り当てる描画リソースのハンドル（タイル VBO やテクスチャの実体を 1 枚の型で包む）。
 - **JoyoKanji** — フォントアトラスに書き込む常用漢字 + UI 記号のコードポイント列。
 - **Num** — 数の小さな道具（0〜1 に収める・小数部だけ残す・周期で折り返す）。書き方の揺れをなくすため 1 箇所にまとめる。
-- **ProjectLoader** — project.json を読み込んで engine 起動用の設定 + scene ファイル列挙を提供する。engine / examples が共通で読む唯一の真実。
+- **ProjectLoader** — project.json を読み込んで engine 起動用の設定 + scene ファイル列挙を提供する。engine とゲームが共通で読む唯一の真実。
 - **Rect2** — 2D の矩形を「左上の座標」と「幅・高さ」で表し、当たり・包含・膨張などを計算する。
 - **RenderUtil** — 描画に使う数値変換ヘルパー。GL の uniform やシェーダに渡す前の Float32 変換・丸め・三角関数をまとめる。
 - **TextLayout** — 文字列の一文字ずつを、どこに置くか（改行・折り返し・中央寄せ）を計算する。
@@ -117,7 +117,7 @@
 - **Arc** — 円弧・リングを描く描画物。中心から半径・太さのリングを、開始角から終了角まで単色で塗る。
 - **BootFont** — 起動画面が使う組み込みフォントとロゴを、埋め込みデータ（BootFontData）から組み立てる。ゲームのフォントは起動時にまだ生成できていないため、起動画面専用に持つ。
 - **BootFontData** — 生成物。手で編集しない（`make boot-font` で生成し直す）。Splash が使う組み込みフォントとロゴの素データ。
-- **Camera** — Drawable 経路（`view = None` で renderCommands を自前で組むゲーム。fe_rogue が実例）専用のカメラ部品。PlacedItem 経路は `App.withCamera` / `App.withZoom` + `CameraRig` を使うので、そちらでは使わない。
+- **Camera** — Drawable 経路（`view = None` で renderCommands を自前で組むゲーム）専用のカメラ部品。PlacedItem 経路は `App.withCamera` / `App.withZoom` + `CameraRig` を使うので、そちらでは使わない。
 - **CanvasLayer** — HUD やオーバーレイを本体より手前に重ねるための描画レイヤー番号の基準。レイヤー番号 × layerStride を zIndex に加算する。
 - **CollisionShape2D** — 当たり判定に使う 2D の幾何形状（矩形・円・カプセル・坂）。形状同士の重なり・点の内外・押し出しベクトルの計算をまとめて持つ。
 - **InputEvent** — 現在フレームで押されているキー・マウスボタンをまとめて取得する。押下エッジは呼び側が前フレームと差分して取る。

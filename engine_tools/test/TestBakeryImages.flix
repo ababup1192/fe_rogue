@@ -28,7 +28,7 @@ mod TestBakeryImages {
     /// GIF が実在し・コマ別 PNG が design どおりの寸法で読み戻せ・Filmstrip 情報も 3 コマになる。
     @Test
     def testBakeGifWithWritesGifAndFrames(): Unit \ IO + Assert =
-        let ttf = "../examples/feature_lab/assets/Xolonium-Regular.ttf";
+        let ttf = "../templates/game-starter/assets/Xolonium-Regular.ttf";
         let atlas = HeadlessFont.buildUiAtlas(ttf, ttf);
         let cfg: Bakery.BakeConfig =
             { design = { x = 16.0, y = 12.0 }, scale = 1,

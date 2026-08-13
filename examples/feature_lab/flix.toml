@@ -1,9 +1,0 @@
-[package]
-name        = "ex_feature_lab"
-description = "feature_lab — engine_world の新機能を雑多に試す実験場（今日の実験: Transition）"
-version     = "0.1.0"
-flix        = "0.75.1"
-authors     = ["ababup1192 <ababup1192@gmail.com>"]
-
-[dependencies]
-"github:ababup1192/flix_game_engine" = { version = "0.23.5", security = "unrestricted" }

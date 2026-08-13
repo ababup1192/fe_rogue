@@ -243,7 +243,7 @@ mod TestAnnotate {
 
     /// 生の描画命令（Drawable）からの列挙: 中心置き・2 倍のスプライト（元 10×20 → 外形 20×40、
     /// 左上 (90,80)）は矩形に重なり、種類 "sprite" とテクスチャ名で報告される。
-    /// （view を持たず生チャンネルを登録するゲーム = fe_rogue 向けの経路）
+    /// （view を持たず生チャンネルを登録するゲーム向けの経路）
     @Test
     def testHitsFromDrawablesFindsSprite(): Unit \ Assert =
         let white = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };

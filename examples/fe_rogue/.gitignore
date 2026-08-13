@@ -1,5 +1,0 @@
-# 中断セーブ等のセーブデータは追跡しないが、ディレクトリ自体は残す
-# （SaveManager は saves/slotN.json への相対パスを使い、Fs.WriteFile は
-#  親ディレクトリを自動作成しないため。ディレクトリが無いと中断保存が失敗する）
-saves/*
-!saves/.gitkeep

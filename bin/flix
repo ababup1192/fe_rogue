@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # flix ラッパ。CWD が ide/ 配下のときは AWT/Swing 用に -XstartOnFirstThread を付けない。
-# それ以外 (engine, editor, examples の GLFW ベース) では macOS のときだけ AppKit 要件のため付ける
+# それ以外 (engine, editor, ゲームの GLFW ベース) では macOS のときだけ AppKit 要件のため付ける
 # (Linux/CI の JVM は -XstartOnFirstThread を拒否するので付けない)。
 #
 # IDE モードかつ `run` サブコマンドのときに限り、起動前に
-# `make -C <project_root> clean-example-builds` を呼ぶ。
-# ProjectLoader.findSceneFiles の Fs.Glob が examples/*/build/class 配下の
+# `make -C <project_root> clean-game-builds` を呼ぶ。
+# ProjectLoader.findSceneFiles の Fs.Glob が templates/*/build/class 配下の
 # 数十万 .class ファイルを stat して数分かかる問題を回避するため。
-# (clean したぶん examples の incremental compile キャッシュは失われる)
+# (clean したぶん incremental compile のキャッシュは失われる)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 case "$PWD" in
     */ide|*/ide/*)
         if [ "$1" = "run" ]; then
-            make -C "$PROJECT_ROOT" clean-example-builds >&2
+            make -C "$PROJECT_ROOT" clean-game-builds >&2
         fi
         FLAGS=""
         ;;

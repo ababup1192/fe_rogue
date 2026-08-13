@@ -1,4 +1,0 @@
-box    z=30110 pos=(48.00,44.00) size=(74.00,35.00) rgb=#0d0d26 a=0.90 corner=0.00 border=1.00/#ffffff/1.00
-box    z=30119 pos=(53.50,58.50) size=(63.00,7.00) rgb=#16314f a=1.00 corner=2.00 border=0.50/#2f6df0/1.00
-text   z=30120 n=10 bbox=(53.00,48.00)-(91.00,51.13) rgb=#ffffff
-text   z=30120 n=5 bbox=(54.50,59.00)-(64.50,70.13) rgb=#eef1f7

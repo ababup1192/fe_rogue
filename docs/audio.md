@@ -20,7 +20,7 @@
 ]
 ```
 
-3. 「前後の World から鳴らす音名を導く」純関数を書く（examples/sokoban/src/Sfx.flix を削った形）。
+3. 「前後の World から鳴らす音名を導く」純関数を書く（templates/race-starter/src/Sfx.flix を削った形）。
 
 ```flix
 mod Sfx {
@@ -165,7 +165,7 @@ App.make(initialWorld)
 engine_tools 側の `SfxSynth.wavBytes` / `writeBytes` / `bakeSet` が持つので、ゲーム側は
 波形の足し算だけ書けばよい。
 
-`examples/breakout/src/bake/SfxBake.flix` からの抜粋:
+`templates/race-starter/src/bake/SfxBake.flix` と同じ組み立て方の抜粋:
 
 ```flix
 def cfg(): SfxSynth.Config = { sampleRate = 22050 }

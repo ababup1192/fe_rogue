@@ -12,7 +12,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
   自分のゲームが引いているバージョンは `flix.toml` の `github:ababup1192/flix_game_engine` を見る。
 - 呼び方: `Render.shaderFill(spec, rect, t, z)` / `Render.shaderFillMasked(spec, rect, polys, t, z)`
 - 読み方: `ShaderJson.load(path)` は **fail-open**。`Result.getWithDefault(既定の Spec)` で受ける
-- 保存即反映: `App.watchFile(path, …)` に繋ぐ（`examples/shader_gallery/src/Main.flix:18` が手本）
+- 保存即反映: `App.watchFile(path, …)` に繋ぐ（`templates/rpg-starter/src/Controls.flix` が手本）
 
 ## 全体の形
 
@@ -144,8 +144,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 ### 2. 水面のコースティクス（網目）
 
 `worley` の `out` を `"f2mf1"` にして `smoothstep` で細く締め、`ramp` で 2 色。
-完成形は `examples/feature_lab/assets/Water.shader.json`（丸い池型に `alpha` で抜く例）と
-`examples/shader_gallery/assets/water_caustic_pond.shader.json`（`shared` で網とムラを
+完成形は `templates/rpg-starter/assets/town.shader.json`（水路の水面を `shared` で網とムラを
 分けて足し合わせる実践形）。
 
 ### 3. vignette（画面の四隅を落とす）— `radialAspect` **[新]** が要る
@@ -176,8 +175,6 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 `{"kind":"tex","name":"…"}` で、名前つきテクスチャの画素を場として読める。名前は
 **pass（レンダーターゲット）の名前**か、登録済みの普通のテクスチャ名。pass と組むと
 「前段で生成した絵を歪めて読む」（ぼかし・陽炎・衝撃波・色調変換）が JSON だけで書ける。
-実証面は `examples/feature_lab` の tex_blit / tex_blur / tex_haze / tex_shock / tex_grade。
-
 - 標本は**補間なし（NEAREST）・端は張り付き（CLAMP）**。`shift` で端を越えても
   反対側へ回り込まない（実機は sampler object で通常テクスチャの REPEAT も封じる）
 - 値は 8bit を 255 で割った 0〜1。pass の上下逆格納は実機側が自動で吸収する（JSON は何もしない）
@@ -214,5 +211,5 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 ## Studio で触れるようにする
 
 `<名前>.shader.schema.json` を隣に置くとフォームになる（手本:
-`examples/feature_lab/assets/Water.shader.schema.json`）。方言は
+`templates/game-starter/assets/shader.schema.json`）。方言は
 [doc-conventions.md](doc-conventions.md) と `/doc-design` skill を参照。

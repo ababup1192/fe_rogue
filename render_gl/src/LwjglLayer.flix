@@ -850,7 +850,7 @@ mod LwjglLayer {
         // 扱いになり onKeyPressed が複数回発火する。例えば A→Z/Space/Enter にすると Confirm が
         // 3 連発し、メニューを開いた直後に確定して行動を消費してしまう
         // (キーボードは 1 キー 1 入力なのでこの問題は出ない)。
-        // fe_rogue: 決定=Z=A / メニュー確定=Enter=Start / キャンセル=X=B /
+        // 例: 決定=Z=A / メニュー確定=Enter=Start / キャンセル=X=B /
         // ミニマップ=M=Y / 危険範囲トグル=LeftShift=LB。
         // Escape はマップ上でゲーム終了を誘発するためパッドには **割り当てない**。
         // キャンセル / メニュー戻りは X=B で十分 (dispatchMenuKey が X→Cancel を全サブメニューで処理)。

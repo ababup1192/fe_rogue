@@ -3,7 +3,7 @@
 **ここで言う「ヘッドレス生成」**は、実ウィンドウ（GLFW/OpenGL）を開かずに、場面を PNG 連番と
 GIF に生成すること。テスト・CI・見た目の確認、どれもこれで足りる。新しい場所（リポジトリの
 外の `/tmp` でも、このリポジトリの `scratch/` の下でも）に最小構成を組むときの写経元がこの
-1 ページ。Makefile や examples を読み歩かなくても、ここだけ読めば組める。
+1 ページ。Makefile や templates を読み歩かなくても、ここだけ読めば組める。
 
 このレシピは 2 つの実例を検証済みの正として写した:
 
@@ -61,7 +61,7 @@ authors     = ["you <you@example.com>"]
 `Text` を 1 文字でも描くなら（描かない場面はまず無い）、フォントが要る。要るのは 3 つだけ:
 
 1. **TTF 本体**を 1 本、`assets/` に置く（Xolonium 等。このリポジトリの
-   `examples/*/assets/Xolonium-Regular.ttf` を丸ごとコピーしてよい）
+   `templates/game-starter/assets/Xolonium-Regular.ttf` を丸ごとコピーしてよい）
 2. `HeadlessFont.buildAtlas("ui", ttfPath)` を呼んで `FontAtlas` を作る
    （GL が無くても Java2D の `FontMetrics` だけでメトリクスを測る。グリフ画像そのものは
    焼かない — 実描画は `SoftRaster` が出力解像度で直接 `drawString` するので不要）
@@ -130,7 +130,7 @@ mod Bake {
 | | リポジトリ内（`scratch/` 等） | リポジトリ外（`/tmp` 等） |
 |---|---|---|
 | `flix.toml` の依存 | 個別パッケージ（`flix_engine_core` 等）を相対で借りてもよい | `flix_game_engine` を GitHub 経由で丸ごと借りる |
-| フォント | 既存の `examples/*/assets/*.ttf` を相対パスでそのまま使い回してよい（コピー不要） | `assets/` に TTF を 1 本コピーして持つ（借りる先が無い） |
+| フォント | 既存の `templates/*/assets/*.ttf` を相対パスでそのまま使い回してよい（コピー不要） | `assets/` に TTF を 1 本コピーして持つ（借りる先が無い） |
 | flix コマンドの実行 | リポジトリ直下の `bin/flix`（devbox の flix.jar を自動で見つける）をそのまま使う | `bin/flix` を自分の場所にも置く（`/tmp/probe_bonfire/bin/flix` を丸ごとコピーしてよい。devbox / PATH の flix / 手元の `bin/flix.jar` の順で jar を探す） |
 | 焼き込みの入口 | `@Test` の中から `Bakery.bakeGif` を直接呼ぶ形でもよい（`scratch/field_walk_demo/test/TestFieldWalkBake.flix`）。焼いたファイルが実在するかを検査する煙テストにできる | `Bake.all()` を entrypoint にして `./bin/flix run --entrypoint Bake.all` |
 | git | `scratch/` はリポジトリの `.gitignore` で丸ごと除外済み。焼いた PNG/GIF も気にせず作れる | 好きに使い捨てる場所（`/tmp` 等） |

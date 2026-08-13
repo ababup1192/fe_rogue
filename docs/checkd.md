@@ -44,7 +44,7 @@ check と test は 1 本の repl が両方受ける。温まった repl の `:te
 - `:test` は 1 回ごとにメモリが数百 MB 増える (check より漏れが速い)。4GB の
   上限に当たったら repl をその場で使い捨てるので、直後の 1 回だけ遅くなるのは仕様
 - repl には常に `-Djava.awt.headless=true` を付けて起動する。GLFW と AWT の初期化が
-  ぶつかるとテストが固まるパッケージがあるため (fe_rogue 等)。checkd は run を
+  ぶつかるとテストが固まるパッケージがあるため。checkd は run を
   扱わないので、常時付けて害はない
 
 結果が疑わしい時の逃げ道は check と同じ: `CHECKD=0 make test` で素の経路に戻る。

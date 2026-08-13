@@ -22,7 +22,7 @@ lint-palette が「色が解けるか」を見るのに対し、こちらは画�
   "lint-sprite": "対象外(jaggy, banding) — 遠景の山肌はギザギザが画風"
 と理由付きで書く (括弧を省くと全規則が対象外)。黙って除外はしない。
 
-  python3 bin/lint-sprite.py                  # templates/ と examples/ を全部見る
+  python3 bin/lint-sprite.py                  # templates/ を全部見る
   python3 bin/lint-sprite.py a.sprite.json    # 指定ファイルだけ見る
   python3 bin/lint-sprite.py --strict         # 「注意」も NG に数える
   python3 bin/lint-sprite.py --self-test      # 内蔵の最小例で自分自身を検査
@@ -43,8 +43,7 @@ for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
 EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
-GAME_ROOTS = ("templates", "examples")
-SKIP_GAMES = {"examples/fe_rogue"}
+GAME_ROOTS = ("templates",)
 
 # legend に無い文字のうち、透明として認める物。それ以外は typo と見なす
 # (エンジンは fail-open で無言で透明にするため、ゲートが代わりに声を出す)。
@@ -508,7 +507,7 @@ def game_dirs(root):
             continue
         for name in sorted(os.listdir(group_dir)):
             rel = f"{group}/{name}"
-            if rel in SKIP_GAMES or not os.path.isdir(os.path.join(root, rel)):
+            if not os.path.isdir(os.path.join(root, rel)):
                 continue
             dirs.append(rel)
     if not dirs and os.path.isdir(os.path.join(root, "assets")):

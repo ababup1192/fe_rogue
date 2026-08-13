@@ -1,5 +1,0 @@
-box    z=70110 pos=(2.00,31.00) size=(22.24,66.60) rgb=#1e2638 a=0.95 corner=3.00 border=1.00/#2a3445/1.00
-box    z=70118 pos=(4.00,33.00) size=(18.24,5.60) rgb=#11182a a=1.00 corner=2.00 border=0.00/#ffffff/0.00
-box    z=70119 pos=(4.50,40.10) size=(17.24,7.00) rgb=#16314f a=1.00 corner=2.00 border=0.50/#2f6df0/1.00
-text   z=70120 n=4 bbox=(8.32,34.00)-(16.72,35.88) rgb=#9cc0ff
-text   z=70121 n=17 bbox=(8.00,41.68)-(16.96,91.68) rgb=#eef1f7

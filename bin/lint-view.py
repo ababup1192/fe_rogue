@@ -4,7 +4,7 @@
 絵の下限 5 性質（面に階調か質感 / 主役が背景から分離 / 層が分かれている /
 時間が流れている）は box と circle では作れない。人の目視より前に機械が声を出す。
 
-  python3 bin/lint-view.py                 # templates/ と examples/ を全部見る
+  python3 bin/lint-view.py                 # templates/ を全部見る
   python3 bin/lint-view.py path/to/View.flix ...  # 指定ファイルだけ見る
 
 標準ライブラリだけで動く（Windows / macOS / Linux 共通）。
@@ -146,7 +146,7 @@ def main(argv):
         root = Path(__file__).resolve().parent.parent
         targets = [
             p
-            for base in ("templates", "examples")
+            for base in ("templates",)
             for p in (root / base).rglob("*.flix")
         ]
 

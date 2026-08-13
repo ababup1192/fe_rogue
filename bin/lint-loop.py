@@ -2,7 +2,7 @@
 """ループ GIF の継ぎ目を機械で確かめる (標準ライブラリのみ)。
 
   python3 bin/lint-loop.py out/frames/bonfire      # コマ列ディレクトリを指定
-  python3 bin/lint-loop.py                         # templates/ examples/ 配下を全部
+  python3 bin/lint-loop.py                         # templates/ 配下を全部
   python3 bin/lint-loop.py --strict                # 注意を NG に上げる
   python3 bin/lint-loop.py --self-test             # この lint 自身の検査
 
@@ -92,12 +92,12 @@ def check_dir(directory):
     return [note] if note else []
 
 
-GAME_ROOTS = ("templates", "examples")
+GAME_ROOTS = ("templates",)
 EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "target", "node_modules"}
 
 
 def discover(root):
-    """templates/ と examples/ 配下(無ければ自分自身)の frames/*/ を探す。"""
+    """templates/ 配下(無ければ自分自身)の frames/*/ を探す。"""
     bases = []
     for group in GAME_ROOTS:
         group_dir = os.path.join(root, group)

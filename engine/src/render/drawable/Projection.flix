@@ -1,4 +1,4 @@
-/// ※ これは Drawable 経路（view = None で renderCommands を自前で組むゲーム。fe_rogue が実例）
+/// ※ これは Drawable 経路（view = None で renderCommands を自前で組むゲーム）
 /// の投影部品。PlacedItem 経路（withView のゲーム）は App.withCamera / withZoom + CameraRig が
 /// 同じ役割を担うので、そちらでは使わない。
 ///

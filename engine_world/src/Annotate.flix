@@ -308,7 +308,7 @@ mod Annotate {
         }
 
     /// 描画命令（Drawable）の列から矩形に重なる物を列挙する。view を持たず生の描画チャンネルを
-    /// 登録するゲーム（fe_rogue 等）向け。texture が空の Drawable は単色の箱（scale が px サイズ）、
+    /// 登録するゲーム向け。texture が空の Drawable は単色の箱（scale が px サイズ）、
     /// それ以外はスプライト（scale は倍率・region 表示ぶんは uvScale で縮む）として外形を出す。
     pub def hitsFromDrawables(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
                               rect: Rect2.Rect2, ds: List[GameEngine.Drawable]): List[Hit] \ ef =

@@ -1,10 +1,10 @@
-// fe_rogue が使う実際の _schema.json と同じ JSON 文字列を Saveable[ResourceSchema]
+// 実際の _schema.json と同じ JSON 文字列を Saveable[ResourceSchema]
 // で round-trip できるか検証する。本番ロード時の Option None の原因が
 // 文字列 JSON 段階で再現するなら、ファイル I/O ではなく decoder のバグ。
 
 mod TestResourceSchemaJson {
 
-    /// fe_rogue/resources/units.schema.json と同等の JSON 文字列
+    /// units.schema.json と同等の JSON 文字列
     def schemaJson(): String = String.unlines(
         "{" ::
         "  \"fields\": {" ::

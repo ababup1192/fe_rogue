@@ -27,10 +27,7 @@ import sys
 
 EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
 
-GAME_ROOTS = ("templates", "examples")
-
-# examples/fe_rogue は廃止予定 (新しく作る人のお手本にしない方針) なので検査しない。
-SKIP_GAMES = {"examples/fe_rogue"}
+GAME_ROOTS = ("templates",)
 
 # 音名を直接受け取る再生系呼び出し。第 1 引数の文字列リテラルを「使っている名前」として集める。
 CALL_RE = re.compile(
@@ -146,10 +143,10 @@ def game_dirs(root):
             continue
         for name in sorted(os.listdir(group_dir)):
             rel = f"{group}/{name}"
-            if rel in SKIP_GAMES or not os.path.isdir(os.path.join(root, rel)):
+            if not os.path.isdir(os.path.join(root, rel)):
                 continue
             dirs.append(rel)
-    # 生成されたゲームには templates/ も examples/ も無い。空を返すと
+    # 生成されたゲームには templates/ が無い。空を返すと
     # 「検査したが問題なし」と見分けが付かず、ゲートが何も言わずに通してしまう。
     if not dirs and os.path.isfile(os.path.join(root, "project.json")):
         dirs.append(".")

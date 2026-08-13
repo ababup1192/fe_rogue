@@ -97,7 +97,7 @@ mod GameEngine {
     }
 
     /// タイルマップ 1 タイル分のインスタンスデータ。共有型 `DrawCmd.TileInstance`。
-    /// tilemap loader (fe_rogue 側 `TileRendering.buildTileInstances` 等) が生成し、
+    /// tilemap loader (ゲーム側の `buildTileInstances` 相当) が生成し、
     /// `initTileBuffer` で GPU にアップロードする。
     pub type alias TileInstance = DrawCmd.TileInstance
 

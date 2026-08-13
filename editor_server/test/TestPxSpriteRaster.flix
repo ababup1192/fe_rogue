@@ -5,7 +5,7 @@
 mod TestPxSpriteRaster {
     import java.awt.image.BufferedImage
 
-    def ttf(): String = "../examples/platformer/assets/Xolonium-Regular.ttf"
+    def ttf(): String = "../templates/game-starter/assets/Xolonium-Regular.ttf"
 
     def doc(): PxSpriteDoc.Doc =
         PxSpriteDoc.fromJson(String.unlines(

@@ -24,7 +24,7 @@ allowed-tools: Read, Grep, Glob, Bash
 1. `make bake-par`（不審なら逐次の `make bake`）
 2. `git status` で assets/sfx の差分ゼロを確認（音や素材の退行はここに出る）
 3. `for d in templates/*/; do make -C "$d" bench; done` で全テンプレの絵が基準と一致するか確認
-4. examples 側はスナップショットを持たないので、生成し直した `gallery/` を自分で目視する
+4. 基準を持たない絵は、生成し直した `gallery/` を自分で目視する
    （`.claude/skills/critique-bake` の手順）
 
 `python3 bin/lint-images.py` も併せて通す（生成した絵が git に紛れ込んでいないか）。
@@ -56,12 +56,12 @@ tag は現在の HEAD SHA に固定される。
 - **sync の出し忘れ**: engine / engine_world / engine_tools のソースを触ったら対応する
   `make sync-<name>` を通してからテストする。古い fpkg のまま緑になっても信用できない
 - **lint 群は先に手で回す**: フック任せにせず `make lint-view lint-palette lint-ui lint-audio` を
-  リリース前に一巡させる。既知の赤（例: examples 側の未修正）が残ったままだとゲートで止まる
+  リリース前に一巡させる。既知の赤が残ったままだとゲートで止まる
 - **`make test-par` の偽 FAIL**: ログが依存解決で途切れテスト 0 本なら並列の食い合い。
   当該パッケージを単体 `make test-<name>` で確かめ、必要なら `make release TEST=test`（逐次）
 - **`make release` は未コミットで中断する**: `gallery/` や `NOTES.md` は git 管理外なので
   `git status` に出ない＝残っていても邪魔しない。出ている差分だけ全部コミットする
 
-**全量ゲート**は `make test-par`（全パッケージ並列・壁時計 ≈ fe_rogue 1 本分・ログは `.test-logs/`）。
+**全量ゲート**は `make test-par`（全パッケージ並列・壁時計 ≈ 最遅パッケージ 1 本分・ログは `.test-logs/`）。
 併せて `make gl-parity` を回して A 段全一致（全 scene 0 px）を確認する（GL と SoftRaster の絵の退行はテストに出ない）。
 並列版に不審な挙動があれば逐次へフォールバックする（`make test` / `make release TEST=test`）。

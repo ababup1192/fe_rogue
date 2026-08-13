@@ -36,8 +36,6 @@ __pycache__/
 # title.png だけは Studio のジャンルカードのサムネイルが実体を読むので例外。
 **/reference/*.png
 !**/reference/title.png
-# 目視用の生成物（スナップショット比較はしていない）。
-examples/fe_rogue/test/snapshots/gifs/
 # 使い捨ての試作置き場。
 scratch/
 # debug/ 丸ごとは src/debug/(実ソース) や debug/ 直下の検証ツール(replay_tiles.py ほか)を

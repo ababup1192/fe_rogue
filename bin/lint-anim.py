@@ -362,13 +362,12 @@ def _self_test():
     return 1 if bad else 0
 
 
-GAME_ROOTS = ("templates", "examples")
-SKIP_GAMES = {"examples/fe_rogue"}
+GAME_ROOTS = ("templates",)
 EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "gallery", "reference", "target"}
 
 
 def discover(root):
-    """templates/ と examples/ 配下、無ければ自分の assets/ を見る。
+    """templates/ 配下、無ければ自分の assets/ を見る。
 
     エンジンのリポでもゲーム 1 本のリポでも同じ 1 ファイルで動かすため。
     """
@@ -379,7 +378,7 @@ def discover(root):
             continue
         for name in sorted(os.listdir(group_dir)):
             rel = f"{group}/{name}"
-            if rel in SKIP_GAMES or not os.path.isdir(os.path.join(root, rel)):
+            if not os.path.isdir(os.path.join(root, rel)):
                 continue
             bases.append(os.path.join(root, rel))
     if not bases:

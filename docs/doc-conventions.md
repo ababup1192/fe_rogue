@@ -99,7 +99,7 @@ sprite Doc 直下の `palette`** の 3 つだけで、どれにも無い名前�
 指す。書き出した色票と実機の色が一致することをテスト 1 本で pin しておけば、
 色票の生成忘れに気付ける。
 
-`make lint-palette` が `templates/` と `examples/` の全 sprite Doc を検査し、
+`make lint-palette` が `templates/` の全 sprite Doc を検査し、
 解けない名前を挙げる。
 
 ## 宣言し忘れは検査が知らせる

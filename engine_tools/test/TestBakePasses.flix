@@ -24,7 +24,7 @@ mod TestBakePasses {
         { design = { x = 4.0, y = 4.0 }, scale = scale,
           background = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
           texturePath = Map.empty(),
-          fontTtf = "../examples/breakout/assets/Xolonium-Regular.ttf",
+          fontTtf = "../templates/game-starter/assets/Xolonium-Regular.ttf",
           fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
                         ascent = 12.0, descent = 4.0, lineGap = 0.0, glyphs = Map.empty() },
           outDir = "build/test/bakepasses", frameW = 4, frameH = 4,

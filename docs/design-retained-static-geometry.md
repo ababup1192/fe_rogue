@@ -54,7 +54,7 @@
 
 - 静的は `World.Prebuilt = { tiles: List[StaticTile], occluders }`(`World.flix:26-27`)、`StaticTile = { anchor, item: PlacedItem }`(`World.flix:21`) に生成済み。生成し直すのは `Controls.loadFloors`(起動時)・`Controls.reloadAll`(F1/保存時) だけ(`Controls.flix:54-62, 75-82`)。
 - 毎フレーム `View.frame`(`View.flix:69-80`) は `visibleStatic`(`View.flix:85-89`) で anchor カリングし `tile#item` をそのまま返す（頂点は作り直さない）。作り直しは全部下流（centerOn→draw→GL）。
-- **dungeon は `withCamera(World.cameraCenter)` のみで zoom 未使用**(`Main.flix:22`、examples 全体で `withZoom` 0 件)。camera は毎フレーム平行移動だけ。静的頂点は zoom で変形されない。
+- **dungeon は `withCamera(World.cameraCenter)` のみで zoom 未使用**(`Main.flix:22`、ゲーム側で `withZoom` 0 件)。camera は毎フレーム平行移動だけ。静的頂点は zoom で変形されない。
 - 静的:動的 ≈ 10:1〜100:1（`View.flix:65-68`「B2 は静止部品が数千個」）。
 
 ### 毎フレームのコスト（プロファイル 48%+26%）
@@ -68,7 +68,7 @@
 
 ### スナップショット / 生成の独立性（R1）
 
-- `make test-fe_rogue` は `cd examples/fe_rogue && flix test`(`Makefile:200-213`)。スナップショットは `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。生成も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えてもスナップショットは動かない = retained の退行を検知できない（R1 の核心）。**
+- ゲーム側のテストはスナップショット比較で、 `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。生成も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えてもスナップショットは動かない = retained の退行を検知できない（R1 の核心）。**
 
 ### 切り分けトグルの前例
 

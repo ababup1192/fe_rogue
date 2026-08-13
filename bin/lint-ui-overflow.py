@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ui.json の text が「折り返し宣言の漏れ」ではみ出さないかを機械で確かめる (標準ライブラリのみ)。
 
-  python3 bin/lint-ui-overflow.py                 # templates/ と examples/ の *.ui.json を全部
+  python3 bin/lint-ui-overflow.py                 # templates/ の *.ui.json を全部
   python3 bin/lint-ui-overflow.py a.ui.json       # 指定ファイルだけ
   python3 bin/lint-ui-overflow.py --strict        # 注意も NG に上げる
   python3 bin/lint-ui-overflow.py --self-test     # この lint 自身の検査
@@ -234,13 +234,12 @@ def _self_test():
     return 1 if bad else 0
 
 
-GAME_ROOTS = ("templates", "examples")
-SKIP_GAMES = {"examples/fe_rogue"}
+GAME_ROOTS = ("templates",)
 EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "gallery", "reference", "target"}
 
 
 def discover(root):
-    """templates/ と examples/ 配下、無ければ自分の assets/ を見る。
+    """templates/ 配下、無ければ自分の assets/ を見る。
 
     エンジンのリポでもゲーム 1 本のリポでも同じ 1 ファイルで動かすため。
     """
@@ -251,7 +250,7 @@ def discover(root):
             continue
         for name in sorted(os.listdir(group_dir)):
             rel = f"{group}/{name}"
-            if rel in SKIP_GAMES or not os.path.isdir(os.path.join(root, rel)):
+            if not os.path.isdir(os.path.join(root, rel)):
                 continue
             bases.append(os.path.join(root, rel))
     if not bases:

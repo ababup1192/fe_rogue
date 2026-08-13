@@ -257,11 +257,6 @@ mod TestMapResource {
         let m = MapResource.ruleMatches(intGrid, 3, 3, 1, 1, rule);
         Assert.assertEq(expected = true, m)
 
-    // testBuildAutoRuleTilesSkipsManualCoords は MapLoader.buildAutoRuleTiles を呼ぶが、
-    // MapLoader は段階 2c で `examples/fe_rogue/src/lib/map/` へ移動したため
-    // engine 側からは参照できなくなった。MapLoader 側のテストは fe_rogue 配下で
-    // 追加する場合に書き直す (現状は MapResource 側の ruleMatches テストでカバー)。
-
     /// 中央 Value(1) を要求するルールは、intGrid 中央が床 (1) のときだけマッチし、
     /// 自動壁 (2) や空 (0) では拒否される (= 床上だけに装飾を置く LDtk 風ルール)。
     @Test

@@ -156,7 +156,7 @@ def section_reference(out):
 
 def section_tickets(out):
     dirs = glob.glob(os.path.join("debug", "annotations", "*")) + \
-        glob.glob(os.path.join("examples", "*", "debug", "annotations", "*"))
+        glob.glob(os.path.join("templates", "*", "debug", "annotations", "*"))
     dirs = [d for d in dirs if os.path.isdir(d)]
     if not dirs:
         return

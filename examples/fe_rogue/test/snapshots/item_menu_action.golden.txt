@@ -1,5 +1,0 @@
-box    z=80130 pos=(37.00,40.00) size=(52.00,47.10) rgb=#1e2638 a=0.95 corner=3.00 border=1.00/#2a3445/1.00
-box    z=80138 pos=(39.00,42.00) size=(48.00,5.60) rgb=#11182a a=1.00 corner=2.00 border=0.00/#ffffff/0.00
-box    z=80139 pos=(39.50,49.60) size=(47.00,11.00) rgb=#16314f a=1.00 corner=2.00 border=0.50/#2f6df0/1.00
-text   z=80140 n=10 bbox=(41.00,43.00)-(54.35,44.88) rgb=#9cc0ff
-text   z=80141 n=8 bbox=(49.00,53.45)-(54.50,79.17) rgb=#eef1f7

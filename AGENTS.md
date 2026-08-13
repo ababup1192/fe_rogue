@@ -134,7 +134,6 @@ git log 掘りやテスト回し直しから始めない。
 | 絵・演出を直すとき | `/bake-loop` |
 | templates/ を足す・直すとき | `/add-template` |
 | バージョンを上げる・公開するとき | `/release` |
-| fe_rogue のマップチップを直すとき | `/mapchip-debug` |
 
 **絵を書き始める前に `/visual-dict` を引いていない場合、その作業は未着手として扱う。**
 

@@ -22,11 +22,7 @@ EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
 # 色 1 つを object に包んで書く欄の名前 (Studio の colorWrapKeys と同じ)。
 COLOR_WRAP_KEYS = ("hex", "color", "value")
 
-GAME_ROOTS = ("templates", "examples")
-
-# examples/fe_rogue は廃止予定 (新しく作る人のお手本にしない方針) なので検査しない。
-# 直しても消えるファイルでゲートが赤くなり続けると、ゲートそのものが無視されるため。
-SKIP_GAMES = {"examples/fe_rogue"}
+GAME_ROOTS = ("templates",)
 
 
 def is_hex_color(text):
@@ -131,10 +127,10 @@ def game_dirs(root):
             continue
         for name in sorted(os.listdir(group_dir)):
             rel = f"{group}/{name}"
-            if rel in SKIP_GAMES or not os.path.isdir(os.path.join(root, rel)):
+            if not os.path.isdir(os.path.join(root, rel)):
                 continue
             dirs.append(rel)
-    # 生成されたゲームには templates/ も examples/ も無い。空を返すと
+    # 生成されたゲームには templates/ が無い。空を返すと
     # 「検査したが問題なし」と見分けが付かず、ゲートが何も言わずに通してしまう。
     if not dirs and os.path.isdir(os.path.join(root, "assets")):
         dirs.append(".")

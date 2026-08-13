@@ -364,7 +364,7 @@ mod RemoteDebug {
         "${Float64.round(value * 10.0) / 10.0}"
 
     /// view=full の本文の安全弁。矩形無指定の worldDump は数万文字になり得る
-    /// （fe_rogue 全画面で実測 80KB）ので、超過分を打ち切って rect= の指定を促す。
+    /// （全画面で実測 80KB）ので、超過分を打ち切って rect= の指定を促す。
     pub def capBody(text: String): String =
         let limit = 8192;
         if (String.length(text) <= limit) text

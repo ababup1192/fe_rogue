@@ -37,7 +37,7 @@ mod TestSoftRasterMask {
               design = { x = 8.0, y = 8.0 }, scale = 1,
               background = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
               texturePath = Map.empty(),
-              fontTtf = "../examples/breakout/assets/Xolonium-Regular.ttf",
+              fontTtf = "../templates/game-starter/assets/Xolonium-Regular.ttf",
               fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
                             ascent = 12.0, descent = 4.0, lineGap = 0.0, glyphs = Map.empty() },
               outPath = "" };

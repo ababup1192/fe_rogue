@@ -151,7 +151,7 @@ mod TestSoftRaster {
             drawables = Nil, polygons = vgradQuad(black(), white()) :: Nil,
             design = { x = 4.0, y = 4.0 }, scale = 1, background = black(),
             texturePath = Map.empty(),
-            fontTtf = "../examples/breakout/assets/Xolonium-Regular.ttf",
+            fontTtf = "../templates/game-starter/assets/Xolonium-Regular.ttf",
             fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
                           ascent = 12.0, descent = 4.0, lineGap = 0.0, glyphs = Map.empty() },
             outPath = "" });
