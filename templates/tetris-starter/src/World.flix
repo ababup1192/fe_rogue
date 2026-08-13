@@ -213,7 +213,7 @@ mod World {
         }, (Nil, s));
         (applyPicks(xs, picks), s1)
 
-    /// picks[i] = 「残っている札のうち何番目を i 回目に取り出すか」。これで純粋にシャッフルを組む。
+    /// picks[i] = 「残っているカードのうち何番目を i 回目に取り出すか」。これで純粋にシャッフルを組む。
     def applyPicks(remaining: List[Kind], picks: List[Int32]): List[Kind] =
         match picks {
             case Nil        => remaining

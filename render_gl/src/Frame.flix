@@ -3,8 +3,8 @@
 // 利用例: 毎フレーム、集めた描画物を画面に出す / 手前・奥の重なりを正しく見せる。
 // 注意: 同じ zIndex 内は渡された入力順を保つ（安定ソート）。タイル層も動的な描画物と
 // 同じ z 空間で並ぶ（同 z なら列に先に積むタイル層が奥 — 手前に出すには大きい zIndex を与える）。
-// z 空間は 1 本のまま、HUD 帯（ZBand.hudBase 以上）のような遠く離れた鍵が混ざるフレームは
-// 帯番号で 2 段に分けて並べ替える（並び順の約束は変わらない — 速さのための内部の形）。
+// z 空間は 1 本のまま、HUD の範囲（ZBand.hudBase 以上）のような遠く離れた鍵が混ざるフレームは
+// 範囲番号で 2 段に分けて並べ替える（並び順の約束は変わらない — 速さのための内部の形）。
 
 mod RenderFrame {
     import java.nio.FloatBuffer
@@ -49,22 +49,22 @@ mod RenderFrame {
     /// 種類数ぶんの Map 操作だけで済み、同鍵内の順序も構造的に崩れない。
     /// 同 z の入れ替わりは実害がある（bg Rect と同 z のテキスト最後の文字が
     /// 上書き消失した事故が過去にある）ため、安定性はこの関数の必須条件。
-    /// 帯内・帯間ともこの安定性を保つ。
-    /// zIndex は小さな整数がひとかたまりに並ぶので、鍵の幅ぶんの席を 1 本用意して
+    /// 範囲内・範囲間ともこの安定性を保つ。
+    /// zIndex は小さな整数がひとかたまりに並ぶので、鍵の幅ぶんのスロットを 1 本用意して
     /// 振り分ける。木の Map だと 1 個ごとに挿入と枝の組み替えが走り、数千個の画面では
     /// その組み替えだけがフレーム時間に現れる（スレッドダンプ実測）。
-    /// 席は先頭挿入で溜める（= 逆順）。席の大きい側から前置し直すので、
-    /// 全体は z 昇順・席内は入力順に戻る。
-    /// z が席 1 本に収まらないほど広いフレーム（HUD 帯 = ZBand.hudBase 以上が混ざる等）は、
-    /// まず帯番号（z / ZBand.bandWidth）でグループ化し、帯の中で同じ席方式に倒す
-    /// （帯内の z 範囲は狭いので席に収まる）— HUD が混ざった瞬間に全部が遅い木の
-    /// 経路へ落ちるのを防ぐ。帯の中でも z がまばらなときだけ木で受ける。
+    /// スロットは先頭挿入で溜める（= 逆順）。スロットの大きい側から前置し直すので、
+    /// 全体は z 昇順・スロット内は入力順に戻る。
+    /// z がスロット 1 本に収まらないほど広いフレーム（HUD の範囲 = ZBand.hudBase 以上が混ざる等）は、
+    /// まず範囲番号（z / ZBand.bandWidth）でグループ化し、範囲の中で同じスロット方式に倒す
+    /// （範囲内の z の幅は狭いのでスロットに収まる）— HUD が混ざった瞬間に全部が遅い木の
+    /// 経路へ落ちるのを防ぐ。範囲の中でも z がまばらなときだけ木で受ける。
     /// 5 種の描画物を、zIndex 昇順・同 z 内は
     /// tiles → sprites → polygons → static → surfaces の順に並べた 1 本の列にする。
     /// 5 本を 1 本に繋いでから並べ替えないのは、繋ぐだけで列 1 本ぶんの写しが増え、
     /// 鍵と中身の組も 1 個ずつ作ることになるため（数千個の画面ではその作り直しが
-    /// フレーム時間に出る）。幅と個数は席を作る前に一度だけ数え、
-    /// 数える場所は組でなく席 3 つに置く（組は 1 個ごとに作り直しになる）。
+    /// フレーム時間に出る）。幅と個数はスロットを作る前に一度だけ数え、
+    /// 数える場所は組でなくスロット 3 つに置く（組は 1 個ごとに作り直しになる）。
     pub def mergedByZ(tiles: List[RenderType.TileMapRenderCmd],
                       sprites: List[RenderType.Drawable],
                       polygons: List[RenderType.PolygonCmd],
@@ -87,8 +87,8 @@ mod RenderFrame {
             let hi = Array.get(1, tally);
             let count = Array.get(2, tally);
             if (count == 0) Nil
-            // 幅は Int64 で見る — HUD 帯（1e9）とデバッグ帯（2e9）が同居すると
-            // Int32 の引き算は溢れて、負の幅を「席に収まる」と誤読するため。
+            // 幅は Int64 で見る — HUD の範囲（1e9）とデバッグの範囲（2e9）が同居すると
+            // Int32 の引き算は溢れて、負の幅を「スロットに収まる」と誤読するため。
             else if (spanOf(lo, hi) <= Int32.toInt64(seatLimit(count))) {
                 let n = hi - lo + 1;
                 let seats: Array[List[Merged], rc] = Array.repeat(rc, n, Nil);
@@ -98,12 +98,12 @@ mod RenderFrame {
             else bandMerged(rc, lo, hi, tiles, sprites, polygons, statics, surfaces)
         }
 
-    /// 席 1 本に収める判定に使う z の幅（Int64 — Int32 だと帯をまたぐ幅で溢れる）。
+    /// スロット 1 本に収める判定に使う z の幅（Int64 — Int32 だと範囲をまたぐ幅で溢れる）。
     def spanOf(lo: Int32, hi: Int32): Int64 =
         Int32.toInt64(hi) - Int32.toInt64(lo)
 
-    /// 5 本の描画物リストを、席の列へ入力順（tiles → sprites → polygons → static →
-    /// surfaces）に先頭挿入で振り分ける。席内は逆順に溜まる（emitSeats が戻す）。
+    /// 5 本の描画物リストを、スロットの列へ入力順（tiles → sprites → polygons → static →
+    /// surfaces）に先頭挿入で振り分ける。スロット内は逆順に溜まる（emitSeats が戻す）。
     def seatChannels(seats: Array[List[Merged], rc], lo: Int32,
                      tiles: List[RenderType.TileMapRenderCmd],
                      sprites: List[RenderType.Drawable],
@@ -120,17 +120,17 @@ mod RenderFrame {
         List.forEach(x -> seat(x#zIndex, Merged.MStatic(x)), statics);
         List.forEach(x -> seat(x#zIndex, Merged.MSurface(x)), surfaces)
 
-    /// 席の大きい側から acc へ前置し直す（席内の逆順が入力順へ戻る）。
-    /// acc に後続（より大きい帯の列）を渡せるので、帯別ソートの連結にもそのまま使える。
+    /// スロットの大きい側から acc へ前置し直す（スロット内の逆順が入力順へ戻る）。
+    /// acc に後続（より大きい範囲の列）を渡せるので、範囲別ソートの連結にもそのまま使える。
     def emitSeats(seats: Array[List[Merged], rc], n: Int32, acc: List[Merged]): List[Merged] \ rc =
         List.range(0, n) |> List.foldLeft((rest, i) ->
             List.foldLeft((r, x) -> x :: r, rest,
                           Array.get(n - 1 - i, seats)), acc)
 
-    /// 帯別 2 段ソート: 帯番号（z / ZBand.bandWidth）でグループ化し、帯の中は席方式
-    /// （まばらな帯だけ木）、帯順に連結する。帯の数は z が Int32 全域でも 43 以下なので
-    /// 帯ごとの入れ物は小さい。切り捨て割りは単調（z1 < z2 なら帯も z1 ≤ z2 の順）なので、
-    /// 帯の昇順連結 = 全体の z 昇順が崩れない。
+    /// 範囲別 2 段ソート: 範囲番号（z / ZBand.bandWidth）でグループ化し、範囲の中はスロット方式
+    /// （まばらな範囲だけ木）、範囲順に連結する。範囲の数は z が Int32 全域でも 43 以下なので
+    /// 範囲ごとの入れ物は小さい。切り捨て割りは単調（z1 < z2 なら範囲も z1 ≤ z2 の順）なので、
+    /// 範囲の昇順連結 = 全体の z 昇順が崩れない。
     def bandMerged(rc: Region[rc], lo: Int32, hi: Int32,
                    tiles: List[RenderType.TileMapRenderCmd],
                    sprites: List[RenderType.Drawable],
@@ -140,7 +140,7 @@ mod RenderFrame {
         let w = ZBand.bandWidth();
         let bLo = lo / w;
         let nb = hi / w - bLo + 1;
-        // 帯ごとの 一番小さい z / 一番大きい z / 個数（席を作る前に一度だけ数える）。
+        // 範囲ごとの 一番小さい z / 一番大きい z / 個数（スロットを作る前に一度だけ数える）。
         let bandLoA: Array[Int32, rc] = Array.repeat(rc, nb, 2147483647);
         let bandHiA: Array[Int32, rc] = Array.repeat(rc, nb, -2147483648);
         let bandCnt: Array[Int32, rc] = Array.repeat(rc, nb, 0);
@@ -155,9 +155,9 @@ mod RenderFrame {
         List.forEach(x -> scanB(x#zIndex), polygons);
         List.forEach(x -> scanB(x#zIndex), statics);
         List.forEach(x -> scanB(x#zIndex), surfaces);
-        // 帯ごとに席を先に用意する。中間リストへ溜めて反転する形にしないのは、
+        // 範囲ごとにスロットを先に用意する。中間リストへ溜めて反転する形にしないのは、
         // 1 個あたり cons が 2 回増えて、物量シーンでフレーム時間に乗るため。
-        // 席が個数に見合わない（z がまばらな）帯だけリストへ溜めて木で受ける。
+        // スロットが個数に見合わない（z がまばらな）範囲だけリストへ溜めて木で受ける。
         let noSeats: Array[List[Merged], rc] = Array.repeat(rc, 0, Nil);
         let bandSeats: Array[Array[List[Merged], rc], rc] = Array.repeat(rc, nb, noSeats);
         let treeRev: Array[List[Merged], rc] = Array.repeat(rc, nb, Nil);
@@ -172,7 +172,7 @@ mod RenderFrame {
             else Array.put(true, b, useTree)
         }, List.range(0, nb));
         // 入力順（tiles → sprites → polygons → static → surfaces）に先頭挿入で振り分ける
-        // （席内は逆順に溜まり、emitSeats が入力順へ戻す — 単帯の席方式と同じ不変条件）。
+        // （スロット内は逆順に溜まり、emitSeats が入力順へ戻す — 単一の範囲のスロット方式と同じ不変条件）。
         let put = (z: Int32, m: Merged) -> {
             let b = z / w - bLo;
             if (Array.get(b, useTree))
@@ -188,12 +188,12 @@ mod RenderFrame {
         List.forEach(x -> put(x#zIndex, Merged.MPoly(x)), polygons);
         List.forEach(x -> put(x#zIndex, Merged.MStatic(x)), statics);
         List.forEach(x -> put(x#zIndex, Merged.MSurface(x)), surfaces);
-        // 帯の大きい側から前置で連結する（全体 = 帯昇順・帯内 = z 昇順・同 z は入力順）。
+        // 範囲の大きい側から前置で連結する（全体 = 範囲の昇順・範囲内 = z 昇順・同 z は入力順）。
         List.range(0, nb) |> List.foldLeft((acc, i) -> {
             let b = nb - 1 - i;
             if (Array.get(b, bandCnt) == 0) acc
             else if (Array.get(b, useTree))
-                // 溜めは逆順なので、並べ替えの前に入力順へ戻す（まばらな帯だけの経路）。
+                // 溜めは逆順なので、並べ替えの前に入力順へ戻す（まばらな範囲だけの経路）。
                 List.append(stableByZTree(zOfMerged, List.reverse(Array.get(b, treeRev))), acc)
             else emitSeats(Array.get(b, bandSeats),
                            Array.get(b, bandHiA) - Array.get(b, bandLoA) + 1, acc)
@@ -209,11 +209,11 @@ mod RenderFrame {
             case Merged.MSurface(s) => s#zIndex
         }
 
-    /// 席方式に倒す鍵の幅の上限。描く物の数に比例させるのは、席が疎らでも
-    /// 「埋める手間 ≒ 描く物の数」に収まる範囲なら席のほうが速いため。
+    /// スロット方式に倒す鍵の幅の上限。描く物の数に比例させるのは、スロットが疎らでも
+    /// 「埋める手間 ≒ 描く物の数」に収まる範囲ならスロットのほうが速いため。
     def seatLimit(count: Int32): Int32 = 4096 + 4 * count
 
-    /// 鍵がまばらなときの受け皿（席方式と同じ順序を返す）。
+    /// 鍵がまばらなときの受け皿（スロット方式と同じ順序を返す）。
     def stableByZTree(zOf: a -> Int32, items: List[a]): List[a] =
         let buckets = List.foldLeft((m, x) -> {
             let z = zOf(x);
@@ -375,7 +375,7 @@ mod RenderFrame {
     // 物量シーンでフレーム時間に乗るため（スレッドダンプ実測）。局所クロージャに
     // 畳まないのも同じ理由 — item 毎に呼ぶには Flix のクロージャは高すぎる（悪化の実測あり）。
     //
-    // 席順（定数）: 0=instShader 1=instVao 2=instVbo 3=instMultiplyBlend
+    // スロット順（定数）: 0=instShader 1=instVao 2=instVbo 3=instMultiplyBlend
     //              4=polyBatchShader 5=polyBatchVao 6=polyBatchVbo
     //              7=vpX 8=vpY 9=vpW 10=vpH 26=tileShader
     // スプライト run: 11=texId 12=clip有無 13-16=clip矩形 17=blend 18=体数
@@ -834,7 +834,7 @@ mod RenderFrame {
             RenderBuf.ensure(polyBuf, Int32.max(3, polyVertCap(polygons)) * 6);
             let instData = RenderBuf.buffer(instBuf);
             let polyData = RenderBuf.buffer(polyBuf);
-            // run 状態と GL ハンドル定数を Int32 配列 1 本へ焼く（席順は stateSize 上のコメント）。
+            // run 状態と GL ハンドル定数を Int32 配列 1 本へ焼く（スロット順は stateSize 上のコメント）。
             // 1 フレーム 1 回の小さな割り当てで、以降の 1 item ごとの組・クロージャの
             // 作り直しが消える。
             let st: Array[Int32, Static] = Array.empty(Static, stateSize());

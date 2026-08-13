@@ -18,7 +18,7 @@ mod CharGallery {
     def ttfPath(): String = "assets/Xolonium-Regular.ttf"
     def outDir(): String = "gallery"
 
-    /// z 帯: 地面 0 / レーン仕切り 1 / キャラ 10..(各キャラが自分で指定) / ラベル 50。
+    /// z-index の範囲: 地面 0 / レーン仕切り 1 / キャラ 10..(各キャラが自分で指定) / ラベル 50。
     def zLabel(): Int32 = 50
 
     // ── スロット登録（キャラ = Stage → PlacedItem 列の関数 1 本。共通の型は作らない）──

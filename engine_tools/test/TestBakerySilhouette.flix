@@ -18,7 +18,7 @@ mod TestBakerySilhouette {
 
     @Test
     def testWorldBandDropsUiAndHud(): Unit \ Assert =
-        // 既定の絞り = world 帯（z < UI 層の底）だけが残る。UI 層と HUD 帯は形の検査の対象外。
+        // 既定の絞り = world の範囲（z < UI 層の底）だけが残る。UI 層と HUD の範囲は形の検査の対象外。
         let (drawables, polygons) = Bakery.silhouette(Bakery.SilhouetteScope.WorldBand,
             drawableAt(5) :: drawableAt(CanvasLayer.layerStride()) :: drawableAt(ZBand.hudBase()) :: Nil,
             polygonAt(3) :: polygonAt(ZBand.hudBase()) :: Nil);

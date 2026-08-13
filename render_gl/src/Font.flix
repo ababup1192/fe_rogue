@@ -88,7 +88,7 @@ mod RenderFont {
     /// このゲームが画面に出さない字が大量に入っている（拾うと焼く量が跳ね上がる）。
     def skipDirs(): List[String] =
         "lib" :: "build" :: "target" :: ".git" :: ".devbox" :: "node_modules"
-            :: "docs" :: "debug" :: "gallery" :: "golden" :: Nil
+            :: "docs" :: "debug" :: "gallery" :: "snapshot" :: Nil
 
     /// 配布用に固めた物（dist / dist-win / ...）はゲーム本体の複製なので、
     /// 読むと同じ字を二度拾ったうえ、古い置き土産まで一緒に拾ってしまう。
@@ -237,7 +237,7 @@ mod RenderFont {
         { xOff = 0.0, yOff = 0.0, glyphW = 0.0, glyphH = 0.0,
           advance = advance, s0 = 0.0, t0 = 0.0, s1 = 0.0, t1 = 0.0 }
 
-    /// 焼き方の版。SDF の詰め方・padding・oversample・焼く字の選び方を変えたら 1 つ上げる。
+    /// 焼き方のバージョン。SDF の詰め方・padding・oversample・焼く字の選び方を変えたら 1 つ上げる。
     /// 上げないと、前の焼き方で取っておいた物をそのまま読んでしまう。
     pub def bakeVersion(): Int32 = 1
 

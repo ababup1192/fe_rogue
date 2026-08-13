@@ -101,7 +101,7 @@ def check(path: Path):
 def hud_smell(project_dir: Path):
     """HUD の匂い: view（world 側）に文字を直書きしているのに withHudView が無い。
 
-    world 側の文字は、爆発などの高い z の絵に隠されうる（HUD 帯に乗らない）。
+    world 側の文字は、爆発などの高い z の絵に隠されうる（HUD の範囲に乗らない）。
     強制はしない — 警告だけ出して、直すかどうかは人が決める。
     """
     src = project_dir / "src"

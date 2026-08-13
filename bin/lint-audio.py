@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""音の名前が 3 つの置き場でそろっているかを検査する関所。
+"""音の名前が 3 つの置き場でそろっているかを検査するゲート。
 
 音 1 つには名前の置き場が 3 つある:
   (a) bake 名     — src/bake/ の SfxSynth.bakeSet に書くタプルの左側 (生成する WAV のファイル名になる)
@@ -150,7 +150,7 @@ def game_dirs(root):
                 continue
             dirs.append(rel)
     # 生成されたゲームには templates/ も examples/ も無い。空を返すと
-    # 「検査したが問題なし」と見分けが付かず、関所が黙って素通りする。
+    # 「検査したが問題なし」と見分けが付かず、ゲートが何も言わずに通してしまう。
     if not dirs and os.path.isfile(os.path.join(root, "project.json")):
         dirs.append(".")
     return dirs

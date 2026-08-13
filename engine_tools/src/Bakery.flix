@@ -33,7 +33,7 @@ mod Bakery {
     ///
     /// 実機は画素をそのまま GPU へ上げられるが、生成（SoftRaster）はファイルからしか
     /// 絵を読めない。この差をゲームごとに埋めていると、生成し忘れた絵だけが gallery で
-    /// 消えて golden が実機を守れなくなる — だから配管はここが持つ。
+    /// 消えてスナップショットが実機を守れなくなる — だから配管はここが持つ。
     pub def imagePngs(outDir: String,
                       images: List[{ name = String, side = Int32,
                                      pixelAt = (Int32, Int32) -> Int32 }]): Map[String, String] \ IO =
@@ -68,7 +68,7 @@ mod Bakery {
     def gifPath(cfg: BakeConfig, name: String): String = "${cfg#outDir}/${name}.gif"
 
     /// 生成する前に「この経路では絵に出ない指定」を知らせる。黙って落とすと、実機と違う絵が
-    /// golden に固定されてしまう（bake で証明する流儀そのものが嘘をつく）。
+    /// スナップショットに固定されてしまう（bake で証明する流儀そのものが嘘をつく）。
     def warnDropped(drawables: List[GameEngine.Drawable], name: String): Unit \ IO =
         SoftRaster.dropped(drawables)
             |> List.forEach(x -> println("${SoftRaster.droppedLine(x)}（${name}）"))
@@ -106,14 +106,14 @@ mod Bakery {
     // ════════════════════════════════════════════════════════
 
     /// シルエット生成の絞り方。既定に使うのは WorldBand — 全アイテムを黒にすると画面が
-    /// 1 つの塊に融けて個々の形が見えないため、まず主役の z 帯（world 帯）だけに絞る。
+    /// 1 つの塊に融けて個々の形が見えないため、まず主役の z-index の範囲（world の範囲）だけに絞る。
     /// All（全アイテム黒）の用途は画面全体の重心確認に限る（docs/drawing-floor.md）。
     pub enum SilhouetteScope {
         case WorldBand
         case All
     }
 
-    /// scope が z を対象に含むか。world 帯の上端は UI 層の底（CanvasLayer.layerStride）。
+    /// scope が z を対象に含むか。world の範囲の上端は UI 層の底（CanvasLayer.layerStride）。
     def silhouetteKeeps(scope: SilhouetteScope, z: Int32): Bool =
         match scope {
             case SilhouetteScope.WorldBand => z < CanvasLayer.layerStride()
@@ -288,7 +288,7 @@ mod Bakery {
     /// こと（renderPngWithPasses と同じ約束。pass は Render.passSpecOf が外してくれる）。
     /// pass の Keep はコマをまたいで持ち越さない — 実機の Keep は前フレームの画面を
     /// 引き継ぐが、GIF は途中のコマからも見られるので、頭出しの位置で絵が変わる生成物は
-    /// golden に固定できない。毎コマ透明から始める（静止画の renderPngWithPasses と同じ）。
+    /// スナップショットに固定できない。毎コマ透明から始める（静止画の renderPngWithPasses と同じ）。
     pub def bakeGifWithPasses(cfg: BakeConfig, frames: List[w], stride: Int32,
                               toCmds: w -> (List[PassSpec], List[GameEngine.Drawable],
                                             List[GameEngine.PolygonRenderCmd],

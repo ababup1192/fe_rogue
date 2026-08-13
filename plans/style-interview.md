@@ -115,7 +115,7 @@ SessionStart で `make status`（= `bin/status.py`）を呼ぶ。status.py は s
 - **engine リポ自身では検査しない**。engine リポにはルート AGENTS.local.md が無く、
   同じ `make status` が SessionStart で走るため、素朴にやると毎セッション誤発火する。
   ガードは「`templates/` フォルダがある（= engine リポ）なら黙ってスキップ」
-  （status.py の golden_pairs() が同じ手でリポ種別を見分けている前例に合わせる）。
+  （status.py の snapshot_pairs() が同じ手でリポ種別を見分けている前例に合わせる）。
 - 出力: status の 1 画面に 1 行足す —
   `[画風] AGENTS.local.md に「この画面の画風」がまだ無い → 絵を描く前に /style-interview`
 - **強制ではなく促し**。exit 0 のまま（status.py の「必ず exit 0」の流儀を守る）。
@@ -183,4 +183,4 @@ SessionStart で `make status`（= `bin/status.py`）を呼ぶ。status.py は s
 | 5 | 実戦 1 本 | 新規ゲーム（または game-starter コピー）で聞き取り→描画まで通す | 0.5 日 |
 
 合計 ≈ 2 日。タスク 1〜4 は同日にまとめて可。5 で質問文の言い回しを直す前提
-（初版の質問文は仮止めとし、実戦の答えやすさで確定する）。
+（v1 の質問文は仮止めとし、実戦の答えやすさで確定する）。

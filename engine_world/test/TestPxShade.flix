@@ -77,7 +77,7 @@ mod TestPxShade {
 
     @Test
     def testHalfWeightPicksTheSamePixelsEveryTime(): Unit \ Assert =
-        // 掛ける画素は座標から決まる（golden が安定する）。出来上がりそのものを釘打って、
+        // 掛ける画素は座標から決まる（スナップショットが安定する）。出来上がりそのものを釘打って、
         // ハッシュの式や salt が変わったら気付けるようにする。
         let half = { dither = 0.5, rim = 0.5 | spec() };
         Assert.assertEq(expected = ".mMM." :: ".mmn." :: ".Mnn." :: Nil,

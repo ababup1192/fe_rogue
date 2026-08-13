@@ -1,6 +1,6 @@
 // Render — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
 // スプライトもテキストも箱も円も多角形も、同じ { at = 置き場所, item = Item } の語彙で並べられる。
-// 形の材料（箱・円・多角形の素形状）は RawDraw。View では完成品の部品
+// 形の材料（箱・円・多角形の図形プリミティブ）は RawDraw。View では完成品の部品
 // （PxSprite・Material・Scatter・shader.json 等）を使い、稀な属性（角丸・半透明・枠・縞）は
 // パイプ修飾で重ねる。
 // 注意: 置き場所は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
@@ -123,7 +123,7 @@ mod Render {
             })
         }
 
-    /// glowAt が積む輪 1 枚（中心置きの単色円）。円の素形状は RawDraw の領分だが、
+    /// glowAt が積む輪 1 枚（中心置きの単色円）。円の図形プリミティブは RawDraw の領分だが、
     /// 依存方向を RawDraw→Render の一方向に保つため、ここは自前で組む。
     def ringAt(center: Vec2.Vec2, radius: Float64, color: Color, zIndex: Int32): PlacedItem =
         { at = { x = center#x - radius, y = center#y - radius },
@@ -236,7 +236,7 @@ mod Render {
             zIndex)
 
     // ── 図形の語彙（box / circle / polygon / ngon / star …）は RawDraw へ ──
-    // 素形状は「材料」であり View で直接並べる物ではないため、置き場を分けてある。
+    // 図形プリミティブは「材料」であり View で直接並べる物ではないため、置き場を分けてある。
 
     /// item を pos（左上）に置く純糖衣 — `{ at = pos, item = item }` と同じ値。
     /// item を最後に受けるので、修飾パイプの末尾にそのまま載る:
@@ -342,7 +342,7 @@ mod Render {
         zMapped(z -> z + delta, item)
 
     /// 重なり順（zIndex）を関数 f で写す（zShifted の一般形）。
-    /// 足し算で書けない写し（HUD 帯への clamp 付き持ち上げ等）はこちらを使う。
+    /// 足し算で書けない写し（HUD の範囲への clamp 付き持ち上げ等）はこちらを使う。
     pub def zMapped(f: Int32 -> Int32, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Sprite(s) => Item.Sprite({ zIndex = f(s#zIndex) | s })
@@ -626,7 +626,7 @@ mod Render {
         }, item)
 
     /// zIndex を delta だけ持ち上げる（全種類の item に効く）。組み上がった item の列を
-    /// まとめて別の z 帯へ移すとき（UI レイヤーの合流など）に使う。
+    /// まとめて別の z-index の範囲へ移すとき（UI レイヤーの合流など）に使う。
     pub def raiseZ(delta: Int32, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Sprite(s) => Item.Sprite({ zIndex = s#zIndex + delta | s })

@@ -1,6 +1,6 @@
 // SampleDoc — sample.kind.json（手触りの数値）の宣言ドキュメント層。
 // Doc は「初期値の宣言」まで: 規則（動き方）はコード（World）側。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod SampleDoc {
     use Util.Json.Json
 
@@ -15,7 +15,7 @@ mod SampleDoc {
     pub def defaults(): Doc =
         { version = 1, speed = 120.0 }
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

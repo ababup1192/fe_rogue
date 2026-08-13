@@ -2,7 +2,7 @@
 // （TileScene.toItems）の 1 枚絵で確かめる場面。軒のタイル層（z=50）の下をキャラ（z=10）が
 // くぐって上半身が隠れ、床のタイル層（z=0）はキャラの奥に敷かれる。比較用に、帯の外に
 // 全身が見えるキャラをもう 1 体置く。
-// 出力: debug/tile_front_demo.png（golden の外。目視専用）
+// 出力: debug/tile_front_demo.png（スナップショットの外。目視専用）
 
 mod TileDemo {
 

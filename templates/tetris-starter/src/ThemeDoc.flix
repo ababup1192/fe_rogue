@@ -1,7 +1,7 @@
 // ThemeDoc — tetris.theme.json（色票）の宣言ドキュメント層と、ミノの種類 → 実色の resolver。
 // 盤・枠・ゴースト・閃光の色と、7 ミノの定番配色（I=シアン, O=黄, T=紫, S=緑, Z=赤, J=青, L=橙）を持つ。
 // 派生色（ゴーストの薄めなど）は基準色から導ける範囲はコードで導く（導出できる値は Doc に置かない）。
-// fail-open: 読めない・壊れているときは defaults() へ倒す。
+// fail-open: 読めない・壊れているときは defaults() へ落とす。
 mod ThemeDoc {
     use Util.Json.Json
     use World.Kind

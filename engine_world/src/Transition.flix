@@ -24,7 +24,7 @@ mod Transition {
     pub type alias Cover = { kind = Kind, t = Float64, viewport = Vec2.Vec2, color = Color, z = Int32 }
 
     /// 覆いの既定 zIndex。UI（layer × CanvasLayer.layerStride = 10000 台）より手前、
-    /// HUD 帯（ZBand.hudBase）とデバッグ表示（ZBand.debugBase）より奥 —
+    /// HUD の範囲（ZBand.hudBase）とデバッグ表示（ZBand.debugBase）より奥 —
     /// 遷移中も fps や注釈は隠れない。
     pub def defaultZ(): Int32 = 100000
 

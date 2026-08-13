@@ -9,7 +9,7 @@ mod TestFontCache {
     import java.nio.file.Files
     import java.nio.file.Paths
 
-    /// 本物の取り置き場を汚さないよう、書き込み先をずらす。行き先は 1 つに固定する —
+    /// 本物のキャッシュの置き場を汚さないよう、書き込み先をずらす。行き先は 1 つに固定する —
     /// テストごとに差し替えると、同じ JVM で順不同に走ったとき互いの行き先を奪い合う。
     /// テストどうしのぶつかりは印を毎回変えることで避ける（keyFor）。
     def useScratchDir(): Unit \ IO =
@@ -79,7 +79,7 @@ mod TestFontCache {
         raf.close();
         Assert.assertEq(expected = true, Option.isEmpty(RenderFontCache.load(key, entry())))
 
-    /// 先頭の目印が違うファイルも「無かったこと」にする（別の形式・別の版のなごり）。
+    /// 先頭の目印が違うファイルも「無かったこと」にする（別の形式・別のバージョンのなごり）。
     @Test
     def testForeignFileIsRejected(): Unit \ IO + Assert =
         useScratchDir();
@@ -107,7 +107,7 @@ mod TestFontCache {
         let exists = key -> new File("${RenderFontCache.dir()}/${key}.fontatlas").exists();
         Assert.assertEq(expected = false, exists(oldKey));
         Assert.assertEq(expected = true, exists(newKey));
-        // 別のフォントの取り置きは巻き込まない。
+        // 別のフォントのキャッシュは巻き込まない。
         Assert.assertEq(expected = true, exists(otherFont))
 
     /// 焼く字の一覧を書き換えたら、前の焼き上がりを読み直さない。

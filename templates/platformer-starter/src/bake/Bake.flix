@@ -1,7 +1,7 @@
-// Bake — ゲーム画面を画面なしで PNG に焼く(golden 比較用)。
+// Bake — ゲーム画面を画面なしで PNG に焼く(スナップショット比較用)。
 // 実行: make bake → gallery/*.png(title / hill / cave / tower)
 // 時刻 t は固定値 — 空・コイン・旗・動く床がこの t だけで決まるので、
-// 何度焼いても同じ PNG が出る(golden のバイト比較が成り立つ)。
+// 何度焼いても同じ PNG が出る(スナップショットのバイト比較が成り立つ)。
 mod Bake {
     import java.io.File
     import java.lang.System
@@ -47,7 +47,7 @@ mod Bake {
     pub def all(): Unit \ IO =
         discard allShots()
 
-    /// 調整中の 1 枚だけを debug/ へ焼く(golden を汚さない)。
+    /// 調整中の 1 枚だけを debug/ へ焼く(スナップショットを汚さない)。
     /// 実行: make shot STAGE=1 — 洞窟のように 1 枚が重い面を見ながら直すとき、
     /// 4 枚まとめて焼き直すのを待たずに済む。
     pub def one(): Unit \ IO =
@@ -74,7 +74,7 @@ mod Bake {
         let hill = withT(w0);
         let cave = withT(World.loadStage(1, w0));
         let tower = withT(World.loadStage(2, w0));
-        // title は Studio のジャンル札の顔(GET /genesis/title が読む)と、
+        // title は Studio のジャンルカードの顔(GET /genesis/title が読む)と、
         // HUD 経路のリグレッション検知を兼ねる — 丘を HUD ごと焼く。
         // 「夕方の丘を走って跳ぶ」が 1 枚で伝わる場面を選んでいる。
         shootWith(cfg, texInfo, atlas, hill, "title",

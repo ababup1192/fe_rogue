@@ -549,7 +549,7 @@
 - `pub def toJson(spec: ShaderDoc.Spec): Json`
 - path を読んで Spec にする（読めない・崩れているときは Err）。フォールバックは呼び側が
   `pub def load(path: String): Result[JsonError, ShaderDoc.Spec] \ Fs.FileRead`
-- path を読み、読めない・語彙が違うときは fallback の面へ倒す（fail-open）。
+- path を読み、読めない・語彙が違うときは fallback の面へ落とす（fail-open）。
   `pub def loadOr(fallback: ShaderDoc.Spec, path: String): ShaderDoc.Spec \ Fs.FileRead`
 
 ## Splash — `engine/src/render/Splash.flix`
@@ -832,13 +832,13 @@
   `pub def setZIndex(zIndex: Int32, v: Visual): Visual`
 
 ## ZBand — `engine/src/core/ZBand.flix`
-- 帯 1 本の幅。帯の中で使える z は 0..innerMax（幅 - 1）まで。
+- 範囲 1 本の幅。範囲の中で使える z は 0..innerMax（幅 - 1）まで。
   `pub def bandWidth(): Int32`
-- 帯の中で使える z の上限。はみ出した z は clamp する（wrap しない —
+- 範囲の中で使える z の上限。はみ出した z は clamp する（wrap しない —
   `pub def innerMax(): Int32`
-- HUD 帯の底。withHudView の絵は composeScene がここへ持ち上げる。
+- HUD の範囲の底。withHudView の絵は composeScene がここへ持ち上げる。
   `pub def hudBase(): Int32`
-- エンジンデバッグ帯の底（fps・矩形注釈・トースト・スクラブ表示）。
+- エンジンデバッグの範囲の底（fps・矩形注釈・トースト・スクラブ表示）。
   `pub def debugBase(): Int32`
-- hud の z を HUD 帯へ持ち上げる（帯内は 0..innerMax に clamp）。
+- hud の z を HUD の範囲へ持ち上げる（範囲内は 0..innerMax に clamp）。
   `pub def liftHud(z: Int32): Int32`

@@ -85,11 +85,11 @@ SUBPATH_DEPTH := 5
 .PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop lint-audio rules check-docs-sync checkd-stop
 
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
-# 実行や変更は一切せず、残っている記録 (.test-logs/ golden チケット git) を集めるだけ。
+# 実行や変更は一切せず、残っている記録 (.test-logs/ スナップショット チケット git) を集めるだけ。
 status:
 	@python3 bin/status.py
 
-# コミット時の関所 (焼いた絵の混入・規約の配線ずれ・矩形だけの View を止める)。
+# コミット時のゲート (焼いた絵の混入・規約の配線ずれ・矩形だけの View を止める)。
 # .git/hooks は git 管理外なので、clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 .PHONY: hooks
 hooks:
@@ -98,7 +98,7 @@ hooks:
 
 help:
 	@echo "Targets:"
-	@echo "  make status               現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない"
+	@echo "  make status               現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない"
 	@echo "  make test                 全パッケージ (engine系 + examples) のテストを headless で実行"
 	@echo "  make test-par             同上を並列実行 (壁時計 ≈ fe_rogue 1本分。ログは .test-logs/)"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
@@ -110,11 +110,12 @@ help:
 	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
 	@echo "  make lint-audio           音名が bake 名・project.json・コードの 3 か所でそろっているか検査"
+	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
-	@echo "  make diff DIR=<dir>       直す前(golden)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
+	@echo "  make diff DIR=<dir>       直す前(スナップショット)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
 	@echo "  make gl-parity            GL と SoftRaster が同じ絵を出すかを隠し窓で突き合わせ (不一致で exit 1)"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (examples へ)"
@@ -129,7 +130,7 @@ help:
 	@echo "  make editor [DIR=<dir>]   ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787。DIR 省略時は未選択で起動)"
 	@echo "  make release              sync→test-par→gl-parity→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
 	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)。release の前に実行する"
-	@echo "  make hooks                git の pre-commit 関所 (bin/githooks) をこの clone に配線する"
+	@echo "  make hooks                git の pre-commit ゲート (bin/githooks) をこの clone に配線する"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
 # 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。
@@ -232,22 +233,22 @@ bake-par:
 	fi; \
 	echo "[bake-par] all done ($$ran examples)"
 
-# 直した絵の「前 (golden)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
+# 直した絵の「前 (スナップショット)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
 # bench はバイトが違うことしか言わないので、どこがどう変わったかを目で追えるようにする物。
 # 焼くのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
 #
-# golden の PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
-# 「前」が手元に無い。その時は一度 make bake && make golden で今の絵を基準に置く。
+# スナップショットの PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
+# 「前」が手元に無い。その時は一度 make bake && make snapshot-update で今の絵を基準に置く。
 diff:
 	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
-	@ls "$(DIR)"/golden/*.png > /dev/null 2>&1 || { \
-		echo "[diff] $(DIR)/golden に比べる前の絵がありません。"; \
-		echo "       golden の PNG は git 管理外です。まず make -C $(DIR) bake && make -C $(DIR) golden で基準を置いてください。"; \
+	@ls "$(DIR)"/snapshot/*.png > /dev/null 2>&1 || { \
+		echo "[diff] $(DIR)/snapshot に比べる前の絵がありません。"; \
+		echo "       スナップショットの PNG は git 管理外です。まず make -C $(DIR) bake && make -C $(DIR) snapshot-update で基準を置いてください。"; \
 		exit 1; }
 	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
 		n=$$(basename "$$f"); \
-		if [ ! -f "golden/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
-		elif ! cmp -s "$$f" "golden/$$n"; then printf '%s,' "$$n"; fi; \
+		if [ ! -f "snapshot/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
+		elif ! cmp -s "$$f" "snapshot/$$n"; then printf '%s,' "$$n"; fi; \
 	done); \
 	if [ -z "$$names" ]; then echo "[diff] 変わった絵はありません"; else \
 		cd $(ENGINE_TOOLS_DIR) && DIFF_DIR="$(abspath $(DIR))" DIFF_NAMES="$$names" \
@@ -274,17 +275,21 @@ test-%:
 		touch ".test-logs/$$name.fail"; tail -40 ".test-logs/$$name.log"; exit 1; \
 	fi
 
-# ── 関所: ドット絵の意味色キー ────────────────────────────
+# ── ゲート: ドット絵の意味色キー ────────────────────────────
 # legend の名前が Studio から実色に解けるかを検査する (解けないと編集画面が仮色で塗り、
 # 実機と配色が食い違う)。テンプレを足す・sprite Doc を触ったら通す。
 lint-palette:
 	@python3 bin/lint-palette.py
 
-# ── 関所: 音の名前 ────────────────────────────────────────
+# ── ゲート: 音の名前 ────────────────────────────────────────
 # bake 名・project.json の sounds・コード内リテラルの 3 か所で音名がそろっているか検査する
 # (ずれてもエラーは出ず、音だけ鳴らない・別の音が鳴る)。音を足した・改名したら通す。
 lint-audio:
 	@python3 bin/lint-audio.py
+
+.PHONY: lint-jargon
+lint-jargon:
+	@python3 bin/lint-jargon.py --all
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
@@ -294,11 +299,11 @@ lint-audio:
 boot-font:
 	@java bin/BootFontGen.java $(if $(PREVIEW),--preview $(PREVIEW))
 
-# フォントの焼き上がりの取り置きを捨てる (次の起動は焼き直しになる)。
+# フォントの焼き上がりのキャッシュを捨てる (次の起動は焼き直しになる)。
 # 焼き方を変えた・容量が気になる・焼き直しを確かめたいときに。
 clean-font-cache:
 	@rm -rf "$${FLIX_GE_CACHE_DIR:-$$HOME/.cache/flix_game_engine/font}"
-	@echo "[clean-font-cache] 取り置きを捨てました"
+	@echo "[clean-font-cache] キャッシュを捨てました"
 
 sync: clean-locks sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src
 
@@ -353,12 +358,12 @@ editor:
 
 # ── リリース ──────────────────────────────────────────────
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に
-# fpkg と flix.toml を添付する。利用側は github:ababup1192/flix_game_engine の1行でこの版を引く。
+# fpkg と flix.toml を添付する。利用側は github:ababup1192/flix_game_engine の1行でこのバージョンを引く。
 # 依存ゼロなので公開はこの1リポで完結する (推移先の別リポは不要)。
 #
 # 推奨フロー (この3手だけ):
 #   1) make bump FROM=<旧> TO=<新>   … 全 flix.toml と VERSION を一括更新
-#   2) git で変更を commit → main へ push  … リリースする版を GitHub に載せる
+#   2) git で変更を commit → main へ push  … リリースするバージョンを GitHub に載せる
 #   3) make release                        … sync → test-par(全量ゲート) → gl-parity(A 段全一致) → build-pkg → gh release
 #   終了後の案内どおり、lib/ を消したコピーで外部 fetch を検証する。
 #
@@ -391,7 +396,7 @@ release: release-guard sync $(TEST) gl-parity
 
 # ── バージョン更新 (lockstep) ─────────────────────────────
 # 5パッケージの flix.toml の [package] version と、パッケージ間・examples/templates の
-# 自パッケージ依存参照の version を一括で上げる。flix コンパイラ版 (flix = "...") と
+# 自パッケージ依存参照の version を一括で上げる。flix コンパイラのバージョン (flix = "...") と
 # flix-random など他リポ依存は触らない。使い方: make bump FROM=0.1.0 TO=0.1.1
 # sed でなく perl なのは BSD/GNU の -i の非互換を踏まないため (toml は ASCII なので byte 処理で安全)。
 bump:
@@ -404,7 +409,7 @@ bump:
 	done
 	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
 	@$(MAKE) --no-print-directory api-digest VERSION=$(TO)
-	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧版どれでも TO へ・flix-random と flix コンパイラ版は据え置き。api-digest も再生成済み)。"
+	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧バージョンどれでも TO へ・flix-random と flix コンパイラのバージョンは据え置き。api-digest も再生成済み)。"
 
 # ── コミュニティビルド用ルート src/ ──────────────────────
 # Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
@@ -505,7 +510,7 @@ sync-engine-tools:
 # agents-pack をゲームに配る。配布物一覧の正本は agents-pack/manifest.json で、
 # Makefile はその解釈器 bin/sync-agents.py を呼ぶだけ (Studio の配布も同じ manifest を
 # 読むので、リストの二重管理で片方だけ腐ることが無い)。冪等。
-# 版はルート flix.toml でなく $(VERSION) (bump が進める実体) を刻む。ゲーム側の
+# バージョンはルート flix.toml でなく $(VERSION) (bump が進める実体) を刻む。ゲーム側の
 # bin/status.py がこの刻印と engine Makefile の VERSION を照らし、陳腐化を知らせる。
 .PHONY: sync-agents
 sync-agents:
@@ -688,9 +693,9 @@ NG_TITLE = $(if $(TITLE),$(TITLE),$(NAME))
 export NG_TITLE
 
 # engine_full.fpkg がソースより古いまま先へ進むのを止める。
-# WhyNot: 「在るかどうか」だけでは足りない。fpkg の版名は bump で進むので、中身が
-# 古くても名前は新しい版に見える。それがゲームの lib/ や Studio の .app へ写ると、
-# Flix は「版名が同じなら取り直さない」ので誰も気づけず、engine のソースにも Release
+# WhyNot: 「在るかどうか」だけでは足りない。fpkg のバージョン名は bump で進むので、中身が
+# 古くても名前は新しいバージョンに見える。それがゲームの lib/ や Studio の .app へ写ると、
+# Flix は「バージョン名が同じなら取り直さない」ので誰も気づけず、engine のソースにも Release
 # にも在る def が「Undefined name」になる。
 # 判定は mtime なので、git checkout 直後は中身が同じでも古く見えることがある。空振りは
 # sync-engine-full を 1 回回せば済む側の失敗なので、見逃すよりそちらへ倒す。
@@ -722,7 +727,7 @@ new-game: engine-full-fresh
 	mkdir -p "$(GAME)"; \
 	cp -R "templates/$(NG_TEMPLATE)/." "$(GAME)/"; \
 	rm -rf "$(GAME)/lib"; \
-	mkdir -p "$(GAME)/gallery" "$(GAME)/golden" "$(GAME)/debug" "$(GAME)/atelier"; \
+	mkdir -p "$(GAME)/gallery" "$(GAME)/snapshot" "$(GAME)/debug" "$(GAME)/atelier"; \
 	for f in "$(GAME)"/assets/__NAME__.*; do \
 	  [ -e "$$f" ] || continue; \
 	  mv "$$f" "$(GAME)/assets/$(NAME).$${f##*/__NAME__.}"; \
@@ -753,15 +758,15 @@ new-game: engine-full-fresh
 	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
 	echo "  次にやること:"; \
 	echo "    cd $(GAME) && make run              … 窓を開いて遊ぶ（矢印キーで移動）"; \
-	echo "    make golden                          … いまの絵を golden(基準)にする"; \
+	echo "    make snapshot-update                 … いまの絵をスナップショット(基準)にする"; \
 	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
 	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"
 
-# ── ゲームの engine 版追随 ────────────────────────────────
-# ゲームの flix.toml が指す flix_game_engine の版をこの engine の $(VERSION) へ上げ、
+# ── ゲームの engine バージョン追随 ────────────────────────────────
+# ゲームの flix.toml が指す flix_game_engine のバージョンをこの engine の $(VERSION) へ上げ、
 # lib/ に対応する fpkg + toml を置き、agents-pack も配り直す。status.py の
-# 「engine 版ズレ」を見た人が 1 手で追随する入口 (テンプレの make engine-upgrade が
-# ここへ委譲する)。自動では走らせない — 版上げは挙動・golden まで変わりうる
+# 「engine バージョンズレ」を見た人が 1 手で追随する入口 (テンプレの make engine-upgrade が
+# ここへ委譲する)。自動では走らせない — バージョン上げは挙動・スナップショットまで変わりうる
 # 「人が選ぶ側」の変更。終わったら check だけ回して生存確認する。
 .PHONY: upgrade-game
 upgrade-game: engine-full-fresh
@@ -778,4 +783,4 @@ upgrade-game: engine-full-fresh
 	cp "$(ENGINE_FULL_TOML_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_TOML_NAME)"; \
 	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
 	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
-	echo "[upgrade-game] check OK。続きは自分の目で: make test と make bench (golden のピクセル差の確認)"
+	echo "[upgrade-game] check OK。続きは自分の目で: make test と make snapshot-check (スナップショットのピクセル差の確認)"

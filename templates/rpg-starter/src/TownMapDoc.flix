@@ -2,7 +2,7 @@
 // タイルは名前（town.sprite.json のスプライト名）で引く — アトラス内のピクセル座標を
 // Doc に書かないのは、sprite Doc の変更でアトラスが再パックされたとき Doc が黙って
 // 壊れるため。位置の解決は読み込んだ後に regionOf がやる。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、絵は必ず出る。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、絵は必ず出る。
 mod TownMapDoc {
     use Util.Json.Json
 
@@ -54,7 +54,7 @@ mod TownMapDoc {
 
     // ── JSON からの読み込み ──
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

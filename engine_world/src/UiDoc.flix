@@ -905,7 +905,7 @@ mod UiDoc {
                       spec: Spec): Flex.Node =
         buildAt("", atlasOf, textureInfoOf, spec)
 
-    /// buildWith の実体。名前を "/" で繋いだ道（親/子/孫）を各ノードの名札にする —
+    /// buildWith の実体。名前を "/" で繋いだ道（親/子/孫）を各ノードのラベルにする —
     /// これで描いたあとに「あの部品はどこに敷かれたか」を名前で引ける（rectsOf）。
     def buildAt(parentPath: String, atlasOf: String -> FontAtlas,
                 textureInfoOf: String -> Option[GameEngine.TextureInfo],

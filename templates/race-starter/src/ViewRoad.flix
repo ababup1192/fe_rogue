@@ -489,7 +489,7 @@ mod ViewRoad {
         Color.warm(Color.darken(theme#sand, 0.10), 0.06)
 
     /// 円筒の丸み（0 = 影の側, 1 = 日の当たる側）。単色の面 1 枚では、どれだけ高さを
-    /// 取っても路面に貼った札に見えるので、丸みは必ずこの階調で出す。
+    /// 取っても路面に貼ったシールに見えるので、丸みは必ずこの階調で出す。
     def roundStops(base: Color): List[{ t = Float64, color = Color }] =
            { t = 0.00, color = Color.cool(Color.darken(base, 0.44), 0.14) }
         :: { t = 0.24, color = Color.cool(Color.darken(base, 0.24), 0.08) }

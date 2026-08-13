@@ -15,7 +15,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 | 煙・雪・葉・木くず | `Fx`/`FxDoc`(fx.json) | emitter 種の追加のみ(新モジュール禁止) |
 | 風揺れ | `Sway` | 無し |
 | 夜のとばり・ビネット・寒色 | `Render.shaderFill` 全画面1枚+blend Multiply | ShaderDoc.Field に `radial` 程度 |
-| ギャラリー/golden | Bakery + make bake/bench/golden | コンタクトシートのターゲット追加 |
+| ギャラリー/スナップショット | Bakery + make bake/snapshot-check/snapshot-update | コンタクトシートのターゲット追加 |
 | エディタ編集 | editor_server の Preview* の並び | PreviewSprite 追加 |
 | 性能計測 | bench/sprite_stress(A/B背中合わせの流儀) | シナリオ1本追加 |
 
@@ -47,7 +47,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 ## フェーズ(1フェーズ=独立 revert 可)
 
 - **R1 Timeline/Journey**(小): engine_world に新規+テスト。村の routeAt と
-  if 閾値連鎖を置換し、村の bench(golden)green で完了。
+  if 閾値連鎖を置換し、村の bench(スナップショット)green で完了。
   - **✅ 完了(2026-07-21)**: `engine_world/src/Timeline.flix` / `Journey.flix` 新設
     (+TestTimeline/TestJourney、module-index 追記)。村側は routeAt(夕暮れ帰宅)・
     きのみ/薪/拾いもの/柿の往復の区間分けを Timeline に、流れ者の入場
@@ -55,7 +55,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
     置換。食事(eaterItems)・施し(giverItems)は絶対閾値の芝居で、逐次減算化すると
     浮動小数の演算順が変わるため残置(コード中にコメント)。ルール側の尺
     (tripTotal 等)も同じ理由で数式のまま。検証: 序章ギャラリー debug/*.png
-    26枚+all.png 全バイト一致、make check / test(204)/ bench(golden 10)green。
+    26枚+all.png 全バイト一致、make check / test(204)/ bench(スナップショット 10)green。
   - **配布の暫定**: 村の `lib/github/ababup1192/flix_game_engine/0.7.1/*.fpkg` を
     ローカル `engine_full/artifact/engine_full.fpkg` への symlink に差し替えた
     (monorepo の sync-engine-full と同じ流儀。GitHub への push/release はしない)。
@@ -81,8 +81,8 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
     spritePath() から同居読みし、watchFile(Main)→ Controls.reloadPrologue の
     一本道に乗せた。家・蔵・山・川など一点物は触っていない。
     検証: 序章ギャラリー 27枚(26+all.png)全バイト一致、make check /
-    test(204)/ bench(golden 10)green。PreviewSprite・アトラス化・コンタクト
-    シートの golden 化は R2b。
+    test(204)/ bench(スナップショット 10)green。PreviewSprite・アトラス化・コンタクト
+    シートのスナップショット化は R2b。
   - **✅ R2b 完了(2026-07-21)**: アトラス化+PreviewSprite+コンタクトシート+A/B 計測。
     - **アトラス化**: `engine_world/src/PxSpriteAtlas.flix`(純関数 — Doc×resolver →
       side/regions/ARGB 画素。棚詰めは RenderFont のシェルフ規則を `shelfPack` に関数化。
@@ -103,14 +103,14 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       (ok/png(base64)/width/height/sprites メタ/warnings/error)。特化ビューは状態を持たない。
     - **村のギャラリー**: Bake.prologue の末尾で debug/sprites.png(全スプライト×全コマ×
       2 resolver: villager 既定/wanderer 体色+赤傘)。c1_/c2_ 接頭辞を持たないので
-      all.png には合流しない。**golden 化はまだしない(絵が動く時期のため)—
-      安定後に代表場面+sprites.png を golden 昇格すること**。
+      all.png には合流しない。**スナップショット化はまだしない(絵が動く時期のため)—
+      安定後に代表場面+sprites.png をスナップショット昇格すること**。
     - **性能(bench/sprite_stress の BenchPx・同数背中合わせ)**: villager 6×10 で
       box 列 → 1 クアッド が N=500: 16.7→3.1ms / N=1900: 54.6→8.3ms(p99 11.2ms) /
       N=5000: 146.4→16.7ms。R3 予算(動的<2000・avg<8ms/p99<12ms)は 1 クアッドなら
       N=1900 で p99 内(avg は直前重区間の熱込みで 8.3ms)。box 列は数百体が上限。
     - 検証: engine 各パッケージ test green(engine_world 641 / editor_server 64)、
-      村 make check / test(204) / bench(golden 10) green、序章ギャラリー 27枚バイト一致。
+      村 make check / test(204) / bench(スナップショット 10) green、序章ギャラリー 27枚バイト一致。
       配布は R1/R2a と同じローカル symlink(make sync)。push/release なし。
 - **R3 Fx+ポスト面+予算**(小〜中): fx.json に emitter 種追加、村の重ね矩形を
   shaderFill(Multiply)1枚へ、ShaderDoc に radial(Gen/Eval/Json の3面同時+一致テスト)。
@@ -158,7 +158,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       「夜色へ引っ張る」→「夜色で沈める」に変わって窓明かりが映える。
     - **ギャラリー差分**: debug/ 27枚中、c1_01..c2_10 の26枚が暗がりの差分で変化
       (全場面にポスト面が乗るため — 差分はこの1系統のみ)、sprites.png はバイト一致。
-      golden(本編10枚)は経路を触っていないので全バイト一致(bench green)。
+      スナップショット(本編10枚)は経路を触っていないので全バイト一致(bench green)。
     - **性能予算の確定(動的 PlacedItem/フレーム — Bake.shootPro の機械計測)**:
       | 場面 | 動的 items | 静的(毎フレーム描かない) |
       |---|---|---|
@@ -175,10 +175,10 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       切り替えるのが第一手(R2b 実測で 6.6 倍)。
     - **検証**: エンジン全パッケージ test green(engine 265 / engine_world 655 /
       engine_tools 34 / editor_server 64 ほか)、村 make check / test(204) /
-      bench(golden 10)green。配布は R1/R2 と同じローカル symlink(make sync)。
+      bench(スナップショット 10)green。配布は R1/R2 と同じローカル symlink(make sync)。
       push/release なし。
-  - **昇格完了。次はゲーム側の golden 昇格**(序章の代表場面 + sprites.png を
-    絵の安定後に golden へ — R2b の記録どおり)。
+  - **昇格完了。次はゲーム側のスナップショット昇格**(序章の代表場面 + sprites.png を
+    絵の安定後にスナップショットへ — R2b の記録どおり)。
 
 ## studio 統合の原則(総合体験)
 
@@ -195,6 +195,6 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 
 ## リスク
 
-- ShaderDoc 語彙追加は Gen/Eval/Json の3面同期必須(片手落ちで golden 崩壊)。
+- ShaderDoc 語彙追加は Gen/Eval/Json の3面同期必須(片手落ちでスナップショット崩壊)。
 - アトラス再ベイクは「フレーム先頭で差し替え」(fontAtlas と同じ)。
 - Flix 0.71 の polymorphic effect 制約 — Timeline/Journey は純関数のみで影響なし。

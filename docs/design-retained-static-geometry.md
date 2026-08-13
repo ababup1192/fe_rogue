@@ -3,7 +3,7 @@
 対象: `flix_game_engine`（Flix 製 2D エンジン・LWJGL/GL バックエンド）と、fpkg で使う `flix_ge_dungeon`。
 目的: 洞窟 B2 の描画を 50〜60fps から引き上げる。手段は「毎フレーム作り直している静的な壁・床の頂点を、1 度だけ GPU に載せて使い回す」。ただし **絵を 1px も変えない**（特に同じ z の中の重なり順）。
 
-> この v2 は超批判レビュー（`scratchpad/retained-review.md`・採点 62/100）を受けた作り直し。初版の致命傷「静的を別 draw call で先に一括描画すると同 z の重なり順が壊れる」を、レビューの (b) 案「1 パスの z ソート列に静的 VBO 参照を残す」を軸に解いた。
+> この v2 は超批判レビュー（`scratchpad/retained-review.md`・採点 62/100）を受けた作り直し。v1 の致命傷「静的を別 draw call で先に一括描画すると同 z の重なり順が壊れる」を、レビューの (b) 案「1 パスの z ソート列に静的 VBO 参照を残す」を軸に解いた。
 
 ---
 
@@ -12,10 +12,10 @@
 | 指摘 | 深刻度 | v2 での対応 |
 |------|--------|-------------|
 | **C1: 静的を別 draw call で先に一括描画すると同 z の重なり順が壊れる**（dungeon は z=2 で壁が液体の粒を隠す・z=5 で床飾りと松明が同居し、同 z 内の描画順に絵が依存） | 致命傷 | §2 を全面書き換え。**静的を別 draw call で分離する案を破棄**。静的多角形を「z キー付きの永続 VBO レンジ」にし、動的アイテムと**同じ z ソート列にマージ**。`renderFrameMixed` の既存 run flush に「静的レンジ描画」という第3の run 種を足すだけにして、**列順（=重なり順）を完全保存**。同じ最終描画順になることを §2.3 で型と擬似コードで示す。 |
-| **R1: golden（SoftRaster）は retained の退行を検知できない**（GL 経路を通らないので z 順破綻を素通し）。「1165/0 で安全」はミスリード | 要修正 | §4 を訂正。「1165/0 は fe_rogue 非回帰の確認であって retained の安全証明ではない」と明記。**glReadPixels で GL 画面を PNG 化し retained ON/OFF を diff する自動ゲート**を §4.2・各里程標に据える。dungeon に絵の golden が無い点も §4.3 で直視。 |
+| **R1: スナップショット（SoftRaster）は retained の退行を検知できない**（GL 経路を通らないので z 順破綻を素通し）。「1165/0 で安全」はミスリード | 要修正 | §4 を訂正。「1165/0 は fe_rogue 非回帰の確認であって retained の安全証明ではない」と明記。**glReadPixels で GL 画面を PNG 化し retained ON/OFF を diff する自動ゲート**を §4.2・各里程標に据える。dungeon に絵のスナップショットが無い点も §4.3 で直視。 |
 | **R2: renderCommands は1回で swap する**。op を分割すると clear/swap 境界を跨ぐ | 要修正 | §3.1 を再設計。op を「init/free の2本＋既存 renderCommands の署名拡張（静的ハンドル列を**同じ呼びに載せる**）」にし、**clear→（z 順に static/dynamic 混在描画）→swap を renderCommands の中で1回で束ねる**。swap は最後の1回だけ。 |
 | **R4: VBO ハンドルを App ランナーの可変状態に置くのは値ベースを壊す** | 要修正 | §2.4 を訂正。タイル経路と同じく **ゲーム World が `StaticVao` を保持**。鍵比較・free/init の対も **ゲームの step 内**で行う。App ランナーに可変状態を持ち込まない。 |
-| **R3: カメラ uniform 化の丸め順一致は dungeon(zoom=1)では非問題だが、Float64/Float32 差は順序合わせでは消えず zoom 横展開で再燃** | 要修正 | §2.2・§5 段階5 に但し書き。**初版は dungeon（平行移動のみ）に限定**。zoom を使う横展開時は「Float64 頂点乗算 vs Float32 uniform 乗算」を glReadPixels diff で再検証する条項を明記。 |
+| **R3: カメラ uniform 化の丸め順一致は dungeon(zoom=1)では非問題だが、Float64/Float32 差は順序合わせでは消えず zoom 横展開で再燃** | 要修正 | §2.2・§5 段階5 に但し書き。**v1 は dungeon（平行移動のみ）に限定**。zoom を使う横展開時は「Float64 頂点乗算 vs Float32 uniform 乗算」を glReadPixels diff で再検証する条項を明記。 |
 | **D1: 90〜120fps は線形近似。fill rate バウンドなら頭打ち** | 論点 | §5 段階0 に「静的を完全に描かない（空 VBO）実験で到達 fps 上限を測り、CPU 提出バウンドか fill rate バウンドかを**投資判断前に**切り分ける」を必須項目として追加。§7 の見積もりをこの実測に委ねる形へ。 |
 | **D2: 全量 GPU 送り vs 空間分割（未実測・単一 VBO 前提）** | 妥当な保留 | §6 で単一 VBO から始め段階3で実測する順序を維持（レビューも妥当と判定）。 |
 | **D3: engine op 追加は全 example に波及・uniform 漏れ配線** | 論点 | §3.3 で「多角形シェーダの `viewOffset`/`viewScale` uniform は毎 draw call で明示リセット（sprite の multiplyBlend と同じ作法）」を明記。engine 拡張は §3 冒頭どおり事前相談材料。 |
@@ -66,9 +66,9 @@
 
 - `renderCommands` ハンドラ(`LwjglLayer.flix:511-517`) は `renderFrame(...)` の直後に `glfwSwapBuffers(window)`。`renderFrameMixed` は冒頭で `glClear`(`Frame.flix:143-149`)。**1 呼び = 1 フレームを clear→描画→swap し切る。**
 
-### golden / 生成の独立性（R1）
+### スナップショット / 生成の独立性（R1）
 
-- `make test-fe_rogue` は `cd examples/fe_rogue && flix test`(`Makefile:200-213`)。golden は `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。生成も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えても golden は動かない = retained の退行を検知できない（R1 の核心）。**
+- `make test-fe_rogue` は `cd examples/fe_rogue && flix test`(`Makefile:200-213`)。スナップショットは `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。生成も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えてもスナップショットは動かない = retained の退行を検知できない（R1 の核心）。**
 
 ### 切り分けトグルの前例
 
@@ -86,7 +86,7 @@ B2 が遅い直接原因は「中身が前フレームと同一の静的な壁�
 
 ### 2.1 発想：静的を「別 draw call」でなく「z ソート列の一員」にする
 
-初版の誤りは「静的を先に一括描画」だった。v2 は逆に、**静的多角形を動的アイテムと同じ z ソート列に残す**。ただし、静的分の頂点は毎フレーム作り直さず、**初回に三角形分割済みで永続 VBO へ載せ、z ごとにその VBO の「どの範囲か（レンジ）」だけを軽い値として列に流す**。
+v1 の誤りは「静的を先に一括描画」だった。v2 は逆に、**静的多角形を動的アイテムと同じ z ソート列に残す**。ただし、静的分の頂点は毎フレーム作り直さず、**初回に三角形分割済みで永続 VBO へ載せ、z ごとにその VBO の「どの範囲か（レンジ）」だけを軽い値として列に流す**。
 
 - 初回（フロア/テーマ変更時）だけ: 静的多角形を **z 昇順に並べて三角形分割し、1 本の永続 VBO に連続配置**。同時に「z ごとの (開始頂点, 頂点数, blend, clip)」の目次（レンジ表）を作る。三角形分割はここで 1 回きり。
 - 毎フレーム: 静的分は **`StaticRange`（VBO ハンドル + 目次の1エントリ + z）という軽い値**として z ソート列に流す。頂点は運ばない（`#vertices` の読みも起きない）。
@@ -105,7 +105,7 @@ gl_Position = projection * vec4(screenPos, 0, 1);
 
 - `viewOffset` = camera center（`World.cameraCenter`）、`viewScale` = zoom（dungeon では常に 1.0）。
 - **dungeon は zoom=1 固定**なので `viewScale=(1,1)`。CPU の `centerOn`（`Vec2.sub(at, center)` + `Vec2.add(half)`）と式が一致し、頂点乗算は起きない。
-- **但し書き（R3）**: CPU 経路は Float64 で引いてから Float32 化、retained はワールド座標を Float32 で焼いてから Float32 で引く。**Float64/Float32 の精度差は式の順序合わせでは消えない。** dungeon（zoom=1・平行移動のみ）では 1px ずれる可能性は低いが、ゼロではない → §4.2 の glReadPixels diff で 1px でも差が出たら失格にして担保する。**zoom を使う横展開では `Render.scaled`(Float64 乗算) と `viewScale`(Float32 乗算) が割れるので、初版は dungeon 限定とし横展開時に再検証（§5 段階5）。**
+- **但し書き（R3）**: CPU 経路は Float64 で引いてから Float32 化、retained はワールド座標を Float32 で焼いてから Float32 で引く。**Float64/Float32 の精度差は式の順序合わせでは消えない。** dungeon（zoom=1・平行移動のみ）では 1px ずれる可能性は低いが、ゼロではない → §4.2 の glReadPixels diff で 1px でも差が出たら失格にして担保する。**zoom を使う横展開では `Render.scaled`(Float64 乗算) と `viewScale`(Float32 乗算) が割れるので、v1 は dungeon 限定とし横展開時に再検証（§5 段階5）。**
 
 ### 2.3 z 順が保存されることの型と擬似コード
 
@@ -194,7 +194,7 @@ engine ソース変更は事前相談が必要（CLAUDE.md 方針）。本書が
 
 ### 3.1 op は init/free の2本 ＋ renderCommands の署名拡張（clear/swap を跨がない・R2）
 
-初版の「drawStaticPolys を別に呼ぶ」は clear/swap 境界を跨いで壊れる（`renderFrameMixed` の `glClear` が先に描いた静的を消す）。v2 は **描画を renderCommands の 1 呼びに束ねる**:
+v1 の「drawStaticPolys を別に呼ぶ」は clear/swap 境界を跨いで壊れる（`renderFrameMixed` の `glClear` が先に描いた静的を消す）。v2 は **描画を renderCommands の 1 呼びに束ねる**:
 
 ```
 // GameEngine.Game eff（GameEngine.flix:176-216 に追加）
@@ -220,42 +220,42 @@ def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
 - **GL の uniform はプログラム単位で保持される（D3 の指摘）**。retained レンジ描画で設定した `viewOffset` が動的経路に漏れないよう、**両経路とも毎回明示リセット**する（sprite の `multiplyBlend` が毎回 0 明示される `Sprite.flix:96` と同じ作法）。
 - 静的レンジ描画は同じシェーダに `viewOffset=camera center`, `viewScale=zoom` を渡す。**1 本のシェーダを両経路で共有**でき、既存経路の絵は 1px も変わらない。
 
-### 3.3 SoftRaster（golden/生成）は変更しない
+### 3.3 SoftRaster（snapshot/生成）は変更しない
 
-SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retained は GPU 提出方式の話。**SoftRaster・Bakery・golden テストには手を触れない。** これが「GPU 側だけ変える」境界。ただしこの独立性は §4 の通り「安全証明にならない」ので、GL 経路は別途 glReadPixels で検証する。
+SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retained は GPU 提出方式の話。**SoftRaster・Bakery・スナップショットテストには手を触れない。** これが「GPU 側だけ変える」境界。ただしこの独立性は §4 の通り「安全証明にならない」ので、GL 経路は別途 glReadPixels で検証する。
 
 ---
 
-## 4. 絵を守る検証（golden の取り違えを正す・R1）
+## 4. 絵を守る検証（スナップショットの取り違えを正す・R1）
 
-### 4.1 SoftRaster golden は「非回帰の確認」であって「retained の安全証明」ではない
+### 4.1 SoftRaster スナップショットは「非回帰の確認」であって「retained の安全証明」ではない
 
 | 経路 | 入力 | GPU 依存 | v2 での変更 |
 |------|------|---------|-------------|
 | 本番描画（GL） | DrawCmd + StaticRangeCmd | あり | **retained 提出に変更** |
-| golden（`make test-fe_rogue`） | DrawCmd → SoftRaster | なし | **変更なし。だが retained を通らない = retained の退行を検知できない** |
+| スナップショット（`make test-fe_rogue`） | DrawCmd → SoftRaster | なし | **変更なし。だが retained を通らない = retained の退行を検知できない** |
 | 生成（gallery PNG） | DrawCmd → SoftRaster | なし | 変更なし |
 
-- **訂正（初版の誤り）**: 「golden 1165/0 で安全」は誤り。1165/0 は **fe_rogue を壊していないことの確認**であって、retained（GL 経路の変更）の安全を何も担保しない。C1 の z 順破綻はまさに GL 経路で起きるので SoftRaster golden は素通しする。
-- retained を使うのは dungeon（別リポ `flix_ge_dungeon`）で、`make test-fe_rogue` は fe_rogue のもの。**retained の絵を守る golden は現状どこにも無い（§4.3 で対策）。**
+- **訂正（v1 の誤り）**: 「スナップショット 1165/0 で安全」は誤り。1165/0 は **fe_rogue を壊していないことの確認**であって、retained（GL 経路の変更）の安全を何も担保しない。C1 の z 順破綻はまさに GL 経路で起きるので SoftRaster スナップショットは素通しする。
+- retained を使うのは dungeon（別リポ `flix_ge_dungeon`）で、`make test-fe_rogue` は fe_rogue のもの。**retained の絵を守るスナップショットは現状どこにも無い（§4.3 で対策）。**
 
 ### 4.2 retained の安全ゲート = glReadPixels diff（GL 経路そのものを検証）
 
 - `useRetainedStatic()` トグルで retained ON/OFF の GL フレームバッファを **`glReadPixels` で吸い出し PNG 化し、ピクセル diff する自動テスト**を 1 本作る。差が非ゼロなら失格。
 - これが検知するもの: (a) C1 の z 順破綻（ON で壁と粒の前後が変わる）、(b) R3 の Float64/Float32 丸め差（1px でも出れば失格）、(c) camera uniform 式の誤り。
-- **段階2 以降の必須ゲート**。目視 A/B（初版 §6）は常設ゲートにならないので、機械化した diff に置き換える。
+- **段階2 以降の必須ゲート**。目視 A/B（v1 の §6）は常設ゲートにならないので、機械化した diff に置き換える。
 - 実装メモ: glReadPixels はヘッドレスだと GL コンテキストが要る。CI で回すなら bench/sprite_stress と同じく実 GL 起動（macOS は `-XstartOnFirstThread`・AWT は headless 注意）。まずは開発機でトグル A/B の diff を回す手順を用意し、緑を里程標ゲートに据える。
 
-### 4.3 dungeon 側の絵の golden を新設
+### 4.3 dungeon 側の絵のスナップショットを新設
 
-- dungeon には描画リスト golden も PNG golden も無い（fe_rogue にはある）。retained 前後で絵が変わっていないことを守るため、**dungeon に SoftRaster ベースの PNG golden を新設**し、B1/B2 の代表フレームを固定する。
-- ただし SoftRaster は retained op を通らない。この golden が守るのは「`build` が返す静的 DrawCmd の内容の正しさ」まで。**GL の draw call 混在による z 順（C1）は §4.2 の glReadPixels diff でしか守れない** — 両方を里程標ゲートにする（役割が別）。
+- dungeon には描画リストスナップショットも PNG スナップショットも無い（fe_rogue にはある）。retained 前後で絵が変わっていないことを守るため、**dungeon に SoftRaster ベースの PNG スナップショットを新設**し、B1/B2 の代表フレームを固定する。
+- ただし SoftRaster は retained op を通らない。このスナップショットが守るのは「`build` が返す静的 DrawCmd の内容の正しさ」まで。**GL の draw call 混在による z 順（C1）は §4.2 の glReadPixels diff でしか守れない** — 両方を里程標ゲートにする（役割が別）。
 
 ---
 
 ## 5. 段階ロードマップ（動く里程標）
 
-各段の後で `make test-fe_rogue`（1165/0・**fe_rogue 非回帰の確認**）＋ 変更パッケージの `flix check`。retained の安全は §4.2 glReadPixels diff と §4.3 dungeon golden で別途担保。
+各段の後で `make test-fe_rogue`（1165/0・**fe_rogue 非回帰の確認**）＋ 変更パッケージの `flix check`。retained の安全は §4.2 glReadPixels diff と §4.3 dungeon スナップショットで別途担保。
 
 ### 段階 0：計測と投資判断（コード変更なし・D1）
 - bench/sprite_stress(`Bench.flix`) に倣い、dungeon B2 に固定カメラで立たせ dt を採る（vsync off・ウォームアップ捨て・**熱で 4 割ぶれるので同一熱状態で連続採取・中央値**）。
@@ -266,7 +266,7 @@ SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retain
 
 ### 段階 1：多角形シェーダに uniform を足す（恒等のまま・速くならない）
 - `viewOffset`/`viewScale` を追加。既存 `drawPolygonBatch` は毎 draw call で `(0,0)/(1,1)` を明示設定（§3.2）。
-- 全 example（breakout/sokoban/platformer/liars/fe_rogue）の絵が 1px も変わらないこと: golden 1165/0 ＋ 各 example の glReadPixels 恒等確認（uniform 追加前後で GL フレーム一致）。
+- 全 example（breakout/sokoban/platformer/liars/fe_rogue）の絵が 1px も変わらないこと: スナップショット 1165/0 ＋ 各 example の glReadPixels 恒等確認（uniform 追加前後で GL フレーム一致）。
 - ゲート: 1165/0 ＋ 全 example GL フレーム不変。
 
 ### 段階 2（最初に速くなる里程標）：init/free + renderCommands 拡張、dungeon の**壁だけ** retained
@@ -274,12 +274,12 @@ SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retain
 - `App.withStaticLayer` 追加。dungeon で **まず壁の Poly だけ**を静的レイヤーへ（床・飾りは従来経路に残し差分を最小化）。ハンドルは World 保持（§2.4）。
 - **`useRetainedStatic()` トグルで ON/OFF の glReadPixels diff（§4.2）を回し、差ゼロを確認**。特に z=2 の壁 vs 粒の前後が保存されていること。
 - ここで B2 の壁ぶんのアップロードと三角形分割が毎フレームから消える → 1 フロアで速くなることを段階0 の計測で確認。
-- ゲート: 1165/0（fe_rogue 非回帰）＋ dungeon glReadPixels diff ゼロ ＋ dungeon PNG golden（§4.3）不変。
+- ゲート: 1165/0（fe_rogue 非回帰）＋ dungeon glReadPixels diff ゼロ ＋ dungeon PNG スナップショット（§4.3）不変。
 
 ### 段階 3：床・飾りも静的レイヤーへ、View を静的/動的に分割
 - `View.staticWorldItems`（壁+床+飾り・camera 無し）と `View.frameDynamic`（松明/プレイヤー/影/水面の粒）に分割。z=2 粒・z=5 松明が動的、壁・床飾りが静的で同 z 同居 → §2.5 の入力順規則で前後保存。
 - 静的レイヤー build は `Prebuilt#tiles` の item をワールド座標で全量返す（カリングは §6 の判断）。
-- ゲート: 1165/0 ＋ dungeon glReadPixels diff ゼロ ＋ PNG golden 不変。B2 の fps を段階0 の計測で確認（120fps に届くか）。
+- ゲート: 1165/0 ＋ dungeon glReadPixels diff ゼロ ＋ PNG スナップショット不変。B2 の fps を段階0 の計測で確認（120fps に届くか）。
 
 ### 段階 4：dirty 鍵と VBO ライフサイクルを固める
 - `StaticKey = { floorId, gen }`。`Controls.reloadAll` が `gen+1`。ゲーム step が鍵比較 → `freeStaticPolys(old)`→`initStaticPolys(new)`（先 free・後 init で 1 世代だけ持つ）。
@@ -303,7 +303,7 @@ SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retain
 - 封じ込め: drawStaticRange を **renderCommands の 1 呼びの中**（clear→z 混在描画→swap）で発行。swap は最後の 1 回だけ。別 op で「先に描く」ことはしない。
 
 ### 全量 GPU 送り vs 空間分割（D2・妥当な保留）
-- 現状 `visibleStatic` で画面外を捨てている。retained 全量 VBO はこのカリングを捨て、視錐台外の三角形も頂点シェーダは走る（ラスタライズはされない）。B2 数千三角形なら許容の見込みだが未実測。まず単一 VBO で段階3 で計測 → 重ければ **z 帯 or 空間タイル単位の複数 VBO** にして、レンジ描画を画面が触れる範囲だけ発行（早すぎる最適化を避け、測ってから）。
+- 現状 `visibleStatic` で画面外を捨てている。retained 全量 VBO はこのカリングを捨て、視錐台外の三角形も頂点シェーダは走る（ラスタライズはされない）。B2 数千三角形なら許容の見込みだが未実測。まず単一 VBO で段階3 で計測 → 重ければ **z-index の範囲 or 空間タイル単位の複数 VBO** にして、レンジ描画を画面が触れる範囲だけ発行（早すぎる最適化を避け、測ってから）。
 
 ### 複数 example への波及（D3）
 - retained は `withStaticLayer` を繋いだゲームだけ。他は `staticLayer=None`＋`staticRanges=Nil` で従来経路。シェーダ uniform 追加は恒等（毎回明示リセット）で既存の絵は不変。波及は「renderCommands 引数 1 本増（常に Nil）＋ シェーダ uniform 2 本増（毎回 0/1 明示）」に閉じる。
@@ -340,7 +340,7 @@ SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retain
 
 **82 / 100**
 
-内訳の考え方: 初版の致命傷（C1: 別 draw call 分離で z 順破綻）を、レビューの (b) 案を「z キー付き静的 VBO レンジ ＋ 3 種マージ」という実装可能な形に落として解いた。`renderFrameMixed` の既存 run flush（sprite/poly の 2 run を種別切替で交互 flush して列順保存）に第3の run 種を足すだけで、z 安定ソートを壊さない。golden の取り違え（R1）を訂正し glReadPixels diff を常設ゲートに、swap 境界（R2）を renderCommands 1 呼びに束ね、ハンドルを World 保持（R4）、fps 見積もりを段階0 実測に委ねた（D1）。カメラ精度（R3）は dungeon 限定＋横展開再検証条項で封じた。分析パートは全主張が実コード（CameraRig/Render/Shader/Frame/LwjglLayer/View/Surfaces）で裏取り済み。
+内訳の考え方: v1 の致命傷（C1: 別 draw call 分離で z 順破綻）を、レビューの (b) 案を「z キー付き静的 VBO レンジ ＋ 3 種マージ」という実装可能な形に落として解いた。`renderFrameMixed` の既存 run flush（sprite/poly の 2 run を種別切替で交互 flush して列順保存）に第3の run 種を足すだけで、z 安定ソートを壊さない。スナップショットの取り違え（R1）を訂正し glReadPixels diff を常設ゲートに、swap 境界（R2）を renderCommands 1 呼びに束ね、ハンドルを World 保持（R4）、fps 見積もりを段階0 実測に委ねた（D1）。カメラ精度（R3）は dungeon 限定＋横展開再検証条項で封じた。分析パートは全主張が実コード（CameraRig/Render/Shader/Frame/LwjglLayer/View/Surfaces）で裏取り済み。
 
 ### 残リスクと弱点の自己申告
 

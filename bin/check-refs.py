@@ -2,7 +2,7 @@
 """参照の存在検査 — 「文章や Makefile が指す先が実在するか」を機械が照らす。
 
 wiz_lick の骨組みセッションで、リリースバンドルから bin/gen-api-digest.py・docs/ 一式・
-golden-*.sh が漏れて、Makefile とテンプレの参照が宙に浮いた (誰も気づかず、エージェント
+snapshot-*.sh が漏れて、Makefile とテンプレの参照が宙に浮いた (誰も気づかず、エージェント
 はソース unzip に戻った)。参照と実体のずれは人任せの目視では見つからないので、
 コミット時 (check-docs-sync 経由) とリリース作成時に必ずここを通す。
 
@@ -40,8 +40,8 @@ BUNDLE_REQUIRED = [
     "bin/checkd",
     "bin/explain-error",
     "bin/gen-api-digest.py",
-    "bin/golden-bless.sh",
-    "bin/golden-check.sh",
+    "bin/snapshot-update.sh",
+    "bin/snapshot-check.sh",
     "bin/img-digest.py",
     "bin/status.py",
     "bin/lint-view.py",

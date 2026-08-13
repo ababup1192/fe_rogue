@@ -11,7 +11,7 @@ mod ShaderEffect {
 
     /// シェーダー面 1 枚ぶんの描画依頼。
     /// program = buildProgram が返した GPU ハンドル、rect = 塗る矩形（スクリーン空間 px・uv=0..1 が
-    /// この矩形）、time = uTime uniform に渡す秒、zIndex = 重なり順（骨格では固定 z 帯へ寄せる）、
+    /// この矩形）、time = uTime uniform に渡す秒、zIndex = 重なり順（骨格では固定 z-index の範囲へ寄せる）、
     /// blend = 重ね方。
     /// texNames = Spec の Tex ノードが読むテクスチャ名（ShaderDoc.texNames の正典順）。
     /// program は GLSL ソースが鍵のキャッシュで共有され、名前を GLSL に写さないため、
@@ -35,7 +35,7 @@ mod ShaderEffect {
         /// 失敗時は bug! でなく単色フォールバックプログラムを返す（fail-open）— theme 由来の
         /// codegen ミスで全体がクラッシュしないように。
         def buildProgram(spec: ShaderDoc.Spec): GpuHandle.ShaderProgram
-        /// シェーダー面 1 枚を描く。骨格では「床タイルと壁の間の固定 z 帯」へ寄せて
+        /// シェーダー面 1 枚を描く。骨格では「床タイルと壁の間の固定 z-index の範囲」へ寄せて
         /// renderCommands の下に敷く（暗幕・ハロが上に正しく乗る）。
         def drawSurface(cmd: ShaderRenderCmd): Unit
     }

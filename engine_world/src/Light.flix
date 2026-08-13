@@ -271,7 +271,7 @@ mod Light {
         Render.blit(cfg#passName, cfg#viewport, cfg#z)
             |> Render.overItem(item -> Render.blended(DrawCmd.BlendMode.Multiply, item))
 
-    /// 光マップの中の z 帯。影（20）は放射（10）より上 — 影が灯りの Add の後に掛からないと
+    /// 光マップの中の z-index の範囲。影（20）は放射（10）より上 — 影が灯りの Add の後に掛からないと
     /// 「灯りを打ち消して環境光へ戻す」順にならないため。
     def radianceZ(): Int32 = 10
     def shadowZ(): Int32 = 20

@@ -1,7 +1,7 @@
 // RulesDoc — race.rules.json（手触りと収支の数値）の宣言ドキュメント層。
 // Doc は「調整したい数値の初期値の宣言」まで。走る・曲がる・滑る・抜く・壊れるの規則そのものは
 // コード（World）側にある。ここに if 文を書き始めたら Doc の境界を越えている合図。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 //
 // 数値は 7 つの関心に分かれる（スキーマの group と同じ並び）:
 //   走り / コーナーとドリフト / 障害物 / スリップストリーム / ニトロ / クラッシュ / アイテムと得点
@@ -100,7 +100,7 @@ mod RulesDoc {
           scorePerPass = 300,
           finishBonus = 1000 }
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

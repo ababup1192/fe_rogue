@@ -101,7 +101,7 @@ mod Annotate {
         { x = size#x + badgePad() * 2.0, y = size#y + badgePad() * 2.0 }
 
     /// 黒地 alpha 0.7 の帯に白文字を載せる。topLeft は帯の左上（デザイン座標）。
-    /// z はエンジンデバッグ帯（ZBand.debugBase）— HUD 帯より手前で、ゲームのどの絵にも
+    /// z はエンジンデバッグの範囲（ZBand.debugBase）— HUD の範囲より手前で、ゲームのどの絵にも
     /// 隠されない（デバッグ中の表示は常に読めるように）。
     def badge(fontAtlas: FontAtlas, fontSize: Float64, topLeft: Vec2.Vec2,
               message: String): List[Render.PlacedItem] =
@@ -414,7 +414,7 @@ mod Annotate {
     // ── 一時停止中の表示 ──
 
     /// ドラッグ中の矩形オーバーレイ（薄い塗り + 枠線）。デザイン座標の列に混ぜて描く。
-    /// zIndex はエンジンデバッグ帯（ZBand.debugBase）— ゲームのどの絵にも隠されない。
+    /// zIndex はエンジンデバッグの範囲（ZBand.debugBase）— ゲームのどの絵にも隠されない。
     pub def overlayItems(dragStart: Vec2.Vec2, cursorDesign: Vec2.Vec2): List[Render.PlacedItem] =
         let rect = normRect(dragStart, cursorDesign);
         let red = { r = 1.0f32, g = 0.25f32, b = 0.25f32 };

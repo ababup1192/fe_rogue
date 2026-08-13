@@ -94,7 +94,7 @@ mod SoftRaster {
 
     /// この経路が描けずに落とす指定を数える（純粋・焼く前に呼べる）。
     /// GL の描画規約と揃っていない属性はここに 1 行足すこと — 黙って落とすと、焼いた絵と実機の絵が
-    /// 食い違ったまま golden に固定され、「絵は正しい」という嘘が残る。
+    /// 食い違ったままスナップショットに固定され、「絵は正しい」という嘘が残る。
     /// 対応表は docs/backend-parity.md。
     pub def dropped(ds: List[GameEngine.Drawable]): List[Dropped] =
         let styledSprite = ds |> List.count(d ->
@@ -146,7 +146,7 @@ mod SoftRaster {
         renderToImageFonts(req, surfaces, Map.empty())
 
     /// renderToImageWith の複数フォント版。`extraFonts` はテクスチャ名 → 追加の本。
-    /// グリフはテクスチャ名で本を選んで描く（知らない名前は既定フォントへ倒す）。
+    /// グリフはテクスチャ名で本を選んで描く（知らない名前は既定フォントへ落とす）。
     pub def renderToImageFonts(req: RasterReq, surfaces: List[SurfaceCmd],
                                extraFonts: Map[String, FontEntry]): BufferedImage \ IO =
         renderToImageFull(req, surfaces, extraFonts, Map.empty())
@@ -844,7 +844,7 @@ mod SoftRaster {
                             unchecked_cast(null as ImageObserver))
 
     /// clip 窓(design px)を出力ピクセルへ floor 量子化して張り、draw を実行してから元へ戻す。
-    /// 量子化は GL の glScissor と同じ DrawCmd.clipPixels — 同じ画素集合になるのが golden の前提。
+    /// 量子化は GL の glScissor と同じ DrawCmd.clipPixels — 同じ画素集合になるのがスナップショットの前提。
     /// 退避・復元で行うので、draw の内側の g.clip(交差)とも安全に入れ子になる。
     def withClip(g: Graphics2D, sf: Float64, clip: Option[Rect2.Rect2], draw: Unit -> Unit \ ef): Unit \ IO + ef =
         match clip {

@@ -1,7 +1,7 @@
 // UiText — ui.text.json(画面に出る文言)の宣言ドキュメント層。
 // プレイヤーの目に入る文字はコードに直書きしない — 訳語や言い回しは
 // 遊びながら直したくなるし、翻訳のとき探し回ることになるため。
-// fail-open — 読めない・壊れているときは defaults() へ倒す。
+// fail-open — 読めない・壊れているときは defaults() へ落とす。
 mod UiText {
     use Util.Json.Json
 

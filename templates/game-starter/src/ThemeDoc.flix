@@ -2,7 +2,7 @@
 // 意味色キーを実色に解決する resolver。持つのは 2 つ: 基準の色と、ドット絵の塗りの
 // 仕上げ方（PxShade）。どちらも「保存して見ながら決める」物なので同じ Doc に置く。
 // 派生色（ハイライト・影）は基準色から導く（導出できる値は Doc に置かない）。
-// fail-open: 読めない・壊れているときは defaults() へ倒す。
+// fail-open: 読めない・壊れているときは defaults() へ落とす。
 mod ThemeDoc {
     use Util.Json.Json
 
@@ -40,7 +40,7 @@ mod ThemeDoc {
             |> Option.flatMap(json -> UiDoc.colorOf(Map.empty(), key, json) |> Result.toOption)
             |> Option.getWithDefault(fallbackColor)
 
-    /// "shade" の中身を読む。欄が無ければ・壊れていればその欄だけ既定へ倒す。
+    /// "shade" の中身を読む。欄が無ければ・壊れていればその欄だけ既定へ落とす。
     def shadeOr(fallback: PxShade.Spec, root: Map[String, Json]): PxShade.Spec =
         match Map.get("shade", root) |> Option.flatMap(JsonCodec.expectObject) {
             case None => fallback

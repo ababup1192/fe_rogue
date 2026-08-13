@@ -5,7 +5,7 @@
 // 実色への解決は描く側(PxSprite.draw の resolver)が行う — Doc は色の名前しか知らない。
 //
 // 外形は Doc 規約どおり: version / note 歓迎 / 全フィールド fail-open
-// (欠け・書き損じは既定へ倒す — 壊れたファイルでも empty() で必ず動く)。
+// (欠け・書き損じは既定へ落とす — 壊れたファイルでも empty() で必ず動く)。
 mod PxSpriteDoc {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JString}
@@ -29,7 +29,7 @@ mod PxSpriteDoc {
     pub def empty(): Doc =
         { version = 1, note = None, legend = Map.empty(), sprites = Map.empty() }
 
-    /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.parse(String.trim(text))
             |> Option.flatMap(JsonCodec.expectObject)

@@ -2,10 +2,10 @@
 // *.sprite.json の legend が使う「意味色キー → 実色」の表。マシンのタイヤ・キャノピー・
 // ヤシの幹と葉・コーン・アイテム箱など、ドット絵の細かい色はここに集める
 // （画面の大きな配色は ThemeDoc — 関心が違うので Doc を分ける）。
-// Studio のドット絵エディタも同じファイルを paletteFile として読む（make lint-palette の関所）。
+// Studio のドット絵エディタも同じファイルを paletteFile として読む（make lint-palette のゲート）。
 // 車体の色（body 系）だけは描くとき ThemeDoc の player / rivalA..C で塗り替える —
 // ここに置くのは Studio のプレビュー用の基準色（自機の赤）。
-// fail-open: 読めない・壊れているときは defaults() へ倒す。
+// fail-open: 読めない・壊れているときは defaults() へ落とす。
 mod PaletteDoc {
     use Util.Json.Json
 

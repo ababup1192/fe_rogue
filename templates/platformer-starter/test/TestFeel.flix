@@ -33,7 +33,7 @@ mod TestFeel {
 
     @Test
     def testCoyoteAllowsLateJump(): Unit \ Assert =
-        // 崖を離れた直後(コヨーテ残あり)は空中でも跳べる。取り置きとコヨーテは消費される。
+        // 崖を離れた直後(コヨーテ残あり)は空中でも跳べる。バッファとコヨーテは消費される。
         let airborne = { body = { pos = { x = 24.0, y = 40.0 }, vel = { x = 0.0, y = 30.0 },
                                   onGround = false },
                          coyote = m()#coyoteTime * 0.5, buffer = 0.0,

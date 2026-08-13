@@ -20,9 +20,9 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make debug` | 保存即反映（watchFile）+ F8 検分 + fps 表示つきで起動 |
 | `make check` / `make test` | 型検査 / テスト（36 本） |
 | `make palette` | Studio 用の色の写し（`assets/rpg.palette.json`）を作り直す |
-| `make bake` | golden 用の決定的な 6 場面を `gallery/` に焼く |
+| `make bake` | スナップショット用の決定的な 6 場面を `gallery/` に焼く |
 | `make bake-town` / `bake-house` / `bake-motion` / `bake-seam` | 街の全景 / 建物の寄り / 動き物 / 継ぎ目検分を `debug/` に焼く |
-| `make bench` / `make golden` | golden とバイト比較 / いまの gallery を祝福 |
+| `make snapshot-check` / `make snapshot-update` | スナップショットとバイト比較 / いまの gallery を更新 |
 | `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
 
 - **F1** … Doc を全部読み直す（保存即反映が効かない時の手動リロード）。
@@ -42,7 +42,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    3. `src/View.flix` … 状態を絵に写す（タイル・建物・水面・ふきだしを、何をどこに描くか）。
       街タイルの縁・角・橋の選定は `src/TownMap.flix`（rows には素材しか書かない）。
    4. `src/Controls.flix` … キーの割り当て(InputMap)と Doc の読み直し。
-   5. `src/bake/Bake.flix` … 決定的な 6 場面を PNG に焼く（golden とアトリエ）。
+   5. `src/bake/Bake.flix` … 決定的な 6 場面を PNG に焼く（スナップショットとアトリエ）。
 3. 手触り・色・絵・盤面は下の `assets/` の Doc を保存即反映でいじる。
 
 **いちばん小さい変え方**（保存即反映を体験する）: `make debug` で起動したまま
@@ -70,9 +70,9 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 それぞれに Studio 用の schema が並んでいて、`project.json` の `editor.resources` が宣言しています。
 Studio で開けばそのまま編集できます。
 
-## golden の焼き方
+## スナップショットの焼き方
 
-- `make bake` で `gallery/` に決定的な PNG を焼き、`make golden` で祝福、`make bench` で防護。
-- 見た目を意図して変えたら: `make bench` で差分を確認（意図した変化だけが DIFF に
-  なっていること）→ `make golden` で祝福 → もう一度 `make bench` が全 OK。
+- `make bake` で `gallery/` に決定的な PNG を焼き、`make snapshot-update` で更新、`make snapshot-check` で防護。
+- 見た目を意図して変えたら: `make snapshot-check` で差分を確認（意図した変化だけが DIFF に
+  なっていること）→ `make snapshot-update` で更新 → もう一度 `make snapshot-check` が全 OK。
 - 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に焼いて目視。

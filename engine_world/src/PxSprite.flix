@@ -144,7 +144,7 @@ mod PxSprite {
         }
 
     /// 文字格子の左上を at に置いて、アトラスの 1 クアッドで描く。
-    /// anchor がどこにあっても左上でそろうので、道具の札や一覧のように「枠に並べる」用途に向く。
+    /// anchor がどこにあっても左上でそろうので、道具のアイコンや一覧のように「枠に並べる」用途に向く。
     pub def drawQuadTopLeft(spec: { doc = PxSpriteDoc.Doc, baked = PxSpriteAtlas.Baked,
                                     texture = String, sprite = String, frame = String,
                                     at = Vec2.Vec2, scale = Int32,

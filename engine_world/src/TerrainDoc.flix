@@ -2,7 +2,7 @@
 // 色は「#rrggbb リテラル」か「@キー(テーマ色参照)」の文字列で持ち、実色への解決は
 // 呼び側 resolver(specOf の第1引数)に委ねる — テーマを差し替えると地形の色も追随する
 // (PxSprite / ThemeDoc.resolver と同じ流儀)。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 // decode の契約: entries の char 重複は先勝ち・surface の未知 preset 名は除去・
 // edge は uniform 先勝ち(いずれも壊れ扱いにせず静かに畳む)。
 

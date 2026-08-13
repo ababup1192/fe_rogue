@@ -97,7 +97,7 @@ python3 debug/apply_wall_rules.py add 候補.json     # 18 material へ冪等追
 
 - `test/TestMapLoader.flix` にピンテストを足す（ミニ盤面で「発火する / 類似地形で沈黙する」の対。
   既存の testShortJunction* がひな型）。
-- `make test` を**最後に 1 回**（マテリアル JSON のみの変更で golden は動かない実績あり。
+- `make test` を**最後に 1 回**（マテリアル JSON のみの変更でスナップショットは動かない実績あり。
   途中で何度も全走しない）。
 - before/after を `gallery/` へ、チケット README に対応記録を追記
   （原因 / ルール名 / 検証結果 / gallery リンク / 「反映は次フロアから」）。

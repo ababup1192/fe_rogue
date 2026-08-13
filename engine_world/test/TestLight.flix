@@ -80,7 +80,7 @@ mod TestLight {
         Assert.assertEq(expected = radii, List.map(holeRadiusOf, radii))
 
     // 周囲の黒帯4枚（暗幕の次〜ハロの前）は Multiply・cfg#z・alpha=darkness で、
-    // mask 正方形と同じ z 帯に隙間なく敷かれる。
+    // mask 正方形と同じ z-index の範囲に隙間なく敷かれる。
     @Test
     def testSingleLightSurroundBoxesAreMultiplyAtCfgZWithDarkness(): Unit \ Assert =
         let (drawables, _) = Render.draw(Light.singleLightItems(singleCfg()));

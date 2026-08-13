@@ -20,13 +20,13 @@ Box（＝カードの面）と Text（＝ランク表記）は回せない。カ
 | **SoftRaster は rotation を完全に無視している** | `engine_tools/src/SoftRaster.flix`（`rotation` の参照が 0 件） |
 | いまリポジトリ全体で rotation に 0 以外を入れている箇所は **ゼロ** | 全 `*.flix` grep |
 
-**一番大事なのは 5 行目**。生成（golden・F8 注釈・エディタのプレビュー）は SoftRaster が描くので、
-回転を足しても生成した絵には出ない＝「目で確かめる」「golden で守る」ができない。
+**一番大事なのは 5 行目**。生成（スナップショット・F8 注釈・エディタのプレビュー）は SoftRaster が描くので、
+回転を足しても生成した絵には出ない＝「目で確かめる」「スナップショットで守る」ができない。
 つまり SoftRaster 対応は付け足しではなく、この計画の必須部分。
 
 **6 行目のおかげで単位を揃え直せる**。いま Sprite はラジアン、`rotated` は回転数とバラバラだが、
 実際に 0 以外を使っている場所が無いので、**全部を「回転数（1 周 = 1.0）」に統一**しても
-今日の絵は 1 ピクセルも変わらない（cos0/sin0 のまま）。golden のバイト一致で機械的に証明できる。
+今日の絵は 1 ピクセルも変わらない（cos0/sin0 のまま）。スナップショットのバイト一致で機械的に証明できる。
 
 ## 2. 設計の決めごと
 
@@ -60,7 +60,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 
 - `Clipped` の窓は回さない（窓は画面に平行な矩形のまま）。中身だけ回る。ui.json の poly と同じ割り切り。
 - `Shader` の面は回さない（uv の意味が変わるため。必要になったら spec 側の Rotate で回す）。
-- F8 注釈の当たり矩形は回転前の外接矩形のまま（傾いた札のクリック判定はゲーム側の責任）。
+- F8 注釈の当たり矩形は回転前の外接矩形のまま（傾いたカードのクリック判定はゲーム側の責任）。
 
 ## 3. 手順（フェーズ）
 
@@ -69,7 +69,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 | 1 | `Item.Box` / `Item.Text` に `rotation` を足し、出口でラジアン変換。Sprite も回転数へ読み替え | `engine_world/src/Render.flix`（+ 構築している 8 ファイル。ほぼテスト） | 0.3 日 |
 | 2 | `turned` / `turnedAll` を追加 | 同上 | 0.2 日 |
 | 3 | **SoftRaster を回転対応**（`drawBox` / `drawTextured` / `drawGlyph` に AffineTransform、`drawableAabb` を回転後の外接矩形に） | `engine_tools/src/SoftRaster.flix` | 0.3 日 |
-| 4 | テスト（純投影）＋ golden の据え置き確認 | `engine_world/test/TestRender.flix` | 0.2 日 |
+| 4 | テスト（純投影）＋スナップショットの据え置き確認 | `engine_world/test/TestRender.flix` | 0.2 日 |
 | 5 | ui.json 宣言（box / text に `rotation`。UiSpec 経路は poly と同じく loud に Err） | `engine_world/src/UiDoc.flix`, `UiSpec.flix`, `docs/ui.schema.json` | 0.3 日 |
 | 6 | 配布（`make sync-engine-world` → engine_full 再ビルド → neon_deck の lib へ) と neon_deck のカード傾き実装 | Makefile 経由 + `neon_deck/src/View.flix`, `CardLayout.flix` | 0.2 日 |
 
@@ -84,8 +84,8 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
   - `turnedAll(0.5, pivot)` を 2 回かけると元に戻る（往復）
   - Text を回すと文字の四角の中心が `at` まわりに回っている
 - **今の絵が変わらない証明**: 回転 0 のままの `make bake-par` → `git status` で
-  gallery / golden の差分ゼロ（単位の読み替えが無害だと機械的に示す）。
-- **回転が効く証明**: neon_deck に傾けたカードの生成シーンを 1 枚足して目視 → golden に祝福。
+  gallery / スナップショットの差分ゼロ（単位の読み替えが無害だと機械的に示す）。
+- **回転が効く証明**: neon_deck に傾けたカードの生成シーンを 1 枚足して目視 →スナップショットを更新。
   GL 実機（`make run`）と生成した絵が同じ傾きに見えるかも確認する（SoftRaster と GL の式が揃っているか）。
 - 波及パッケージ: `make test-engine-world` と `make test-engine-tools`、他は `flix check`。
 
@@ -113,10 +113,10 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 ### 検証の結果
 
 - engine_world 678 / engine_tools 34 / neon_deck 55 とも green。
-- `make bake-par` 後の gallery / golden の差分ゼロ = 単位（ラジアン→回転数）の読み替えが
+- `make bake-par` 後の gallery / スナップショットの差分ゼロ = 単位（ラジアン→回転数）の読み替えが
   既存の絵を 1 バイトも変えていない。
 - neon_deck のカードを扇状に傾けて生成し、箱・文字・スート記号が一緒に回ることを目視で確認 →
-  golden 祝福済み。GL 実機（`make run`）との見比べも確認済み。
+  スナップショット更新済み。GL 実機（`make run`）との見比べも確認済み。
 
 ### 残った穴（既知・今後の判断）
 

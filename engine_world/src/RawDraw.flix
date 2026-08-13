@@ -1,7 +1,7 @@
-// RawDraw — 塗りつぶしの箱・円・多角形など、単色ベタの素形状の置き場。
+// RawDraw — 塗りつぶしの箱・円・多角形など、単色ベタの図形プリミティブの置き場。
 // ここから絵を組み始めない(まず docs/drawing-floor.md と /visual-dict)。
 // 家づくりでいう柱や板のような「材料」で、PxShade・Material・Scatter・Terrain・
-// shader.json などの高レイヤー部品が、素形状を多数合成して見た目を作る土台。
+// shader.json などの高レイヤー部品が、図形プリミティブを多数合成して見た目を作る土台。
 // 正当な用途: HUD の下地・デバッグ描画・fail-open の仮板・高レイヤー部品の内部実装。
 // 依存方向は RawDraw→Render のみ可。UI の入れ子レイアウトは UiLayout.box(別物)。
 // lineQuad+rotated の時計の針イディオムはここに残る(線を引くこと自体は可)。

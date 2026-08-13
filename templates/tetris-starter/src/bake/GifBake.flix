@@ -1,8 +1,8 @@
-// GifBake — README のショーケース用 GIF を画面なしで生成する（golden の外・debug/ 行き）。
+// GifBake — README のショーケース用 GIF を画面なしで生成する（スナップショットの外・debug/ 行き）。
 // 実行: flix run --entrypoint GifBake.all → debug/showcase.gif
 // 積み上げた盤の 1 列だけを空けておき、そこへ I ミノを縦に落として 4 段消し（テトリス）を
 // 実演する決定的な台本。Bake.flix の静止画とは別に、動きを見せたい GIF だけをここに分ける
-// （gallery/golden は静止画の比較専用なので、ここでは触らない）。
+// （gallery/snapshot は静止画の比較専用なので、ここでは触らない）。
 mod GifBake {
     import java.io.File
 

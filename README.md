@@ -471,7 +471,7 @@ make sync-root-src       # コミュニティビルド用ルート src/ symlink 
 make clean-locks         # flix check 中断で残った Maven cache の *.lock を削除
 make clean-example-builds # examples/*/build/ を削除（IDE のシーン読み込み高速化用）
 make boot-font           # 起動画面の組み込みフォント・ロゴを engine のソースへ焼き直す
-make clean-font-cache    # フォントの焼き上がりの取り置きを捨てる（次の起動は焼き直し）
+make clean-font-cache    # フォントの焼き上がりのキャッシュを捨てる（次の起動は焼き直し）
 ```
 
 ## 起動画面
@@ -507,13 +507,13 @@ GL の用意ができた時点ですぐ画面を地の色で塗り、ロゴ・�
 見比べられる）。
 
 焼いた物は `~/.cache/flix_game_engine/font` にも取っておくので、2 回目以降は焼き自体が起きない。
-壊れていたり古かったりする取り置きは黙って捨てて焼き直すので、起動が止まることはない。
+壊れていたり古かったりするキャッシュは黙って捨てて焼き直すので、起動が止まることはない。
 
 | 環境変数 | 効き方 |
 |---|---|
 | `FLIX_GE_NO_SPLASH=1` | 起動画面を出さない |
-| `FLIX_GE_NO_FONT_CACHE=1` | フォントの取り置きを読みも書きもしない |
-| `FLIX_GE_CACHE_DIR=<dir>` | フォントの取り置き場を変える |
+| `FLIX_GE_NO_FONT_CACHE=1` | フォントのキャッシュを読みも書きもしない |
+| `FLIX_GE_CACHE_DIR=<dir>` | フォントのキャッシュの置き場を変える |
 | `FLIX_GE_SPLASH_SHOT=<file>` | 起動画面を数枚 PNG に書き出す（目視で確かめる用） |
 
 ## 技術スタック

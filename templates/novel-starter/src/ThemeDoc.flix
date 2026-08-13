@@ -1,6 +1,6 @@
 // ThemeDoc — novel.theme.json（色票）の宣言ドキュメント層と、スプライトの意味色キーを
 // 実色に解決する resolver。派生色（ハイライト・窓枠）は基準色から導く（導出できる値は
-// Doc に置かない）。fail-open: 読めない・壊れているときは defaults() へ倒す。
+// Doc に置かない）。fail-open: 読めない・壊れているときは defaults() へ落とす。
 // 例外は accentLight — スプライト legend が名指しする色は Studio でも解けるよう
 // assets/ui/palette.json の宣言色を優先し、無ければ従来どおり accent から導く（fail-open）。
 mod ThemeDoc {

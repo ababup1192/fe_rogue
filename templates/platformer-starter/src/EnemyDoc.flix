@@ -1,6 +1,6 @@
 // EnemyDoc — enemies.enemy.json(敵 3 種のテンポ数値)の宣言ドキュメント層。
 // 種類そのものは増えない(歩く・飛ぶ・撃つで固定)— 増減するのはステージ側の配置。
-// fail-open — 読めない・壊れているときは defaults() へ倒す。
+// fail-open — 読めない・壊れているときは defaults() へ落とす。
 mod EnemyDoc {
     use Util.Json.Json
 

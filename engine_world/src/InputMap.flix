@@ -37,7 +37,7 @@ mod InputMap {
             |> List.find(key -> String.toLowerCase("${key}") == String.toLowerCase(name))
 
     /// 名前の列 → キーの列(順は保つ)。知らない名前はその 1 個だけ捨てる —
-    /// 書き間違い 1 個で操作全体を殺さない。空になったとき既定へ倒すかは
+    /// 書き間違い 1 個で操作全体を殺さない。空になったとき既定へ落とすかは
     /// 呼び側(Doc 層)が決める。
     pub def keysOf(names: List[String]): List[GameEngine.Key] =
         List.filterMap(keyOf, names)

@@ -6,7 +6,7 @@ mod RenderBuf {
     import java.nio.FloatBuffer
     import org.lwjgl.system.MemoryUtil
 
-    /// 書き込み先の入れ物。中身を差し替えられるように 1 席の配列で持つ。
+    /// 書き込み先の入れ物。中身を差し替えられるように 1 スロットの配列で持つ。
     /// Java の配列でなく直接メモリの入れ物を使うのは、書いた範囲だけを
     /// 位置と上限で切り出してそのまま GL へ渡せる（写し替えが要らない）ため。
     pub type alias Buf = { cell = Array[FloatBuffer, Static], room = Array[Int32, Static] }

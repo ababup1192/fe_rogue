@@ -9,7 +9,7 @@
   （2026-07-24）。`make / addSystem / watchFile / withView` の合成へ desugar するだけの
   便利コンストラクタ `App.game({init, update, view, reloads})` を engine_world/App.flix に
   **追加**し（既存ビルダーは不変）、novel/rpg/game-starter の Main をこの 1 レコード形へ
-  書き換えた（golden 全枚バイト一致で挙動不変を確認）。初学者は Main を読むだけでループの
+  書き換えた（スナップショット全枚バイト一致で挙動不変を確認）。初学者は Main を読むだけでループの
   全体像を掴める。update は「合成 1 本」方式（複数システムはゲーム側で `w |> step |> …` と
   繋いで渡す）で、音・HUD・quit 差し替え・複数システムの明示列挙が要る高度なゲームは従来
   ビルダーへ降りる、という線引きは doc コメントに明記済み。新 API なので外部ゲームが使うには
@@ -37,7 +37,7 @@
   dungeon は当面 engine の `DualGrid` / `Material` を呼ぶだけに留め、セル種→質感の表
   （Surfaces）は dungeon 側に残す。dungeon Surfaces と engine Terrain が別実装のまま
   乖離していく温床なので、**engine 側で Terrain に手を入れるときは Surfaces との差分を
-  確認し、下に最終確認日を残す**。乖離が痛くなった時点で「golden 一致で締める機械的
+  確認し、下に最終確認日を残す**。乖離が痛くなった時点で「スナップショット一致で締める機械的
   リファクタ」として移行計画を立てる。
   - 最終確認日: 2026-07-24（M5 時点。差分レビューはまだ不要と判断）
 

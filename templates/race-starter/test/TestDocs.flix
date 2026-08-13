@@ -9,7 +9,7 @@ mod TestDocs {
 
     @Test
     def testRulesBrokenJsonFallsBackToDefaults(): Unit \ Assert =
-        // 壊れた JSON は既定へ倒れる（ゲームは必ず起動する）。
+        // 壊れた JSON は既定へ落ちる（ゲームは必ず起動する）。
         let doc = RulesDoc.fromJson("{ broken") |> Option.getWithDefault(RulesDoc.defaults());
         Assert.assertEq(expected = RulesDoc.defaults()#forwardSpeed, doc#forwardSpeed)
 

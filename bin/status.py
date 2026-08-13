@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """セッション開始の現状 1 画面。
 
-散らばった記録 (git / .test-logs / golden / 注釈チケット / NOTES.md) を集めて
+散らばった記録 (git / .test-logs / スナップショット / 注釈チケット / NOTES.md) を集めて
 30 行前後に要約する。何も実行しない・何も変更しない・必ず exit 0。
 SessionStart フックから毎回呼ばれるので、出力の短さがそのまま固定費になる。
 """
@@ -68,10 +68,10 @@ def section_git(out):
     out.append("git      ブランチ %s / 変更中 %d ファイル" % (branch, n))
     for line in git("log", "--oneline", "-3").splitlines():
         out.append("  " + line)
-    # コミット時の関所は clone ごとに配線が要る。読むだけの status は知らせるだけ。
+    # コミット時のゲートは clone ごとに配線が要る。読むだけの status は知らせるだけ。
     if os.path.isdir(os.path.join("bin", "githooks")) and \
             git("config", "core.hooksPath") != "bin/githooks":
-        out.append("  未配線: pre-commit 関所が効いていません → make hooks")
+        out.append("  未配線: pre-commit ゲートが効いていません → make hooks")
 
 
 def section_tests(out):
@@ -96,18 +96,18 @@ def section_tests(out):
         out.append("  NG(bake): %s" % os.path.basename(p)[:-5])
 
 
-def golden_pairs():
-    """(名前, golden/SHA256SUMS.txt, gallery/) の組。ゲームリポは自分 1 組、engine リポは templates 全部。"""
-    if os.path.isfile(os.path.join("golden", "SHA256SUMS.txt")):
-        return [(".", os.path.join("golden", "SHA256SUMS.txt"), "gallery")]
+def snapshot_pairs():
+    """(名前, snapshot/SHA256SUMS.txt, gallery/) の組。ゲームリポは自分 1 組、engine リポは templates 全部。"""
+    if os.path.isfile(os.path.join("snapshot", "SHA256SUMS.txt")):
+        return [(".", os.path.join("snapshot", "SHA256SUMS.txt"), "gallery")]
     pairs = []
-    for sums in sorted(glob.glob(os.path.join("templates", "*", "golden", "SHA256SUMS.txt"))):
+    for sums in sorted(glob.glob(os.path.join("templates", "*", "snapshot", "SHA256SUMS.txt"))):
         base = os.path.dirname(os.path.dirname(sums))
         pairs.append((os.path.basename(base), sums, os.path.join(base, "gallery")))
     return pairs
 
 
-def check_golden(sums, gallery):
+def check_snapshot(sums, gallery):
     """一致した枚数と食い違い一覧を返す。shasum が無い Windows でも動くよう hashlib で比べる。"""
     expected = {}
     with open(sums, encoding="utf-8", errors="replace") as fh:
@@ -133,8 +133,8 @@ def check_golden(sums, gallery):
     return ok, sorted(set(bad))
 
 
-def section_golden(out):
-    pairs = golden_pairs()
+def section_snapshot(out):
+    pairs = snapshot_pairs()
     if not pairs:
         return
     oks = []
@@ -142,16 +142,16 @@ def section_golden(out):
         if not os.path.isdir(gallery):
             continue  # 未生成は「情報なし」。生成してから比べる
         try:
-            ok, bad = check_golden(sums, gallery)
+            ok, bad = check_snapshot(sums, gallery)
         except OSError:
             continue
         if bad:
-            out.append("golden   NG %s: %s%s (意図した変更なら make golden で祝福)" % (
+            out.append("snapshot NG %s: %s%s (意図した変更なら make snapshot-update で更新)" % (
                 name, " ".join(bad[:4]), " 他%d" % (len(bad) - 4) if len(bad) > 4 else ""))
         else:
             oks.append("%s(%d枚)" % (name, ok))
     if oks:
-        out.append("golden   OK: " + " ".join(oks))
+        out.append("snapshot OK: " + " ".join(oks))
 
 
 def section_tickets(out):
@@ -169,7 +169,7 @@ def section_tickets(out):
 
 def section_style(out):
     # engine リポ自身にはルート AGENTS.local.md が無く、素朴に検査すると毎回誤発火する。
-    # templates/ の有無でリポ種別を見分ける（golden_pairs() と同じ手）
+    # templates/ の有無でリポ種別を見分ける（snapshot_pairs() と同じ手）
     if os.path.isdir("templates"):
         return
     hint = "[画風] AGENTS.local.md の「この画面の画風」が未定（無い/仮置きのまま） → 絵を描く前に /style-interview"
@@ -209,8 +209,8 @@ def read_engine_dir():
 
 
 def section_pack(out):
-    """agents-pack の陳腐化検出。AGENTS.md 先頭に刻まれた engine 版と、いま使っている
-    engine の版 (Makefile の VERSION) を照らす。どちらかが読めなければ黙る (fail-open) —
+    """agents-pack の陳腐化検出。AGENTS.md 先頭に刻まれた engine のバージョンと、いま使っている
+    engine のバージョン (Makefile の VERSION) を照らす。どちらかが読めなければ黙る (fail-open) —
     status は知らせるだけで、作業を止めない。"""
     if os.path.isdir("templates"):
         return  # engine リポ自身。AGENTS.md は pack の生成物ではない
@@ -245,8 +245,8 @@ def read_engine_version(engine):
 
 
 def section_engine_drift(out):
-    """lib の engine 版ズレ検出。ゲームの flix.toml が指す flix_game_engine の版と、
-    いま使っている engine の版 (Makefile の VERSION) を照らす。ズレたままだと
+    """lib の engine バージョンズレ検出。ゲームの flix.toml が指す flix_game_engine のバージョンと、
+    いま使っている engine のバージョン (Makefile の VERSION) を照らす。ズレたままだと
     make api や docs が「手元の lib に無い API」を教えてくる (使うと Undefined name)。
     どちらかが読めなければ黙る (fail-open) — status は知らせるだけで、作業を止めない。"""
     if os.path.isdir("templates"):
@@ -267,7 +267,7 @@ def section_engine_drift(out):
         return
     cur = read_engine_version(engine)
     if cur and cur != pinned:
-        out.append("engine   版ズレ (このゲームは v%s / いまの engine は v%s)。"
+        out.append("engine   バージョンズレ (このゲームは v%s / いまの engine は v%s)。"
                    "make api や docs は v%s の物なので、無い API を引く恐れ → make engine-upgrade で追随"
                    % (pinned, cur, cur))
 
@@ -292,7 +292,7 @@ def section_notes(out):
 def main():
     here = os.path.basename(os.getcwd())
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
-    for section in (section_git, section_tests, section_golden, section_tickets,
+    for section in (section_git, section_tests, section_snapshot, section_tickets,
                     section_style, section_pack, section_engine_drift, section_notes):
         try:
             section(out)

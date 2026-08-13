@@ -9,6 +9,7 @@
     {"src": "bin/lint-audio.py", "dst": "bin/lint-audio.py"},
     {"src": "bin/lint-images.py", "dst": "bin/lint-images.py"},
     {"src": "bin/lint-ui-overflow.py", "dst": "bin/lint-ui-overflow.py"},
+    {"src": "bin/lint-jargon.py", "dst": "bin/lint-jargon.py"},
     {"src": "bin/img-digest.py", "dst": "bin/img-digest.py"},
     {"src": "bin/status.py", "dst": "bin/status.py"},
     {"src": "bin/checkd", "dst": "bin/checkd"},

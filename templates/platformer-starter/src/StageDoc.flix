@@ -27,7 +27,7 @@ mod StageDoc {
              :: "########################"
              :: Nil } :: Nil }
 
-    /// テキストから Doc へ(fail-open)。stages が空・rows が欠けたら既定へ倒す。
+    /// テキストから Doc へ(fail-open)。stages が空・rows が欠けたら既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

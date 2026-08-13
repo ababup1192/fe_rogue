@@ -246,7 +246,7 @@ def list_images(root):
 
 
 def old_hashes(old_root):
-    """golden の SHA256SUMS.txt があれば {ファイル名: ハッシュ} を返す。無ければ None。
+    """スナップショットの SHA256SUMS.txt があれば {ファイル名: ハッシュ} を返す。無ければ None。
     一覧にある名前は旧ファイルを読み直さず、新側のハッシュだけで一致を判定できる。"""
     sums = os.path.join(old_root, "SHA256SUMS.txt")
     if not os.path.isfile(sums):

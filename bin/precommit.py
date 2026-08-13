@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""git commit の直前に走る関所 (bin/githooks/pre-commit の本体)。
+"""git commit の直前に走るゲート (bin/githooks/pre-commit の本体)。
 
 文章で頼むだけだと守られない約束を、コミットの瞬間に機械が止める:
 
@@ -12,6 +12,8 @@
                          lint-palette を通す
   5. 文字のはみ出す形    ステージに *.ui.json があれば lint-ui-overflow を
                          そのファイルだけに通す (折り返し宣言漏れを止める)
+  6. 独自の比喩語        今回書き足したコメント・文章に、docs/glossary.md の
+                         「使わない語」が混ざっていたら止める。既存の行は見ない
 
 使い方:
   通常は git が bin/githooks/pre-commit 経由で呼ぶ (配線は make hooks)
@@ -119,7 +121,7 @@ def needs_docs_sync(staged):
 
 def has_docs_sync_target():
     """make に check-docs-sync ターゲットが在るか。無い・make 自体が無いなら
-    1 行知らせてスキップ (関所の都合でコミットを壊さない。fail-open)。"""
+    1 行知らせてスキップ (ゲートの都合でコミットを壊さない。fail-open)。"""
     try:
         # -q は実行せずに「ターゲットとして解決できるか」だけ見る (無ければ exit 2)
         probe = subprocess.run(["make", "-q", "check-docs-sync"],
@@ -167,6 +169,15 @@ def main():
     if ui:
         lu = tool("lint-ui-overflow.py")
         if lu and run([sys.executable, str(lu), "--strict", *ui]) != 0:
+            failed = True
+
+    prose = [p for p in staged
+             if p.endswith((".md", ".flix", ".elm", ".json", ".py"))
+             or p == "Makefile" or p.endswith("/Makefile")]
+    if prose:
+        lj = tool("lint-jargon.py")
+        # 引数は渡さない: lint-jargon 自身がステージの + 行だけを読む (既存の行は叩かない)
+        if lj and run([sys.executable, str(lj)]) != 0:
             failed = True
 
     if needs_docs_sync(staged) and has_docs_sync_target():

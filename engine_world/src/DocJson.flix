@@ -1,5 +1,5 @@
 // DocJson — Doc（*.kind.json）を読むときの JSON 道具箱。parse / デコード補助（atNode・jsonError・
-// getAtKey 系）と、壊れた JSON を既定値へ倒す fail-open 読み込み（loadOr・checkVersion）を持つ。
+// getAtKey 系）と、壊れた JSON を既定値へ落とす fail-open 読み込み（loadOr・checkVersion）を持つ。
 // 境界: 値 ⇄ Json の純変換は JsonCodec、Doc 1 種ごとの型と読み書きは各 *Doc モジュールの持ち場。
 // 注意: flix-json 互換の呼び出し形（`getAtKey(Root, ...)` 等）を残している。flix-json はエラーに
 //   パス接頭辞 (`Root`) を持たせるが、`Util.Json` は decode 時に内部でパスを構築するため、
@@ -53,7 +53,7 @@ mod DocJson {
         }
 
     /// テキストを JSON オブジェクトとして読み、中身の Map から Doc を組む。
-    /// JSON でない・オブジェクトでないときは None（各欄の欠けは fromRoot 側が既定へ倒す）。
+    /// JSON でない・オブジェクトでないときは None（各欄の欠けは fromRoot 側が既定へ落とす）。
     /// Doc 層の `fromJson` はこれ 1 行で書ける。
     pub def decodeObject(fromRoot: Map[String, Json] -> a \ ef, text: String): Option[a] \ ef =
         parse(String.trim(text))

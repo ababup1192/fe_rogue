@@ -12,7 +12,7 @@
 **初学者向け概念ノート**（黒箱に見えがちな再利用パーツを1画面で解説）:
 - `docs/dual-grid.md` — チップ絵なしでマップ地形を描く仕組み（DualGrid / Material / Terrain の分業と「角の4セル→16ケース」）。
 - App のゲームループ（更新系システムで進める → view で描く の2役割と1周の順）は `engine_world/src/App.flix` 冒頭の doc を参照。
-- 座標→[0,1) の決定的なばらつき（乱数を使わない理由 = golden 決定性）は `engine_world/src/Hash01.flix` を参照。
+- 座標→[0,1) の決定的なばらつき（乱数を使わない理由 = スナップショット決定性）は `engine_world/src/Hash01.flix` を参照。
 
 ## 矩形だけの画面から脱する（絵の下限）
 
@@ -161,7 +161,7 @@
 ## 描画
 
 - **Render** — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
-- **RawDraw** — 単色ベタの素形状（box / circle / star / ellipse / sector / ngon など）。材料であって、
+- **RawDraw** — 単色ベタの図形プリミティブ（box / circle / star / ellipse / sector / ngon など）。材料であって、
   View に直接並べる完成品ではない。正当な用途は HUD 下地・デバッグ描画・fail-open の仮板。
 - **CameraRig** — world のどこを・どれだけ寄せて映すかを描画物の列に掛ける道具箱。
 - **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。
@@ -189,7 +189,7 @@
   App.withPasses と組む。光 A の影は光 B の灯りも消す割り切り）。
 - **Shadow** — 光と壁の頂点列から影の四角形を導く（当たり判定の形からも作れる）。
 - **Mirror** — 面（夜のガラス・鏡・磨いた床）に映る姿を、ドット絵の走り（PxSprite.Run）から組む。映り込み用の絵を別に描かないので、元の絵を直せば映るほうも一緒に直る。映るかどうかと、どのコマをどこへ合わせるかは呼び側の決めごと。
-- **LightDoc** — light.json（光源の質感）の宣言層。暗さ・照り返しフチ・ハロの大きさ・環境光・影の濃さ・光源の並びを JSON に書き、Spec へ畳む。壁の遮蔽形はゲームの World が持つので含まない。ambient / shadowStrength（光マップ方式用）は 0.19 系から — 古い版のエンジンは読み飛ばして既定になる。
+- **LightDoc** — light.json（光源の質感）の宣言層。暗さ・照り返しフチ・ハロの大きさ・環境光・影の濃さ・光源の並びを JSON に書き、Spec へ畳む。壁の遮蔽形はゲームの World が持つので含まない。ambient / shadowStrength（光マップ方式用）は 0.19 系から — 古いバージョンのエンジンは読み飛ばして既定になる。
 
 ## UI
 
@@ -244,7 +244,7 @@
 - **GridRay** — マス目の世界で「start から goal の間に壁が挟まるか」（視線の遮蔽）。壁の向こうの松明を消す・敵から主人公が見えるか、の見通し判定。solid の判定は関数で注入する。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
 - **MapResource**（legacy/） — タイルセット PNG + 自前の map.json でマップを貼る旧世代層。新規は DualGrid / Material / TerrainDoc を使う(棲み分けは docs/dual-grid.md)。
-- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。ヘッドレス生成・F8 停止画面・golden が GPU の事前生成と同じ絵になるための橋。
+- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。ヘッドレス生成・F8 停止画面・スナップショットが GPU の事前生成と同じ絵になるための橋。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。概念: docs/dual-grid.md。
 - **Material** — DualGrid のタイルに質感(塗り・フチ帯・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
 - **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API(実装例: rpg-starter)。

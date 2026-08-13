@@ -2,13 +2,13 @@
 #   make run    … ゲームを起動する（窓が開く）
 #   make debug  … 保存即反映(watchFile)と F8 を有効にして起動
 #   make test   … テストを実行する（記録は .test-logs/）
-#   make status … 現状 1 画面（テスト記録・golden・チケット・git）
+#   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
 #   make bake   … ギャラリー PNG を焼く（決定的）
 #   make palette … Studio 用の色の写し(assets/px.palette.json)を作り直す
-#   make shot STAGE=1 … 調整中の 1 面だけ debug/shot.png へ焼く（golden を汚さない）
-#   make bench  … 焼いた絵を golden とバイト比較する
-#   make golden … いまの gallery を golden として祝福する
+#   make shot STAGE=1 … 調整中の 1 面だけ debug/shot.png へ焼く（スナップショットを汚さない）
+#   make snapshot-check  … 生成した絵をスナップショットとバイト比較する
+#   make snapshot-update … いまの gallery をスナップショットとして更新する
 #   make stages … 面の罠ゼロ(BFS)と流れを機械検査する
 #   make checkpoints … 中間ポイント(c)を等間隔に置き直し、そのまま stages で検査する
 #   make loc    … src/ + test/ の .flix 合計行数（上限 3,000 行）
@@ -43,7 +43,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check bake shot bench golden stages checkpoints playtest probe loc palette api hooks check-docs-sync
+.PHONY: status run debug test build check bake shot snapshot-check snapshot-update stages checkpoints playtest probe loc palette api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -102,11 +102,11 @@ bake: palette
 shot:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" STAGE=$(STAGE) $(FLIX) run --entrypoint Bake.one
 
-bench: bake
-	"$(ENGINE)/bin/golden-check.sh"
+snapshot-check: bake
+	"$(ENGINE)/bin/snapshot-check.sh"
 
-golden:
-	"$(ENGINE)/bin/golden-bless.sh"
+snapshot-update:
+	"$(ENGINE)/bin/snapshot-update.sh"
 
 stages:
 	$(PYTHON) tools/check_stages.py
@@ -127,7 +127,7 @@ playtest:
 probe:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Probe.all
 
-# 現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない。
+# 現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない。
 # .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
 # pack が欠けたゲーム (sync-agents を配りきらない産み方をされた物) はここで配り直す —
 # AGENTS.md がセッションの入口を必ずこの target にしているため、最初の 1 回で自己修復できる。

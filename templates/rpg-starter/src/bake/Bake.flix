@@ -1,6 +1,6 @@
-// Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較用と、アトリエ候補のプレビュー用）。
+// Bake — ゲーム画面を画面なしで PNG に焼く（スナップショット比較用と、アトリエ候補のプレビュー用）。
 // 実行: flix run --entrypoint Bake.all → gallery/title.png・walk.png・talk.png・door.png・clear.png
-//       flix run --entrypoint Bake.atelier → debug/atelier/*.png（golden の外）
+//       flix run --entrypoint Bake.atelier → debug/atelier/*.png（スナップショットの外）
 // 場面の作り方は 2 通りを使い分ける:
 //   - 主人公の動き（歩く・話す・扉の前に立つ）は World の規則（stepOnce / confirm）で作る
 //     — 実機と同じ経路を通った絵になる。
@@ -21,7 +21,7 @@ mod Bake {
     def loadWorld(): World.World \ IO =
         run { World.initial(Controls.loadDocs()) } with Fs.FileRead.runWithIO
 
-    // ── 決定的な場面（golden） ──
+    // ── 決定的な場面（スナップショット） ──
 
     pub def all(): Unit \ IO =
         discard allShots()
@@ -34,7 +34,7 @@ mod Bake {
         let w0 = loadWorld();
         // 地面のタイルと建物は 1 枚のアトラスから貼る。SoftRaster はファイルからしか
         // 絵を読めないので、アトラスを debug/ に落として texturePath で渡す
-        // （gallery/ に golden 以外の生成物を置かない）。
+        // （gallery/ にスナップショット以外の生成物を置かない）。
         let images = PxSpriteAtlas.asImages(
             { texture = TownMap.textureName(), baked = w0#townAtlas } :: Nil);
         let texPaths = Bakery.imagePngs("debug", images);
@@ -151,7 +151,7 @@ mod Bake {
         println("baked: ${path}");
         path
 
-    // ── 街の下書き（DQ6級の街並み検証。golden の外・debug/ 行き） ──
+    // ── 街の下書き（DQ6級の街並み検証。スナップショットの外・debug/ 行き） ──
     // 盤の正典は Doc（assets/town.map.json）、層の宣言は TownMap — ここは焼くだけ。
     // この 2 枚は盤全体（640×480）を 1 枚で見たいので、design を盤の寸法に上げた
     // 別 config で焼く（camera は掛けない — 全景のほうが批評しやすい）。
@@ -328,7 +328,7 @@ mod Bake {
         Bakery.renderPng(cfg, drawables, polygons, "town_floor_scene");
         println("baked: debug/town_floor_scene.png")
 
-    // ── アトリエ（候補スプライト・候補テーマのプレビュー。golden の外） ──
+    // ── アトリエ（候補スプライト・候補テーマのプレビュー。スナップショットの外） ──
 
     /// atelier/*.sprite.json（候補）と assets/*.sprite.json（現行 → <名前>.current）を
     /// 実機と同じ描画経路（PxSprite.draw + ThemeDoc.resolver）でコンタクトシートに焼く。

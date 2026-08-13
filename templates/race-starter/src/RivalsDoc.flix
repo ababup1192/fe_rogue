@@ -3,7 +3,7 @@
 //   - ラバーバンド: 自機との距離差でライバルの速度を補正する強さ（離されると速く・千切ると遅く）。
 //   - rows: ライバル 1 台 = 1 行。台数を増減するとレースの台数が変わる。
 // 追いかける・避ける・コーナーで減速するの規則そのものはコード（World）側。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod RivalsDoc {
     use Util.Json.Json
 
@@ -47,7 +47,7 @@ mod RivalsDoc {
            :: { speed = 115.0, corner = 0.95, lane = 0.0 }
            :: Nil }
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

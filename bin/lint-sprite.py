@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ドット絵 (*.sprite.json) の絵としての質を検査する関所。
+"""ドット絵 (*.sprite.json) の絵としての質を検査するゲート。
 
 lint-palette が「色が解けるか」を見るのに対し、こちらは画素の並びを見る。
 規則はドット絵の実務で広く共有されている物の機械化:
@@ -47,7 +47,7 @@ GAME_ROOTS = ("templates", "examples")
 SKIP_GAMES = {"examples/fe_rogue"}
 
 # legend に無い文字のうち、透明として認める物。それ以外は typo と見なす
-# (エンジンは fail-open で無言で透明にするため、関所が代わりに声を出す)。
+# (エンジンは fail-open で無言で透明にするため、ゲートが代わりに声を出す)。
 TRANSPARENT_CHARS = {".", " "}
 
 RULES = ("structure", "orphan", "palette", "jaggy", "banding", "corner", "silhouette")

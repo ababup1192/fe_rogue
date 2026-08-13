@@ -178,15 +178,15 @@
   `pub def fixedSteps(carry: Float64, realDt: Float64, fixedDt: Float64): (Int32, Float64)`
 - withFixedStep の 2 サブステップ目以降に渡す Frame: エッジ 4 種（justPressed /
   `pub def suppressEdges(frame: Frame): Frame`
-- 0 サブステップのフレームで捨てられそうになったエッジの取り置き。エッジは prev との
+- 0 サブステップのフレームで捨てられそうになったエッジのバッファ。エッジは prev との
   `pub type alias PendingEdges = { justPressed = Set[GameEngine.Key], mouseClicked = Bool, mouseMoved = Bool, wheel = Float64 }`
 - withFixedStep がフレームをまたいで持ち回す状態（持ち越し秒 + 未消費エッジ）。
   `pub type alias StepState = { carry = Float64, pending = PendingEdges }`
 - 起動直後の StepState（貯金ゼロ・未消費エッジなし）。
   `pub def freshStepState(): StepState`
-- 取り置いたエッジを今フレームの Frame へ合流させる: justPressed は和集合・
+- バッファしたエッジを今フレームの Frame へ合流させる: justPressed は和集合・
   `pub def mergeEdges(pending: PendingEdges, frame: Frame): Frame`
-- Frame からエッジ 4 種を抜き出して取り置きの形にする（0 ステップのフレームの持ち越し用）。
+- Frame からエッジ 4 種を抜き出してバッファの形にする（0 ステップのフレームの持ち越し用）。
   `pub def pendingOf(frame: Frame): PendingEdges`
 - システムの列を追加順（左から右）に World へ畳み込む。
   `pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef`
@@ -215,11 +215,11 @@
 - まだ何も焼いていない起動時の持ち回し。
   `pub def freshTileCache(): TileCache`
 - `pub def bumpTileGen(fired: Bool, cache: TileCache): TileCache`
-- 席の焼き置きを引く。焼いた時点の世代と key が今と一致した時だけ使い回せる。
+- スロットに取ってある生成結果を引く。生成した時点の世代と key が今と一致した時だけ使い回せる。
   `pub def tileCacheHit(slot: String, key: String, cache: TileCache): Option[(GpuHandle.TileVao, Int32)]`
-- 席に焼き置きがあれば、その VAO を返す（世代・key が古くてもよい —
+- スロットに生成結果があれば、その VAO を返す（世代・key が古くてもよい —
   `pub def tileCacheVaoAt(slot: String, cache: TileCache): Option[GpuHandle.TileVao]`
-- 焼いた結果を席へ上書きで置く（台帳は宣言中の層の数までしか育たない）。
+- 生成した結果をスロットへ上書きで置く（一覧表は宣言中のレイヤーの数までしか育たない）。
   `pub def tileCacheStore(slot: String, key: String, vao: GpuHandle.TileVao, count: Int32, cache: TileCache): TileCache`
 
 ## AudioFade — `engine_world/src/AudioFade.flix`
@@ -573,7 +573,7 @@
   `pub def box(style: UiLayout.Style, children: List[Node]): Node`
 - 自分の rect も描く容器（背景パネル + 子、の形）。draw の出力は子より先に並ぶ
   `pub def boxDrawn(style: UiLayout.Style, draw: Rect2.Rect2 -> List[Render.PlacedItem], children: List[Node]): Node`
-- 中身に名札を付ける（レイアウトには影響しない）。rectsOf / placeWithRects が
+- 中身にラベルを付ける（レイアウトには影響しない）。rectsOf / placeWithRects が
   `pub def keyed(key: String, node: Node): Node`
 - 縦並びの既定 style（= UiLayout.defaultStyle）。`{... | Flex.columnStyle()}` で上書きする。
   `pub def columnStyle(): UiLayout.Style`
@@ -581,9 +581,9 @@
   `pub def rowStyle(): UiLayout.Style`
 - 木を rootRect に敷いてレイアウトを解決し、各 Leaf の draw を rect で呼んで連結する。
   `pub def place(root: Node, rootRect: Rect2.Rect2): List[Render.PlacedItem]`
-- place と同じ描画物に加えて「名札 → 矩形」の表も返す。1 回のレイアウトで
+- place と同じ描画物に加えて「ラベル → 矩形」の表も返す。1 回のレイアウトで
   `pub def placeWithRects(root: Node, rootRect: Rect2.Rect2): (List[Render.PlacedItem], Map[String, Rect2.Rect2])`
-- 名札の付いたノードの矩形だけを引く（描かずに場所だけ知りたいとき）。
+- ラベルの付いたノードの矩形だけを引く（描かずに場所だけ知りたいとき）。
   `pub def rectsOf(root: Node, rootRect: Rect2.Rect2): Map[String, Rect2.Rect2]`
 - 各 Leaf に割り当てられた rect を DFS 順で返す（レイアウトだけ検分したいとき・テスト用）。
   `pub def leafRects(root: Node, rootRect: Rect2.Rect2): List[Rect2.Rect2]`
@@ -1092,7 +1092,7 @@
   `pub type alias Doc = { version = Int32, note = Option[String], legend = Map[Char, String], sprites = Map[String, Sprite] }`
 - 何も描かない空の Doc。「まだ読めていない」の置き場 — draw は常に空を返す。
   `pub def empty(): Doc`
-- テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ倒す。
+- テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
   `pub def fromJson(text: String): Option[Doc]`
 - パース済みの Json 値から Doc へ(エディタの doc/path 経路用 — fromJson と同じ fail-open)。
   `pub def fromJsonValue(json: Json): Option[Doc]`
@@ -1463,7 +1463,7 @@
   `pub enum SectionKind with Eq, ToString { case Catalog case RecordList case Record }`
 - セクション 1 個の宣言。kind = 入れ物の形 / fields = フィールド名 → フィールド宣言。
   `pub type alias Section = { kind = SectionKind, fields = Map[String, Field] }`
-- スキーマ全体。version = 方言の版(既定 1) / sections = セクション名 → セクション宣言。
+- スキーマ全体。version = 方言のバージョン(既定 1) / sections = セクション名 → セクション宣言。
   `pub type alias Schema = { version = Int32, sections = Map[String, Section] }`
 - スキーマ JSON を読み取る。形が仕様に合わないときは、どのセクション・どのフィールドで
   `pub def fromJson(json: Json): Result[String, Schema]`

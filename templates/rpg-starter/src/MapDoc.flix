@@ -1,7 +1,7 @@
 // MapDoc — rpg.map.json（里の間取り: タイルの rows・住人・扉と約束・薬草の配置）の宣言ドキュメント層。
 // 盤面のデータは全部この Doc にあり、rows と配置を書き換えれば別の里になる。
 // 歩ける・ぶつかるの規則（衝突・扉の開き方・クリア条件）はコード（World）側。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod MapDoc {
     use Util.Json.Json
 
@@ -99,7 +99,7 @@ mod MapDoc {
 
     // ── JSON からの読み込み ──
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

@@ -183,7 +183,7 @@
 </header>
 
 <h2>1. 今のレースの何がつまらないか</h2>
-<p>骨格（周回・追い抜き加点・はみ出し減速・Doc 化・テスト・golden）はよく出来ている。つまらなさの原因は 4 つに絞れる。</p>
+<p>骨格（周回・追い抜き加点・はみ出し減速・Doc 化・テスト・スナップショット）はよく出来ている。つまらなさの原因は 4 つに絞れる。</p>
 <ul>
   <li><strong>コースが実質まっすぐ。</strong>文字格子は少し蛇行しているが、画面はただ縦に流れる夜道で、ハンドルを切る理由がほとんどない。<em>コーナーこそレースの本体</em>なのに、それが無い。</li>
   <li><strong>ライバルが「動く背景」でしかない。</strong>2 台とも固定レーンを等速で走るだけ（<code>moveRivals</code> は progress の足し算のみ）。横に動かない、こちらを見ていない、当たりもしない。</li>
@@ -395,7 +395,7 @@
   <tr><td class="k">driftSlide</td><td class="n">45</td><td>ドリフト中に外へ流れ続ける速さ</td></tr>
   <tr><td class="k">brakeSlow</td><td class="n">0.6</td><td>ブレーキ（↓）中の速度倍率</td></tr>
 </table></div>
-<p>テスト: カーブ量の導出（格子の中心ずれ→急さ）/ 速度超過時だけアウトへ押される / ドリフト中は押し出しが打ち消される / ブレーキの減速。<em>曲げて描く投影はテストしない</em>（golden の仕事）。</p>
+<p>テスト: カーブ量の導出（格子の中心ずれ→急さ）/ 速度超過時だけアウトへ押される / ドリフト中は押し出しが打ち消される / ブレーキの減速。<em>曲げて描く投影はテストしない</em>（スナップショットの仕事）。</p>
 </div>
 
 <div class="pillar">
@@ -739,8 +739,8 @@
 </ul>
 
 <h2>8. テスト・bake 方針</h2>
-<p>テストするのはルールだけ（カーブ急さの導出・グリップ超過の押し出し・ドリフトの打ち消し・ラバーバンド補正・ゲージ収支・スピン遷移・順位と勝敗・アイテム効果・course 文字判定）。期待値は <code>RulesDoc.defaults()</code> から導く。曲げる投影・タイヤ痕・煙はテストしない — golden と目視の仕事。Doc 橋渡しは 1 Doc 3 本以内を維持。</p>
-<p>bake の 4 場面を差し替える: <em>タイトル</em> / <em>ドリフト</em>（急カーブ・タイヤ痕・煙）/ <em>ニトロ発動</em>（残像と炎）/ <em>クラッシュ</em>（スピンと白フラッシュ明け）。ハラハラの画がそのままジャンル札のサムネになる。<code>golden/title.png</code> は必ず維持する。</p>
+<p>テストするのはルールだけ（カーブ急さの導出・グリップ超過の押し出し・ドリフトの打ち消し・ラバーバンド補正・ゲージ収支・スピン遷移・順位と勝敗・アイテム効果・course 文字判定）。期待値は <code>RulesDoc.defaults()</code> から導く。曲げる投影・タイヤ痕・煙はテストしない —スナップショットと目視の仕事。Doc 橋渡しは 1 Doc 3 本以内を維持。</p>
+<p>bake の 4 場面を差し替える: <em>タイトル</em> / <em>ドリフト</em>（急カーブ・タイヤ痕・煙）/ <em>ニトロ発動</em>（残像と炎）/ <em>クラッシュ</em>（スピンと白フラッシュ明け）。ハラハラの画がそのままジャンルカードのサムネイルになる。<code>snapshot/title.png</code> は必ず維持する。</p>
 <figure>
   <svg viewBox="0 0 440 180" width="620" role="img" aria-label="bakeで焼く4場面のサムネ案">
     <rect width="440" height="180" fill="#f2f8fd" rx="8"/>
@@ -800,7 +800,7 @@
       <text x="36" y="166">title</text><text x="136" y="166">ドリフト</text><text x="252" y="166">ニトロ</text><text x="362" y="166">クラッシュ</text>
     </g>
   </svg>
-  <figcaption>bake で焼く 4 場面の構図案。どれも t 固定・乱数なしの決定的な 1 枚で、Studio のジャンル札にはこのタイトルが載る。</figcaption>
+  <figcaption>bake で焼く 4 場面の構図案。どれも t 固定・乱数なしの決定的な 1 枚で、Studio のジャンルカードにはこのタイトルが載る。</figcaption>
 </figure>
 
 <h2>9. 実装マイルストーン（日単位・順序 = 依存順）</h2>
@@ -813,7 +813,7 @@
   <tr><td><strong>M5</strong></td><td>障害物・接触スピン・敗北条件（LOSE 画面）</td><td class="n">1 日</td></tr>
   <tr><td><strong>M6</strong></td><td>アイテムマスと順位別効果</td><td class="n">0.5 日</td></tr>
   <tr><td><strong>M7</strong></td><td>演出の仕上げ（煙・火花・残像・熱の縁・接戦の縁光）。bake → 目視批評 → 修正を 1 つずつ回す</td><td class="n">1.5 日</td></tr>
-  <tr><td><strong>仕上げ</strong></td><td>数値をエディタで詰める・golden 祝福・AGENTS.local.md の画風と「足さないもの」改訂・README 追随</td><td class="n">0.5 日</td></tr>
+  <tr><td><strong>仕上げ</strong></td><td>数値をエディタで詰める・スナップショット更新・AGENTS.local.md の画風と「足さないもの」改訂・README 追随</td><td class="n">0.5 日</td></tr>
 </table></div>
 <p>各段階の終わりに <code>make -C templates/race-starter test</code> を回し、M1 の時点から常に遊べる状態を保つ。</p>
 

@@ -1,7 +1,7 @@
 # gl_parity — GL と SoftRaster の突き合わせ harness
 
-同じ描画指定（`Render.PlacedItem` の列）を GL（実機の絵）と SoftRaster（bake・golden の絵）の
-両方で 1 コマ焼き、画素を機械で突き合わせる。golden は作らない — 基準は「もう片方の経路」。
+同じ描画指定（`Render.PlacedItem` の列）を GL（実機の絵）と SoftRaster（bake・スナップショットの絵）の
+両方で 1 コマ焼き、画素を機械で突き合わせる。スナップショットは作らない — 基準は「もう片方の経路」。
 
 ## 回し方
 

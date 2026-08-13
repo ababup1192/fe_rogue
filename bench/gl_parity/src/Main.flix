@@ -1,8 +1,8 @@
 // 入口。同じ scene 宣言（Scenes）を GL と SoftRaster の両方で 1 コマ焼き、画素を突き合わせて
 // 1 行 1 scene の表を出す。A 段（バイト一致層）に不一致があれば exit 1。
 //
-// GL の絵は golden 化しない — 基準は「もう片方の経路」であって過去の絵ではない
-// （過去の絵との突き合わせは templates の bench / golden の役目）。
+// GL の絵はスナップショット化しない — 基準は「もう片方の経路」であって過去の絵ではない
+// （過去の絵との突き合わせは templates の snapshot-check / snapshot-update の役目）。
 mod ParityMain {
     import java.io.File
     import java.lang.System

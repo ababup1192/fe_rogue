@@ -3,7 +3,7 @@
 // プラットフォーマーの気持ちよさはほぼ全部が入力と当たりのゆるしで
 // できている。ここが面倒を見るのは 3 つ:
 //   コヨーテ  — 足場を離れて coyoteTime 秒はまだ跳べる(崖ぎわのジャンプがミスらない)。
-//   先行入力  — 着地の jumpBufferTime 秒前までのジャンプ入力を取り置き、着地の瞬間に発火。
+//   先行入力  — 着地の jumpBufferTime 秒前までのジャンプ入力をバッファし、着地の瞬間に発火。
 //   可変ジャンプ — 離した瞬間に上昇速度を cutFactor 倍へ削る(タップの頂点 = jumpTapTiles)。
 // 数値は全部 MotionDoc のノブ。角の許しと落下強化は Physics 側にある。
 mod Player {
@@ -65,7 +65,7 @@ mod Player {
           jumping = jumping2,
           wall = stepped#wall }
 
-    /// 上向きの初速を直接与える(バネ・踏みつけバウンド)。コヨーテと取り置きは消費する。
+    /// 上向きの初速を直接与える(バネ・踏みつけバウンド)。コヨーテとバッファは消費する。
     pub def launch(vy: Float64, p: State): State =
         { body = { vel = { y = vy | p#body#vel } | p#body },
           coyote = 0.0, buffer = 0.0, facing = p#facing, jumping = false, wall = 0.0 }

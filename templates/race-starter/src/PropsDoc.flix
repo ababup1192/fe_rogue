@@ -111,7 +111,7 @@ mod PropsDoc {
     pub def laneEdge(lane: Int32, half: Float64): Float64 =
         half * (2.0 * Int32.toFloat64(lane) / Int32.toFloat64(lanes()) - 1.0)
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     /// barPeriod の 0 は式の割り算が壊れるので下限 0.1 秒で受け止める。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)

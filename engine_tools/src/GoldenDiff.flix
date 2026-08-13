@@ -1,9 +1,9 @@
-// GoldenDiff — 直す前（golden）と直した後（gallery）を左右に並べた 1 枚に焼く。
+// GoldenDiff — 直す前（スナップショット）と直した後（gallery）を左右に並べた 1 枚に焼く。
 //
 // bench はバイトが違うことしか言わないので、「どこがどう変わったか」は人が 2 枚を
 // 切り替えて探すことになる。並べて 1 枚にすれば、目を動かすだけで済む。
 //
-// 焼く先は debug/diff/ — golden の外なので、リグレッション防護の基準を汚さない。
+// 焼く先は debug/diff/ —スナップショットの外なので、リグレッション防護の基準を汚さない。
 // ゲーム内容は一切知らない。入力は「どの絵か」の名前だけ。
 mod GoldenDiff {
     import java.awt.image.BufferedImage
@@ -35,10 +35,10 @@ mod GoldenDiff {
         let value = System.getenv(key);
         if (Object.isNull(value)) fallback else value
 
-    /// 1 枚ぶん: golden/<name> と gallery/<name> を読んで debug/diff/<name> へ並べて書く。
+    /// 1 枚ぶん: snapshot/<name> と gallery/<name> を読んで debug/diff/<name> へ並べて書く。
     /// 寸法が違うときは焼かない — 縮尺の違う 2 枚を並べても比べたことにならない。
     def pairOne(dir: String, name: String): Unit \ IO =
-        let beforePath = "${dir}/golden/${name}";
+        let beforePath = "${dir}/snapshot/${name}";
         let afterPath = "${dir}/gallery/${name}";
         match (readPng(beforePath), readPng(afterPath)) {
             case (Some(before), Some(after)) =>

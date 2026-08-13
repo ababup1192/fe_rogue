@@ -25,7 +25,7 @@ mod Char01 {
             if (p#r <= 0.0) { at = topLeft, item = box } else { at = topLeft, item = box |> Render.rounded(p#r) }
         })
 
-    /// キャラの z 帯（レーンの地面より前・ラベルより後ろ）。
+    /// キャラの z-index の範囲（レーンの地面より前・ラベルより後ろ）。
     def zChar(): Int32 = 10
 
     /// Mode → 現行ヒーローの 4 ポーズ。ダッシュ/スキッドは走りポーズ、着地は待機ポーズで潰す。

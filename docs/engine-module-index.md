@@ -42,7 +42,7 @@
 | (x, y) から Vec2 を 1 行で作りたい（リスト内の型注釈を消す） | Vec2.v2 |
 | マス目やピクセルなど整数の (x, y) を計算したい | Vec2i |
 | 矩形の当たり・包含・膨張を計算したい | Rect2 |
-| HUD やデバッグ表示の z の帯（どの帯が何用か）を知りたい | ZBand（帯の地図は docs/z-bands.md） |
+| HUD やデバッグ表示の z-index の範囲（どの範囲が何用か）を知りたい | ZBand（範囲の地図は docs/z-bands.md） |
 | 色（sRGB-linear）を作る・GL の uniform に渡したい | Color（core 側の基礎型。ゲーム側の色操作は engine_world の Color を参照） |
 | 時間の長さ（継続・経過・残り）を型で扱いたい | Duration |
 | 1 フレームぶんの描画命令の共通の型を知りたい | DrawCmd |
@@ -110,7 +110,7 @@
 - **Triangulate** — 単純多角形（自己交差しない・凹あり可）を三角形の列に分割する耳切り法。GL の塗り（GL_TRIANGLES）と SoftRaster（スキャンライン）の絵を一致させるための芯。
 - **Vec2** — 2D の位置や向きを表す (x, y) の組と、その足し引き・長さ・回転などの計算。
 - **Vec2i** — 整数の (x, y) の組に対する足し引きなどの計算。マス目やピクセルの位置を丸め誤差なく扱える。
-- **ZBand** — 重なり順（zIndex）の帯の取り決めの正本（HUD 帯・デバッグ帯・帯の幅と clamp）。帯の地図は docs/z-bands.md。
+- **ZBand** — 重なり順（zIndex）を用途ごとの範囲に区切る取り決めの唯一の出どころ（HUD の範囲・デバッグの範囲・範囲の幅と clamp）。範囲の地図は docs/z-bands.md。
 
 ## render（描画物・Drawable 経路の部品）
 

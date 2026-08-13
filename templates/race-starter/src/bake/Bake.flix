@@ -1,4 +1,4 @@
-// Bake — ゲーム画面を画面なしで PNG に生成する（golden 比較・目視批評用）。
+// Bake — ゲーム画面を画面なしで PNG に生成する（スナップショット比較・目視批評用）。
 // 実行: flix run --entrypoint Bake.all → gallery/title.png .. gallery/s3_crash.png
 // すべて決定的な場面（時計 t は場面ごとに固定値を入れる — 実時間も乱数も見ない）。
 // World を直接組み、実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で生成する。
@@ -36,8 +36,8 @@ mod Bake {
                     | cfgOf("gallery", atlas, w0#theme#grass) };
         let texInfo = Bakery.imageTextureInfo(images);
         let ctx = App.viewCtxOf(atlas, design());
-        // title: ジャンルカードの顔（Title 画面）。Studio が golden/title.png を /genesis/title で
-        // 読み、「レース」の札のサムネにする（各 starter 共通の規約）。
+        // title: ジャンルカードの顔（Title 画面）。Studio が snapshot/title.png を /genesis/title で
+        // 読み、「レース」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
         let t = shoot(cfg, texInfo, ctx, { t = 2.2 | w0 }, "title");
         // s1: S 字をドリフト中（タイヤ痕・白煙・ゲージ半分）。この絵が遊びの顔。
         let s1 = shoot(cfg, texInfo, ctx, driftScene(w0), "s1_drift");

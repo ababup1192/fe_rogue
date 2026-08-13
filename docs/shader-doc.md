@@ -5,11 +5,11 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 
 - 実体: `engine/src/ShaderDoc.flix`（型）・`ShaderJson.flix`（読み書き）・
   `ShaderEval.flix`（CPU 評価 = 生成）・`ShaderGen.flix`（GLSL 生成 = 実機）
-- **使える語彙は engine の版で決まる**。知らない `kind` が 1 つでもあると Doc 全体が
-  読めず、丸ごと既定値へ倒れる（絵が別物になるだけでエラーは出ないので気付きにくい）。
+- **使える語彙は engine のバージョンで決まる**。知らない `kind` が 1 つでもあると Doc 全体が
+  読めず、丸ごと既定値へ落ちる（絵が別物になるだけでエラーは出ないので気付きにくい）。
   下の表で **[新]** を付けた物は **0.13.0 から**（0.12.1 以前には無い）、
   **[新19]** を付けた物（tex 場: `tex` / `shift` / 色の `rgb`）は **0.19.0 から**。
-  自分のゲームが引いている版は `flix.toml` の `github:ababup1192/flix_game_engine` を見る。
+  自分のゲームが引いているバージョンは `flix.toml` の `github:ababup1192/flix_game_engine` を見る。
 - 呼び方: `Render.shaderFill(spec, rect, t, z)` / `Render.shaderFillMasked(spec, rect, polys, t, z)`
 - 読み方: `ShaderJson.load(path)` は **fail-open**。`Result.getWithDefault(既定の Spec)` で受ける
 - 保存即反映: `App.watchFile(path, …)` に繋ぐ（`examples/shader_gallery/src/Main.flix:18` が手本）
@@ -209,7 +209,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
   **同じ Spec から両方が出るので絵は一致する**が、面が大きい・入れ子が深いほど生成は遅い。
 - 生成に出なかった指定は `SoftRaster.dropped` に溜まる。実機と食い違ったらまずここを見る。
   バックエンド差の一覧は [backend-parity.md](backend-parity.md)。
-- 時刻 `t` は呼ぶ側が渡す。golden に生成するときは **`t` を固定**する（実時間を渡すと毎回変わる）。
+- 時刻 `t` は呼ぶ側が渡す。スナップショットに生成するときは **`t` を固定**する（実時間を渡すと毎回変わる）。
 
 ## Studio で触れるようにする
 

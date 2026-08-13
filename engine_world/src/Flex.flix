@@ -21,7 +21,7 @@
 mod Flex {
 
     /// レイアウトノード。Leaf = 実寸つき描画物、Box = 子を並べる容器、
-    /// Keyed = 中身に名札を付ける透明な包み（場所を取らず、レイアウトにも影響しない）。
+    /// Keyed = 中身にラベルを付ける透明な包み（場所を取らず、レイアウトにも影響しない）。
     /// Box の draw は「自分の rect を描いてから子を載せる」容器用（ui.json の panel 相当）。
     pub enum Node {
         case Leaf({ size = Vec2.Vec2, draw = Rect2.Rect2 -> List[Render.PlacedItem] })
@@ -49,9 +49,9 @@ mod Flex {
                      children: List[Node]): Node =
         Node.Box({ style = style, draw = Some(draw), children = children })
 
-    /// 中身に名札を付ける（レイアウトには影響しない）。rectsOf / placeWithRects が
-    /// 「名札 → 画面上の矩形」を返すので、描く側と当たりを見る側が同じ宣言を読める。
-    /// 同じ名札を 2 つ付けたら後の方が勝つ（呼び側が一意にする責任）。
+    /// 中身にラベルを付ける（レイアウトには影響しない）。rectsOf / placeWithRects が
+    /// 「ラベル → 画面上の矩形」を返すので、描く側と当たりを見る側が同じ宣言を読める。
+    /// 同じラベルを 2 つ付けたら後の方が勝つ（呼び側が一意にする責任）。
     pub def keyed(key: String, node: Node): Node =
         Node.Keyed({ key = key, inner = node })
 
@@ -68,7 +68,7 @@ mod Flex {
     pub def place(root: Node, rootRect: Rect2.Rect2): List[Render.PlacedItem] =
         fst(placeWithRects(root, rootRect))
 
-    /// place と同じ描画物に加えて「名札 → 矩形」の表も返す。1 回のレイアウトで
+    /// place と同じ描画物に加えて「ラベル → 矩形」の表も返す。1 回のレイアウトで
     /// 描画と当たり判定の両方を賄うための口（2 度敷くと座標が二重管理になる）。
     pub def placeWithRects(root: Node, rootRect: Rect2.Rect2):
             (List[Render.PlacedItem], Map[String, Rect2.Rect2]) =
@@ -82,7 +82,7 @@ mod Flex {
         });
         (items, namedRects(keys, rects))
 
-    /// 名札の付いたノードの矩形だけを引く（描かずに場所だけ知りたいとき）。
+    /// ラベルの付いたノードの矩形だけを引く（描かずに場所だけ知りたいとき）。
     pub def rectsOf(root: Node, rootRect: Rect2.Rect2): Map[String, Rect2.Rect2] =
         let (_, rects, keys) = resolveTree(root, rootRect);
         namedRects(keys, rects)
@@ -135,7 +135,7 @@ mod Flex {
                        measures = Map.insert(id, l#size, acc#measures),
                        leaves   = (id, l#draw) :: acc#leaves | acc })
             case Node.Keyed(k) =>
-                // 名札は場所を取らない: id を消費せず、中身に付いた id を名札に結び付ける。
+                // ラベルは場所を取らない: id を消費せず、中身に付いた id をラベルに結び付ける。
                 let (innerId, acc1) = build(k#inner, acc);
                 (innerId, { keys = Map.insert(k#key, innerId, acc1#keys) | acc1 })
             case Node.Box(b) =>

@@ -12,7 +12,7 @@
 // 立ち物（アイテム・コーン・ゲート・振り子バー）の置き場は別 Doc（race.props.json）。
 // コースは先頭へ巻き戻して周回する（sectionAt が余りで巻き戻す）。
 // 曲がる・はみ出す・周回するの規則はコード（World）側 — ここは「道の形」だけ。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod CourseDoc {
     use Util.Json.Json
 
@@ -138,7 +138,7 @@ mod CourseDoc {
             case _       => 0.0
         }
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

@@ -7,7 +7,7 @@ mod Controls {
 
     /// このフレームのキーを World.Input へ。操作ごとのキーの列(keys Doc)の
     /// どれか 1 つでも押されていれば効く。ジャンプは「押しっぱなし」(可変ジャンプの
-    /// 維持)と「押した瞬間」(先行入力の取り置き)を別に読む — ゆるしの実装は
+    /// 維持)と「押した瞬間」(先行入力のバッファ)を別に読む — ゆるしの実装は
     /// World/Player 側にある。
     pub def inputOf(frame: App.Frame, keys: KeysDoc.Doc): World.Input =
         let held = ks -> List.exists(k -> App.isDown(k, frame), ks);

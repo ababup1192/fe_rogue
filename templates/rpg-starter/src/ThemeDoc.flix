@@ -1,6 +1,6 @@
 // ThemeDoc — rpg.theme.json（色票）の宣言ドキュメント層と、スプライトの意味色キーを
 // 実色に解決する resolver。派生色（ハイライト・薬草の葉）は基準色から導く（導出できる値は
-// Doc に置かない）。fail-open: 読めない・壊れているときは defaults() へ倒す。
+// Doc に置かない）。fail-open: 読めない・壊れているときは defaults() へ落とす。
 mod ThemeDoc {
     use Util.Json.Json
 

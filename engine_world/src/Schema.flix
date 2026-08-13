@@ -69,7 +69,7 @@ mod Schema {
         fields = Map[String, Field]
     }
 
-    /// スキーマ全体。version = 方言の版(既定 1) / sections = セクション名 → セクション宣言。
+    /// スキーマ全体。version = 方言のバージョン(既定 1) / sections = セクション名 → セクション宣言。
     pub type alias Schema = {
         version  = Int32,
         sections = Map[String, Section]

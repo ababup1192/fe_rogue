@@ -25,7 +25,7 @@ pub type alias TileLayerSpec = {
 mod TileScene {
 
     /// Spec を regionRect 付き Sprite の PlacedItem 列に写す（world 座標のまま）。
-    /// headless bake・F8 停止画面・golden テストが GPU 抜きで同じ絵を得るための投影。
+    /// headless bake・F8 停止画面・スナップショットテストが GPU 抜きで同じ絵を得るための投影。
     /// 走行中の毎フレームには使わない — タイル数ぶんの動的 item を数えてしまう。
     pub def toItems(spec: TileLayerSpec): List[Render.PlacedItem] =
         let atlas = spec#tileSet#atlasSource;

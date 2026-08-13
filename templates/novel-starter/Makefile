@@ -2,11 +2,11 @@
 #   make run    … ゲームを起動する（窓が開く）
 #   make debug  … 保存即反映(watchFile)と F8 を有効にして起動
 #   make test   … テストを実行する（記録は .test-logs/）
-#   make status … 現状 1 画面（テスト記録・golden・チケット・git）
+#   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
 #   make bake   … ギャラリー PNG を焼く（決定的）
-#   make bench  … 焼いた絵を golden とバイト比較する
-#   make golden … いまの gallery を golden として祝福する
+#   make snapshot-check  … 生成した絵をスナップショットとバイト比較する
+#   make snapshot-update … いまの gallery をスナップショットとして更新する
 #   make atelier-preview … atelier/ の候補と assets/ の現行を debug/atelier/ に焼く
 #
 # Flix コンパイラの呼び方は OS で変える:
@@ -37,7 +37,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check bake bench golden atelier-preview api hooks check-docs-sync
+.PHONY: status run debug test build check bake snapshot-check snapshot-update atelier-preview api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -88,16 +88,16 @@ api:
 bake:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
 
-bench: bake
-	"$(ENGINE)/bin/golden-check.sh"
+snapshot-check: bake
+	"$(ENGINE)/bin/snapshot-check.sh"
 
-golden:
-	"$(ENGINE)/bin/golden-bless.sh"
+snapshot-update:
+	"$(ENGINE)/bin/snapshot-update.sh"
 
 atelier-preview:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.atelier
 
-# 現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない。
+# 現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない。
 # .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
 # pack が欠けたゲーム (sync-agents を配りきらない産み方をされた物) はここで配り直す —
 # AGENTS.md がセッションの入口を必ずこの target にしているため、最初の 1 回で自己修復できる。

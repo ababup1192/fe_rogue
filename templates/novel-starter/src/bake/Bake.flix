@@ -1,6 +1,6 @@
-// Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較用と、アトリエ候補のプレビュー用）。
+// Bake — ゲーム画面を画面なしで PNG に焼く（スナップショット比較用と、アトリエ候補のプレビュー用）。
 // 実行: flix run --entrypoint Bake.all → gallery/title.png・choice.png・ending.png
-//       flix run --entrypoint Bake.atelier → debug/atelier/*.png（golden の外）
+//       flix run --entrypoint Bake.atelier → debug/atelier/*.png（スナップショットの外）
 // 場面は「進めて作る」: 台本が伸びても拍数を数え直さずに済むよう、
 // 「選択肢待ちになるまで進める」「結末の最後の拍まで進める」で位置を決める。
 mod Bake {
@@ -20,7 +20,7 @@ mod Bake {
             World.initial(Controls.loadDocs(), NovelKit.spawnAssets())
         } with Fs.FileRead.runWithIO
 
-    // ── 決定的な場面（golden） ──
+    // ── 決定的な場面（スナップショット） ──
 
     pub def all(): Unit \ IO =
         discard allShots()
@@ -28,7 +28,7 @@ mod Bake {
     /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake
     /// （Main の App.onBakeRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
     /// 場面ごとに時計 t を固定してから焼く（雨も炎も埃も t から導くので、
-    /// 据えれば毎回同じ絵になる = golden がバイトで比べられる）。
+    /// 据えれば毎回同じ絵になる = スナップショットがバイトで比べられる）。
     pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
@@ -77,7 +77,7 @@ mod Bake {
         if (fuel <= 0 or next#phase == World.Phase.Title) settled
         else walkToLast(fuel - 1, next)
 
-    // ── アトリエ（候補スプライト・候補テーマのプレビュー。golden の外） ──
+    // ── アトリエ（候補スプライト・候補テーマのプレビュー。スナップショットの外） ──
 
     /// atelier/*.sprite.json（候補）と assets/*.sprite.json（現行 → <名前>.current）を
     /// 実機と同じ描画経路（PxSprite.draw + ThemeDoc.resolver）でコンタクトシートに焼く。

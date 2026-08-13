@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""git に入れる絵が増えすぎていないか見張る関所。
+"""git に入れる絵が増えすぎていないか見張るゲート。
 
-生成した絵 (各ゲームの gallery/ と golden/*.png) は git 管理外にしてある。PNG/GIF は
+生成した絵 (各ゲームの gallery/ と snapshot/*.png) は git 管理外にしてある。PNG/GIF は
 生成し直すたび丸ごと別の実体になり、差分圧縮も効かないまま履歴に積み上がるためで、
-放っておくと clone が何十 MB も重くなる。この関所は、その約束が守られているかを見る。
+放っておくと clone が何十 MB も重くなる。このゲートは、その約束が守られているかを見る。
 
 追跡してよい絵は 3 種類だけ:
   展示    人に見せる絵 (docs/gallery/) とブランド素材 (docs/brand/)
   素材    ゲームが実行時に読む画像 (assets/) とアプリのアイコン
-  例外    templates/*/golden/title.png … Studio のジャンル札のサムネが実体を読む
+  例外    templates/*/snapshot/title.png … Studio のジャンルカードのサムネイルが実体を読む
 
 使い方: python3 bin/lint-images.py [ルート]   (既定のルートはこのファイルの親の親)
 約束が破れていれば 1 行ずつ挙げて終了コード 1。
@@ -38,7 +38,7 @@ ALLOWED_SUBSTRINGS = (
     "/assets/",
 )
 ALLOWED_SUFFIXES = (
-    "/golden/title.png",
+    "/snapshot/title.png",
 )
 
 

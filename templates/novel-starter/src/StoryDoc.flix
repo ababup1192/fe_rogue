@@ -1,7 +1,7 @@
 // StoryDoc — novel.story.json（台本: 文章・分岐・結末の rows）の宣言ドキュメント層。
 // 文章と分岐先は全部この Doc にあり、書き換えれば別の事件になる。
 // 進め方の規則（どの拍を出すか・灯りをいつ消すか）はコード（World）側。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod StoryDoc {
     use Util.Json.Json
 
@@ -48,7 +48,7 @@ mod StoryDoc {
     pub def sectionOf(id: String, doc: Doc): Option[Section] =
         List.find(section -> section#id == id, doc#sections)
 
-    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 
@@ -64,7 +64,7 @@ mod StoryDoc {
               |> Option.flatMap(JsonCodec.decodeList(sectionFromJson))
               |> Option.getWithDefault(d#sections) }
 
-    /// 節 1 行。欠けたフィールドは行の中で既定へ倒す（行がオブジェクトでない台本は
+    /// 節 1 行。欠けたフィールドは行の中で既定へ落とす（行がオブジェクトでない台本は
     /// decodeList が全体を None にし、defaults の台本へ倒れる）。
     def sectionFromJson(json: Json): Option[Section] =
         JsonCodec.expectObject(json) |> Option.map(obj ->

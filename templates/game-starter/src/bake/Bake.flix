@@ -1,6 +1,6 @@
-// Bake — ゲーム画面を画面なしで PNG に生成する（golden 比較用と、アトリエ候補のプレビュー用）。
+// Bake — ゲーム画面を画面なしで PNG に生成する（スナップショット比較用と、アトリエ候補のプレビュー用）。
 // 実行: flix run --entrypoint Bake.all → gallery/main.png
-//       flix run --entrypoint Bake.atelier → debug/atelier/*.png（golden の外）
+//       flix run --entrypoint Bake.atelier → debug/atelier/*.png（スナップショットの外）
 mod Bake {
     import java.io.File
 
@@ -23,10 +23,10 @@ mod Bake {
         } with Fs.FileRead.runWithIO
 
     /// 生成するときの時刻（秒）。実時間でなく固定値を使う — 空の流れも塵の位置もこの t
-    /// だけで決まるので、何度生成しても同じ PNG が出る（golden のバイト比較が成り立つ）。
+    /// だけで決まるので、何度生成しても同じ PNG が出る（スナップショットのバイト比較が成り立つ）。
     def bakeTime(): Float64 = 3.0
 
-    // ── 決定的な場面（golden） ──
+    // ── 決定的な場面（スナップショット） ──
 
     pub def all(): Unit \ IO =
         discard allShots()
@@ -53,7 +53,7 @@ mod Bake {
         println("baked: ${path}");
         path
 
-    // ── アトリエ（候補スプライト・候補テーマのプレビュー。golden の外） ──
+    // ── アトリエ（候補スプライト・候補テーマのプレビュー。スナップショットの外） ──
 
     /// atelier/*.sprite.json（候補）と assets/*.sprite.json（現行 → <名前>.current）を
     /// 実機と同じ描画経路（PxSprite.draw + ThemeDoc.resolver）でコンタクトシートに生成する。

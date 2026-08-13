@@ -1,5 +1,5 @@
 // エントリーポイント。Bench の世界を App に繋ぎ、4 区間を走り切ったら自動終了する。
-// HUD=1 で HUD あり構成（withHudView = HUD 帯持ち上げ + 帯別ソート経路）の計測になる。
+// HUD=1 で HUD あり構成（withHudView = HUD の範囲持ち上げ + 範囲別ソート経路）の計測になる。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()

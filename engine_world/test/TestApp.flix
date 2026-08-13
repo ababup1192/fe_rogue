@@ -3,7 +3,7 @@
 // 左から右。+1 して ×2 なら 2、逆なら 1 なので順序が数字に出る）、quit の既定
 // （Escape のエッジで終了・押しっぱなしでは終了しない）。
 // Frame は record なので、比較はタプルへ射影して行う。
-// lint-view: 対象外 — 座席と z の並びを数字で固定するための目印。画面に出す絵ではない。
+// lint-view: 対象外 — スロットと z の並びを数字で固定するための目印。画面に出す絵ではない。
 
 mod TestApp {
 
@@ -189,7 +189,7 @@ mod TestApp {
         Assert.assertEq(expected = Some((160.0, 120.0)), atOf(composed))
 
     // ========================================================================
-    // composeScene: hud の z は HUD 帯へ持ち上がる（world の z には触らない）
+    // composeScene: hud の z は HUD の範囲へ持ち上がる（world の z には触らない）
     // ========================================================================
 
     def boxAtZ(z: Int32): Render.PlacedItem =
@@ -455,7 +455,7 @@ mod TestApp {
         let (w3, _s3) = App.advanceFrame(app, stepFrame(Set#{}, Set#{}, 0.03, 0.0), s2, w2);
         Assert.assertEq(expected = ((0, 0, 0.0), (1, 2, 1.5)), (w2, w3))
 
-    // 消費したフレームの後は取り置きが空に戻る（同じエッジが後で二度と発火しない）。
+    // 消費したフレームの後はバッファが空に戻る（同じエッジが後で二度と発火しない）。
     @Test
     def testAdvanceFrameClearsPendingAfterConsumption(): Unit \ Assert =
         let app = App.make(0) |> App.withFixedStep(0.03) |> App.addSystem((_f, n) -> n + 1);
@@ -466,7 +466,7 @@ mod TestApp {
             expected = ((Set#{GameEngine.Key.Z}, false, false, 2.0), (Set#{}, false, false, 0.0)),
             (pendingTuple(s1#pending), pendingTuple(s2#pending)))
 
-    // 可変 dt（fixedStep = None）の経路: 取り置きは合流も更新もされず素通し
+    // 可変 dt（fixedStep = None）の経路: バッファは合流も更新もされず素通し
     // （既存ゲームの挙動不変の証明。system は今フレームのエッジだけを見る）。
     @Test
     def testAdvanceFrameVariableDtIgnoresPending(): Unit \ Assert =
@@ -524,14 +524,14 @@ mod TestApp {
 
     def testVao(): GpuHandle.TileVao = GpuHandle.wrapTileVao(7)
 
-    // 置いた席・key は同じ世代のうちは引ける（インスタンス数がそのまま返る）。
+    // 置いたスロット・key は同じ世代のうちは引ける（インスタンス数がそのまま返る）。
     @Test
     def testTileCacheHitSameGen(): Unit \ Assert =
         let cache = App.tileCacheStore("0", "map-1", testVao(), 42, App.freshTileCache());
         Assert.assertEq(expected = Some(42),
             App.tileCacheHit("0", "map-1", cache) |> Option.map(snd))
 
-    // 読み直しが起きた（世代が進んだ）後は、同じ席・key でも引けない = 生成し直しになる。
+    // 読み直しが起きた（世代が進んだ）後は、同じスロット・key でも引けない = 生成し直しになる。
     @Test
     def testTileCacheMissAfterBump(): Unit \ Assert =
         let cache = App.tileCacheStore("0", "map-1", testVao(), 42, App.freshTileCache());
@@ -545,8 +545,8 @@ mod TestApp {
         Assert.assertEq(expected = Some(42),
             App.tileCacheHit("0", "map-1", App.bumpTileGen(false, cache)) |> Option.map(snd))
 
-    // key が変わっても席の VAO は残る（updateTileBuffer の入れ直し先に使う）—
-    // 台帳は 1 席 = 1 件のままで、key がいくら転がっても育たない。
+    // key が変わってもスロットの VAO は残る（updateTileBuffer の入れ直し先に使う）—
+    // 一覧表は 1 スロット = 1 件のままで、key がいくら変わっても育たない。
     @Test
     def testTileCacheRollingKeyKeepsSlotVao(): Unit \ Assert =
         let c0 = App.tileCacheStore("0", "light:1", testVao(), 42, App.freshTileCache());
@@ -558,7 +558,7 @@ mod TestApp {
         Assert.assertEq(expected = (1, Some(43)),
             (Map.size(c1#entries), App.tileCacheHit("0", "light:2", c1) |> Option.map(snd)))
 
-    // 別の席は独立に生成して置かれ、世代が同じ間はどちらも引ける。
+    // 別のスロットは独立に生成して置かれ、世代が同じ間はどちらも引ける。
     @Test
     def testTileCacheTwoSlotsIndependent(): Unit \ Assert =
         let cache = App.tileCacheStore("0", "floor", testVao(), 10,

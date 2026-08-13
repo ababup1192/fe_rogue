@@ -22,7 +22,7 @@ mod Editor {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool, JNull}
 
-    /// /health の version に載せる自分の版 (flix.toml の version と揃える)。
+    /// /health の version に載せる自分のバージョン (flix.toml の version と揃える)。
     def version(): String = "0.1.0"
 
     /// 環境変数 EDITOR_DIR (起動時に選んでおく編集対象)。未設定・空なら None (未選択で起動)。
@@ -338,8 +338,8 @@ mod Editor {
         })
 
     /// 宣言と実ファイルの健康診断。応答は 200 のまま warnings で「見える化」だけする —
-    /// 読み込みは fail-open で既定へ倒れるので、壊れていてもゲームは動く。ここで気づけないと
-    /// 「直したのに反映されない(実は JSON が壊れて既定に倒れている)」で人が迷子になる。
+    /// 読み込みは fail-open で既定へ落ちるので、壊れていてもゲームは動く。ここで気づけないと
+    /// 「直したのに反映されない(実は JSON が壊れて既定へ落ちている)」で人が迷子になる。
     def declWarnings(dir: String, allJsonPaths: List[String], decl: ResourceDecl.Decl): List[String] \ IO =
         let files = ResourceDecl.matchFiles(decl#pattern, allJsonPaths);
         let noMatch =

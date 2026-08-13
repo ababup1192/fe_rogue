@@ -51,7 +51,7 @@ mod App {
     /// World に持ち込む必要はない。この範囲を敷き詰めに使うなら Scatter（field / strip）が
     /// セル走査と決定的乱数を持っている）。HUD（画面固定）には常に design 全体が渡る。
     /// fontOf は名前でフォントを引く関数（project.json の fonts[].name）。withFonts で宣言した
-    /// 名前だけ引ける — 知らない名前は既定フォントへ倒す（fail-open）。話し手ごとに字を変える
+    /// 名前だけ引ける — 知らない名前は既定フォントへ落とす（fail-open）。話し手ごとに字を変える
     /// ようなゲームは、名前を直に書かず「自分の enum → 名前」の関数を 1 つ置いて fontOf に
     /// 渡すと、字の増減が 1 か所で済む。
     pub type alias ViewCtx = { atlas = FontAtlas, fontOf = String -> FontAtlas, visible = Rect2.Rect2 }
@@ -107,7 +107,7 @@ mod App {
         // 視差レイヤ（factor, view）の列・追加順。camera の動きに factor を掛けた速さで流れる
         // world 空間の絵（factor 0.3 の遠景など）。主 view より先に並ぶが、重なりは zIndex が決める。
         parallaxLayers = List[(Float64, (ViewCtx, w) -> List[Render.PlacedItem] \ ef)],
-        // カメラを掛けずに描く絵（スコア等の HUD）。合流時に z が HUD 帯（ZBand.liftHud）へ
+        // カメラを掛けずに描く絵（スコア等の HUD）。合流時に z が HUD の範囲（ZBand.liftHud）へ
         // 持ち上がるので、world の z に関わらず必ず手前。zIndex が決めるのは HUD の中の前後だけ。
         hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
@@ -312,8 +312,8 @@ mod App {
     /// key が変わったとき、または watchFile / reloadOn の読み直しが起きたときに焼き直す —
     /// key は素のまま（マップ id 等）でよく、Doc の世代番号を key へ混ぜ込む必要はない。
     /// key は頻繁に転がってもよい（照明・カメラのバケツを混ぜた地形など）— GPU バッファは
-    /// 層の席（リストの並び順）に 1 本で、焼き直しは同じ VAO への入れ直しになる。
-    /// そのぶん層は毎フレーム同じ並び・同じ本数で宣言すること（席がずれると無駄に焼き直る）。
+    /// 層のスロット（リストの並び順）に 1 本で、焼き直しは同じ VAO への入れ直しになる。
+    /// そのぶん層は毎フレーム同じ並び・同じ本数で宣言すること（スロットがずれると無駄に焼き直る）。
     /// f は純粋関数に限る — 理由は withStaticLayer と同じ（renderCommands の op を
     /// 効果多相にしないため）。camera は動的な絵と同じ値でエンジンが掛ける。
     /// zIndex は動的な絵と同じ z 空間で解釈される — キャラより大きい zIndex を与えれば、
@@ -355,7 +355,7 @@ mod App {
         { parallaxLayers = List.append(app#parallaxLayers, (factor, v) :: Nil) | app }
 
     /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。ここに繋いだ絵は常に view の絵より
-    /// 手前（HUD 帯 = ZBand.hudBase 以上へ持ち上がる）。zIndex が決めるのは HUD の中の
+    /// 手前（HUD の範囲 = ZBand.hudBase 以上へ持ち上がる）。zIndex が決めるのは HUD の中の
     /// 前後だけ（0..ZBand.innerMax。はみ出しは clamp）。
     /// ViewCtx の visible は常に画面全体（position = 原点, size = design）。
     pub def withHudView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
@@ -459,7 +459,7 @@ mod App {
     /// 実 dt 自体の上限で、こちらはサブステップ回数の上限 — 役割が異なるので併用してよい）。
     /// justPressed / mouseClicked / mouseMoved / wheel は最初のサブステップだけで発火し、
     /// 2 回目以降は suppressEdges で消える（held 系のキー・ボタン押下は全サブステップで生きる）。
-    /// 0 サブステップのフレームで立ったエッジは捨てず PendingEdges へ取り置き、次にサブステップが
+    /// 0 サブステップのフレームで立ったエッジは捨てず PendingEdges へバッファし、次にサブステップが
     /// 回るフレームの最初の 1 回へ合流させる（刻みがフレーム間隔より長くても入力を取り逃さない）。
     /// render・音・入力リロード・履歴・quit 判定はサブステップ単位でなく実フレーム単位のまま
     /// （音は reload 後 → 全サブステップ後の World から 1 回だけ導く）。
@@ -510,10 +510,10 @@ mod App {
     pub def suppressEdges(frame: Frame): Frame =
         { justPressed = Set.empty(), mouseClicked = false, mouseMoved = false, wheel = 0.0 | frame }
 
-    /// 0 サブステップのフレームで捨てられそうになったエッジの取り置き。エッジは prev との
+    /// 0 サブステップのフレームで捨てられそうになったエッジのバッファ。エッジは prev との
     /// 差分なので、同じ押下は次の実フレームでは二度と立たない — 消費されるまでここに
-    /// 取り置き、最初のサブステップが来た瞬間に合流させる（fixedDt がフレーム間隔より
-    /// 長い構成でも入力を取り逃さないための待合室）。
+    /// 残し、最初のサブステップが来た瞬間に合流させる（fixedDt がフレーム間隔より
+    /// 長い構成でも入力を取り逃さないためのバッファ）。
     pub type alias PendingEdges = {
         justPressed = Set[GameEngine.Key],
         mouseClicked = Bool,
@@ -533,7 +533,7 @@ mod App {
     def noPending(): PendingEdges =
         { justPressed = Set.empty(), mouseClicked = false, mouseMoved = false, wheel = 0.0 }
 
-    /// 取り置いたエッジを今フレームの Frame へ合流させる: justPressed は和集合・
+    /// バッファしたエッジを今フレームの Frame へ合流させる: justPressed は和集合・
     /// クリックと移動は「どちらかで起きた」・wheel は量なので加算。
     /// held 系（down / mouseDown / cursor / dt）は今フレームの値をそのまま使う。
     pub def mergeEdges(pending: PendingEdges, frame: Frame): Frame =
@@ -542,7 +542,7 @@ mod App {
           mouseMoved = pending#mouseMoved or frame#mouseMoved,
           wheel = pending#wheel + frame#wheel | frame }
 
-    /// Frame からエッジ 4 種を抜き出して取り置きの形にする（0 ステップのフレームの持ち越し用）。
+    /// Frame からエッジ 4 種を抜き出してバッファの形にする（0 ステップのフレームの持ち越し用）。
     pub def pendingOf(frame: Frame): PendingEdges =
         { justPressed = frame#justPressed, mouseClicked = frame#mouseClicked,
           mouseMoved = frame#mouseMoved, wheel = frame#wheel }
@@ -580,7 +580,7 @@ mod App {
     /// 後ろに繋ぐ。hud には掛けない。center = None でも zoom ≠ 1.0 なら画面中央
     /// （design/2 の world 点）を軸に寄り引きする（withZoom だけ繋いだゲームと同じ規則）。
     /// 2 つの絵は同型のリストなので record で名前渡しにして取り違えを防ぐ。
-    /// hud の z は HUD 帯（ZBand.liftHud）へ持ち上げる — world がどれだけ大きい z を
+    /// hud の z は HUD の範囲（ZBand.liftHud）へ持ち上げる — world がどれだけ大きい z を
     /// 使っても（爆発 z=1000 等）、hud はその手前に出る。hud の中の前後は元の z の
     /// まま（0..ZBand.innerMax に clamp）。world 側の z には触らない。
     pub def composeScene(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2,
@@ -1027,7 +1027,7 @@ mod App {
 
     /// withFonts で宣言された名前を先に全部引いておき、名前 → アトラスの純粋な引き当てを作る。
     /// view は純粋（ef）なので、その場で getFontAtlas を呼べない — ここで先に解いておく。
-    /// 宣言していない名前は既定フォントへ倒す（字が消えるより既定で出るほうがよい）。
+    /// 宣言していない名前は既定フォントへ落とす（字が消えるより既定で出るほうがよい）。
     def fontResolver(app: App[w, ef], dflt: FontAtlas): (String -> FontAtlas) \ GameEngine.Game =
         let table = app#fonts |> List.foldLeft((acc, n) ->
             Map.insert(n, GameEngine.Game.getFontAtlas(n), acc),
@@ -1109,8 +1109,8 @@ mod App {
 
     /// タイル層の GPU 焼きの持ち回し。ループが引数で持ち回す。
     /// gen は「Doc の読み直し（watchFile / reloadOn）が起きた回数」= タイル層の世代。
-    /// entries は層の席（宣言リストの並び順）→ (焼いた時点の世代, 焼いた時の key, VAO, 数)。
-    /// 席で引くので、key が頻繁に転がる層（照明・カメラ追随で焼き直る地形など）でも
+    /// entries は層のスロット（宣言リストの並び順）→ (焼いた時点の世代, 焼いた時の key, VAO, 数)。
+    /// スロットで引くので、key が頻繁に転がる層（照明・カメラ追随で焼き直る地形など）でも
     /// VAO は 1 層に 1 本のまま — 焼き直しは updateTileBuffer の入れ直しで済む。
     pub type alias TileCache =
         { gen = Int32, entries = Map[String, (Int32, String, GpuHandle.TileVao, Int32)] }
@@ -1125,14 +1125,14 @@ mod App {
     pub def bumpTileGen(fired: Bool, cache: TileCache): TileCache =
         if (fired) { gen = cache#gen + 1 | cache } else cache
 
-    /// 席の焼き置きを引く。焼いた時点の世代と key が今と一致した時だけ使い回せる。
+    /// スロットに取ってある生成結果を引く。生成した時点の世代と key が今と一致した時だけ使い回せる。
     pub def tileCacheHit(slot: String, key: String, cache: TileCache): Option[(GpuHandle.TileVao, Int32)] =
         Map.get(slot, cache#entries) |> Option.flatMap(e -> {
             let (g, k, vao, n) = e;
             if (g == cache#gen and k == key) Some((vao, n)) else None
         })
 
-    /// 席に焼き置きがあれば、その VAO を返す（世代・key が古くてもよい —
+    /// スロットに生成結果があれば、その VAO を返す（世代・key が古くてもよい —
     /// updateTileBuffer で中身を入れ直す先として使う）。
     pub def tileCacheVaoAt(slot: String, cache: TileCache): Option[GpuHandle.TileVao] =
         Map.get(slot, cache#entries) |> Option.map(e -> {
@@ -1140,14 +1140,14 @@ mod App {
             vao
         })
 
-    /// 焼いた結果を席へ上書きで置く（台帳は宣言中の層の数までしか育たない）。
+    /// 生成した結果をスロットへ上書きで置く（一覧表は宣言中のレイヤーの数までしか育たない）。
     pub def tileCacheStore(slot: String, key: String, vao: GpuHandle.TileVao, count: Int32,
                            cache: TileCache): TileCache =
         { entries = Map.insert(slot, (cache#gen, key, vao, count), cache#entries) | cache }
 
-    /// 宣言されたタイル層を描画コマンドにする。席（宣言リストの並び順）に同じ世代・
+    /// 宣言されたタイル層を描画コマンドにする。スロット（宣言リストの並び順）に同じ世代・
     /// 同じ key で焼き置きされていれば使い回し、key か世代が変われば同じ VAO へ中身を
-    /// 入れ直す（updateTileBuffer）。新しい席だけ initTileBuffer で VAO を作る —
+    /// 入れ直す（updateTileBuffer）。新しいスロットだけ initTileBuffer で VAO を作る —
     /// key が毎バケツ転がる層でも GPU バッファは 1 層 1 本のまま。
     /// 位置と倍率は動的な絵と同じ camera 値（resolvedCamera）から出すので視点はずれない。
     def tileLayerCmds(app: App[w, ef], world: w, cache: TileCache):

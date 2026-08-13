@@ -1,6 +1,6 @@
 ---
 name: release
-description: "このリポジトリの検証とリリースの手順。作業中にどこまでテストを回すか、リリース前の全量ゲート、生成のバイト一致比較をいつやるか、版を上げて GitHub Release を作るまでを出す。make release / make bump を打つとき、版を上げるとき、「リリースしたい」「公開して」と言われたとき、全部のテストを回すか迷ったときに使う。"
+description: "このリポジトリの検証とリリースの手順。作業中にどこまでテストを回すか、リリース前の全量ゲート、生成のバイト一致比較をいつやるか、バージョンを上げて GitHub Release を作るまでを出す。make release / make bump を打つとき、バージョンを上げるとき、「リリースしたい」「公開して」と言われたとき、全部のテストを回すか迷ったときに使う。"
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
@@ -19,12 +19,12 @@ allowed-tools: Read, Grep, Glob, Bash
 **「挙動を変えていない」と主張するリファクタの時だけ**やる。機能追加リリースでは不要。
 
 **`gallery/` は git 管理外なので `git status` では見えない。** 生成した絵の一致は
-`make bench` の SHA 突き合わせで見る。
+`make snapshot-check` の SHA 突き合わせで見る。
 
 1. `make bake-par`（不審なら逐次の `make bake`）
 2. `git status` で assets/sfx の差分ゼロを確認（音や素材の退行はここに出る）
 3. `for d in templates/*/; do make -C "$d" bench; done` で全テンプレの絵が基準と一致するか確認
-4. examples 側は golden を持たないので、生成し直した `gallery/` を自分で目視する
+4. examples 側はスナップショットを持たないので、生成し直した `gallery/` を自分で目視する
    （`.claude/skills/critique-bake` の手順）
 
 `python3 bin/lint-images.py` も併せて通す（生成した絵が git に紛れ込んでいないか）。
@@ -44,11 +44,11 @@ allowed-tools: Read, Grep, Glob, Bash
 `make release` は sync → `test-par`（全量ゲート）→ `gl-parity` → build-pkg → `gh release create` を一括で回す。
 tag は現在の HEAD SHA に固定される。
 
-## こけやすい関所（特にエンジン拡張のあと）
+## こけやすいゲート（特にエンジン拡張のあと）
 
 コミットや `make release` で止まる原因は毎回だいたい同じ。打つ前にここを潰す:
 
-- **precommit 関所**: コミットの瞬間に `bin/precommit.py` が走る。何で止まるかは
+- **precommit ゲート**: コミットの瞬間に `bin/precommit.py` が走る。何で止まるかは
   `python3 bin/precommit.py --files <ステージ予定のファイル…>` で**コミット前に素振りできる**。
   よく引っかかるのは ①pub 宣言・doc コメントを触ったのに `docs/api-digest.md` が古い
   （`make api-digest` で作り直してから一緒にステージ）②docs / skills を触った時の
@@ -56,7 +56,7 @@ tag は現在の HEAD SHA に固定される。
 - **sync の出し忘れ**: engine / engine_world / engine_tools のソースを触ったら対応する
   `make sync-<name>` を通してからテストする。古い fpkg のまま緑になっても信用できない
 - **lint 群は先に手で回す**: フック任せにせず `make lint-view lint-palette lint-ui lint-audio` を
-  リリース前に一巡させる。既知の赤（例: examples 側の未修正）が残ったままだと関所で止まる
+  リリース前に一巡させる。既知の赤（例: examples 側の未修正）が残ったままだとゲートで止まる
 - **`make test-par` の偽 FAIL**: ログが依存解決で途切れテスト 0 本なら並列の食い合い。
   当該パッケージを単体 `make test-<name>` で確かめ、必要なら `make release TEST=test`（逐次）
 - **`make release` は未コミットで中断する**: `gallery/` や `NOTES.md` は git 管理外なので

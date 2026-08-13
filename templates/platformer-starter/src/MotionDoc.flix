@@ -4,7 +4,7 @@
 // コヨーテ・先行入力・落下強化などの「ゆるし」も全部ここのノブ。
 // カメラの追従もここに置く — 「歩きが速いから先読みを伸ばす」のように
 // 身体の数値と**同時に**触るもので、読み直したい時が同じだから。
-// fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
+// fail-open — 読めない・壊れているときは defaults() へ落とし、ゲームは必ず起動する。
 mod MotionDoc {
     use Util.Json.Json
 
@@ -58,7 +58,7 @@ mod MotionDoc {
           camDeadzoneX = 8.0, camFollowKX = 6.0,
           camDeadzoneY = 40.0, camFollowKY = 4.0 }
 
-    /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ倒す。
+    /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
         DocJson.decodeObject(fromRoot, text)
 

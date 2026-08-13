@@ -1,4 +1,4 @@
-// Bake — ゲーム画面を画面なしで PNG に生成する（golden 比較・目視批評用）。
+// Bake — ゲーム画面を画面なしで PNG に生成する（スナップショット比較・目視批評用）。
 // 実行: flix run --entrypoint Bake.all → gallery/s1_start.png .. s4_over.png
 // すべて決定的な場面（時計 t は場面ごとに固定値を入れる）。World を直接組み（RNG を回さず固定し）、
 // 実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で生成する。
@@ -27,8 +27,8 @@ mod Bake {
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
         let ctx = App.viewCtxOf(atlas, design());
-        // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が golden/title.png を
-        // /genesis/title で読み、「パズル」の札のサムネにする（各 starter 共通の規約）。
+        // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が snapshot/title.png を
+        // /genesis/title で読み、「パズル」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
         let t = shoot(cfg, ctx, stackScene(w0), "title");
         // s1: 初期盤（空）+ 涌いたばかりの current + NEXT + score 0。
         let s1 = shoot(cfg, ctx, { t = 0.4 | w0 }, "s1_start");

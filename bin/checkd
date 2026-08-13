@@ -445,7 +445,7 @@ class Daemon:
         # ファイル保存の直後に check すると書きかけを読むことがある。
         # 一番新しい .flix の保存から SETTLE_SEC 経つまで待つ (古ければ待たない)。
         newest = 0.0
-        skip = {"lib", "build", ".git", "gallery", "golden", "assets", "node_modules"}
+        skip = {"lib", "build", ".git", "gallery", "snapshot", "assets", "node_modules"}
         for root, dirs, files in os.walk(self.pkg):
             dirs[:] = [d for d in dirs if d not in skip]
             for f in files:

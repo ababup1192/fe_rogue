@@ -11,7 +11,7 @@ description: "まだコードに繋がっていない Doc(JSON) を、既存の 
 
 1. 既存の Doc loader を1つ読んで、パターンを確認する
    （`fromJson` 系の変換、`defaults`（既定値はコード側）、fail-open —
-   壊れた入力で落とさず既定値へ倒す）。
+   壊れた入力で落とさず既定値へ落とす）。
 2. 同じ形で新しい loader を書く。`<種類>.schema.json` が無ければ書き、
    `project.json` の `editor.resources[]` に宣言する。
    Doc 本体には必ず `version` を入れる（無いと Studio の健康診断が警告する）。
@@ -20,7 +20,7 @@ description: "まだコードに繋がっていない Doc(JSON) を、既存の 
 3. Main（App 起動部）に `App.watchFile` の配線を足し、保存即反映にする。
    既存の watchFile 配線をお手本にする。
 4. 橋渡しテストを **最大3本** 書く:
-   - 壊れた JSON → 既定値に倒れる
+   - 壊れた JSON → 既定値へ落ちる
    - 1 フィールド上書き → その値だけ変わる
    - rows があるなら、rows の長さに追随する
    期待値は Doc の既定値（コード側の defaults）から導き、数値リテラルを貼らない。

@@ -120,9 +120,9 @@ mod Bench {
             case _ => { r = 0.91f32, g = 0.75f32, b = 0.32f32 }
         }
 
-    /// HUD あり構成（HUD=1 で有効）の絵。withHudView 経由なので z は HUD 帯
-    /// （ZBand.hudBase 以上）へ持ち上がり、mergedByZ が帯別 2 段ソートに入る —
-    /// 帯が混ざっても席方式（counting sort）に乗り続けるかを HUD 無しとの A/B で見る。
+    /// HUD あり構成（HUD=1 で有効）の絵。withHudView 経由なので z は HUD の範囲
+    /// （ZBand.hudBase 以上）へ持ち上がり、mergedByZ が範囲別 2 段ソートに入る —
+    /// 範囲が混ざってもスロット方式（counting sort）に乗り続けるかを HUD 無しとの A/B で見る。
     pub def hud(ctx: App.ViewCtx, w: World): List[Render.PlacedItem] =
         RawDraw.boxAt({ x = 160.0, y = 228.0 }, { x = 300.0, y = 16.0 },
             { r = 0.10f32, g = 0.10f32, b = 0.14f32 }, 0)

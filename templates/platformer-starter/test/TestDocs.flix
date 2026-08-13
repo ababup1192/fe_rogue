@@ -114,7 +114,7 @@ mod TestDocs {
 
     @Test
     def testKeysEmptyActionFallsBackToDefaults(): Unit \ Assert =
-        // 全部知らない名前で操作が空になったら、その操作だけ既定へ倒す(操作不能を
+        // 全部知らない名前で操作が空になったら、その操作だけ既定へ落とす(操作不能を
         // 作らない)。書いた操作(dash)と触っていない操作(left)は影響を受けない。
         let d = KeysDoc.fromJson("{\"jump\": [\"Hop\"], \"dash\": [\"Q\"]}")
             |> Option.getWithDefault(KeysDoc.defaults());

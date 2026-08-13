@@ -45,26 +45,26 @@ mod TestFrameOrder {
         Assert.assertEq(expected = "s1.0,s2.0,s3.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
-    /// z がまばらに散っていても（席方式に倒さない広さでも）並びは同じ。
+    /// z がまばらに散っていても（スロット方式に倒さない広さでも）並びは同じ。
     @Test
     def testSparseKeysKeepOrder(): Unit \ Assert =
         let sprites = spriteAt(900000, 1.0) :: spriteAt(0, 2.0) :: spriteAt(0, 3.0) :: Nil;
         Assert.assertEq(expected = "s2.0,s3.0,s1.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
-    /// 何も無いフレームは空の列（席を 1 本も作らない）。
+    /// 何も無いフレームは空の列（スロットを 1 本も作らない）。
     @Test
     def testEmptyFrame(): Unit \ Assert =
         Assert.assertEq(expected = "", trace(RenderFrame.mergedByZ(Nil, Nil, Nil, Nil, Nil)))
 
-    /// 事故の再現形: world の高 z（爆発 1000）より HUD 帯（ZBand.liftHud）の絵が手前。
+    /// 事故の再現形: world の高 z（爆発 1000）より HUD の範囲（ZBand.liftHud）の絵が手前。
     @Test
     def testHudBandWinsOverHighWorldZ(): Unit \ Assert =
         let sprites = spriteAt(ZBand.liftHud(10), 1.0) :: spriteAt(1000, 2.0) :: Nil;
         Assert.assertEq(expected = "s2.0,s1.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
-    /// 帯をまたぐフレームでも各帯の中は z 昇順・同 z は入力順のまま（帯別 2 段の安定性）。
+    /// 範囲をまたぐフレームでも各範囲の中は z 昇順・同 z は入力順のまま（範囲別 2 段の安定性）。
     @Test
     def testBandsKeepWithinBandOrderStable(): Unit \ Assert =
         let sprites =
@@ -73,7 +73,7 @@ mod TestFrameOrder {
         Assert.assertEq(expected = "s5.0,s2.0,s3.0,s4.0,s1.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
-    /// 帯をまたいでも同 z の種類の順（スプライトが先・多角形が後）は変わらない。
+    /// 範囲をまたいでも同 z の種類の順（スプライトが先・多角形が後）は変わらない。
     @Test
     def testBandsKeepChannelOrderAtSameZ(): Unit \ Assert =
         let sprites = spriteAt(ZBand.liftHud(7), 1.0) :: spriteAt(0, 2.0) :: Nil;
@@ -81,7 +81,7 @@ mod TestFrameOrder {
         Assert.assertEq(expected = "s2.0,s1.0,p9.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, polys, Nil, Nil)))
 
-    /// デバッグ帯（2e9）と負の z が同居しても Int32 の幅あふれで壊れない。
+    /// デバッグの範囲（2e9）と負の z が同居しても Int32 の幅あふれで壊れない。
     @Test
     def testDebugBandWithNegativeZDoesNotOverflow(): Unit \ Assert =
         let sprites = spriteAt(ZBand.debugBase(), 1.0) :: spriteAt(-200000000, 2.0)
@@ -89,7 +89,7 @@ mod TestFrameOrder {
         Assert.assertEq(expected = "s2.0,s3.0,s1.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
-    /// 帯の中でも z がまばら（席が個数に見合わない）なら木で受け、並びは同じ規約のまま。
+    /// 範囲の中でも z がまばら（スロットが個数に見合わない）なら木で受け、並びは同じ規約のまま。
     @Test
     def testSparseWithinBandKeepsOrder(): Unit \ Assert =
         let sprites = spriteAt(ZBand.liftHud(0), 1.0)

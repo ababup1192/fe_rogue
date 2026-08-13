@@ -32,7 +32,7 @@ esac
 # コンパイラ jar の入手は devbox (flix.nix) に任せ、実行は手元の java で行う。
 # flix.nix の flix コマンドを直に exec しないのは、それが自分専用の JRE を同梱していて
 # こちらの jdk (devbox の jdk@21) と別マイナー版になり、フォント計測がわずかにズレて
-# 描画スナップショットの golden が崩れるため。jar だけ nix store から借り、JRE は固定する。
+# 描画スナップショットが崩れるため。jar だけ nix store から借り、JRE は固定する。
 # 見つけ方: PATH 上の flix コマンドのうち /nix/store 実体に解決されるものを取り、
 # その隣の share/java/flix/flix.jar を使う (nixpkgs の flix パッケージの配置)。
 FLIX_JAR=""

@@ -107,7 +107,7 @@ mod View {
         let slip = if (World.slipActive(w)) chipAt(atlas, w, "SLIP+", w#theme#rivalA, slipY) else Nil;
         drift ::: slip
 
-    /// 白チップ + 色文字の小さな札 1 枚。
+    /// 白チップ + 色文字の小さなラベル 1 枚。
     def chipAt(atlas: FontAtlas, w: World.World, label: String, ink: Color, y: Float64): List[Render.PlacedItem] =
         let cx = 204.0;
         let back = RawDraw.boxAt({ x = cx, y = y }, { x = 58.0, y = 15.0 }, w#theme#text, zHud())

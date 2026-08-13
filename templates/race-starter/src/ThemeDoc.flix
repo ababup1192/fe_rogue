@@ -3,7 +3,7 @@
 // 派生色（明るめ・暗め・遠くの霞み）は基準色から導ける範囲はコードで導く（導出できる値は
 // Doc に置かない）。ドット絵の細かい色（タイヤ・キャノピー等）は別ファイル
 // race.palette.json（PaletteDoc）— 画面の大きな配色と、ドット絵のパレットは関心が違う。
-// fail-open: 読めない・壊れているときは defaults() へ倒す。
+// fail-open: 読めない・壊れているときは defaults() へ落とす。
 mod ThemeDoc {
     use Util.Json.Json
 

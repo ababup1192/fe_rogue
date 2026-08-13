@@ -57,8 +57,8 @@ make test     # ルール(手触り・収支・ギミック)と Doc 橋渡しの
 make stages   # 面の静的検査 — 罠ゼロ(BFS)と流れ(平地の単調・見せ場の空き)
 make playtest # bot に通しで遊ばせて「走れるか・詰まらないか」を測る
 make bake     # 決定的な 4 場面を gallery/ に焼く(hill / cave / tower / hud)
-make bench    # 焼いた絵を golden/ とバイト比較(リグレッション検知)
-make golden   # いまの gallery を新しい基準として祝福する
+make snapshot-check    # 焼いた絵を snapshot/ とバイト比較(リグレッション検知)
+make snapshot-update   # いまの gallery を新しい基準として更新する
 make probe    # 面の読み込み・1 tick・1 フレームの部品数を測る(重い一手の切り分け)
 make checkpoints # 中間ポイント(c)を等間隔に置き直し、そのまま make stages に掛ける
 make loc      # src/ + test/ の合計行数(上限 3,000 行)

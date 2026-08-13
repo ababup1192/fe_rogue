@@ -16,8 +16,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
 | `make bake`   | ギャラリー PNG を焼く（決定的: title / choice / ending） |
-| `make bench`  | 焼いた絵を golden とバイト比較する |
-| `make golden` | いまの gallery を golden として祝福する |
+| `make snapshot-check`  | 焼いた絵をスナップショットとバイト比較する |
+| `make snapshot-update` | いまの gallery をスナップショットとして更新する |
 | `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
 
 ## 遊び方
@@ -40,7 +40,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    3. `src/View.flix` … 状態を絵に写す（書斎・雨の窓・空の額縁・灯り・暗幕・表紙を、何をどこに）。
    4. `src/NovelKit.flix` … 会話窓と選択肢のキット（UiDialog + UiTypewriter + UiSlots の束ね）。
    5. `src/Controls.flix` … キーの割り当て（選ぶだけ）と Doc の読み直し。
-   6. `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（golden とアトリエ）。
+   6. `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（スナップショットとアトリエ）。
 3. 台本・手触り・色・絵は下の `assets/` の Doc を保存即反映でいじる。
 
 **いちばん小さい変え方**（保存即反映を体験する）: `make debug` で起動したまま
@@ -60,7 +60,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 
 ## 絵の開発ループ
 
-- `make bake` で `gallery/` に決定的な PNG（表紙・分岐・結末）を焼き、`make golden` で祝福、`make bench` で防護。
+- `make bake` で `gallery/` に決定的な PNG（表紙・分岐・結末）を焼き、`make snapshot-update` で更新、`make snapshot-check` で防護。
 - 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に焼いて目視。
 
 ## AI エージェント向け指針の配布（sync-agents）

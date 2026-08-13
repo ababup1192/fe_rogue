@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ドット絵 (*.sprite.json) の legend の意味色キーが Studio から解けるか検査する関所。
+"""ドット絵 (*.sprite.json) の legend の意味色キーが Studio から解けるか検査するゲート。
 
 Studio (flix_ge_studio) の SpriteColors が legend の値を実色に解く道は 3 本しかない:
   (a) プロジェクト内の *.theme.json のトップレベル (または "colors" の下) の名前
@@ -25,7 +25,7 @@ COLOR_WRAP_KEYS = ("hex", "color", "value")
 GAME_ROOTS = ("templates", "examples")
 
 # examples/fe_rogue は廃止予定 (新しく作る人のお手本にしない方針) なので検査しない。
-# 直しても消えるファイルで関所が赤くなり続けると、関所そのものが無視されるため。
+# 直しても消えるファイルでゲートが赤くなり続けると、ゲートそのものが無視されるため。
 SKIP_GAMES = {"examples/fe_rogue"}
 
 
@@ -135,7 +135,7 @@ def game_dirs(root):
                 continue
             dirs.append(rel)
     # 生成されたゲームには templates/ も examples/ も無い。空を返すと
-    # 「検査したが問題なし」と見分けが付かず、関所が黙って素通りする。
+    # 「検査したが問題なし」と見分けが付かず、ゲートが何も言わずに通してしまう。
     if not dirs and os.path.isdir(os.path.join(root, "assets")):
         dirs.append(".")
     return dirs
