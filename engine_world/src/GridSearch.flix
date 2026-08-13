@@ -18,25 +18,28 @@ mod GridSearch {
     /// 利用例: コマの移動範囲を塗る / いま何マス動けるかを一覧する。
     pub def reachable(canEnter: ((Int32, Int32)) -> Bool, start: (Int32, Int32),
                        maxSteps: Int32): List[(Int32, Int32)] =
-        floodList(canEnter, maxSteps, start :: Nil, (start, 0) :: Nil)
+        floodList(canEnter, maxSteps, 0, start :: Nil, Set.singleton(start), start :: Nil)
 
-    /// `reachable` の幅優先ループ。`visited` は到達済みマス（訪問順を保持）、`queue` は
-    /// (マス, そこまでの歩数) の待ち行列。展開済みを `visited` に持ち回って再訪問を防ぎ、
-    /// `maxSteps` に達したマスはそれ以上広げない。
-    def floodList(canEnter: ((Int32, Int32)) -> Bool, maxSteps: Int32,
-                   visited: List[(Int32, Int32)],
-                   queue: List[((Int32, Int32), Int32)]): List[(Int32, Int32)] =
-        match queue {
-            case Nil => visited
-            case (cur, depth) :: rest =>
-                if (depth >= maxSteps) floodList(canEnter, maxSteps, visited, rest)
-                else
-                    let fresh = neighbors(cur)
-                        |> List.filter(c -> canEnter(c) and not List.memberOf(c, visited));
-                    let newVisited = List.append(visited, fresh);
-                    let newQueue   = List.append(rest, List.map(c -> (c, depth + 1), fresh));
-                    floodList(canEnter, maxSteps, newVisited, newQueue)
-        }
+    /// `reachable` の幅優先ループ。距離 `depth` のマス群 `frontier` の 4 近傍を次のレベルへ送り、
+    /// `maxSteps` に達したらそれ以上広げない。再訪問は `seen` で弾き、返す順は `acc` が持つ
+    /// （`acc` は逆順に積んで最後に 1 回ひっくり返す）。
+    /// 会員判定と戻り値を 1 本のリストで兼ねると、どちらも要素数の二乗で効いてくる。
+    def floodList(canEnter: ((Int32, Int32)) -> Bool, maxSteps: Int32, depth: Int32,
+                   frontier: List[(Int32, Int32)],
+                   seen: Set[(Int32, Int32)],
+                   acc: List[(Int32, Int32)]): List[(Int32, Int32)] =
+        if (List.isEmpty(frontier) or depth >= maxSteps) List.reverse(acc)
+        else
+            let (nextFrontier, nextSeen, nextAcc) =
+                List.foldLeft((outer, cur) ->
+                    List.foldLeft((inner, n) -> {
+                        let (f, s, a) = inner;
+                        if (canEnter(n) and not Set.memberOf(n, s))
+                            (n :: f, Set.insert(n, s), n :: a)
+                        else inner
+                    }, outer, neighbors(cur)),
+                    (Nil, seen, acc), frontier);
+            floodList(canEnter, maxSteps, depth + 1, List.reverse(nextFrontier), nextSeen, nextAcc)
 
     /// `sources` を 0 歩とする多始点の幅優先探索で、`canEnter` を満たして到達できる各マスの
     /// 最短歩数を Map で返す（距離場）。到達できないマスは Map に載らない（= ∞ 扱い）。

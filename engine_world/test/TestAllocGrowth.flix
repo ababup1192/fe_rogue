@@ -33,7 +33,24 @@ mod TestAllocGrowth {
         let ops = App.sustainOps(Nil, next);
         List.length(ops#start)
 
-    /// 割り当てバイト数を読める JVM である（読めないと以下の 2 つは 0 しか見ない）
+    /// 4 分木（1 つの親が子 4 つ）で n 個の entity を並べた UI ツリーのレイアウトを解く。
+    /// 増えるのはツリーの要素数。1 つの親が持つ兄弟の数は 4 のまま動かさない。
+    def layoutTree(n: Int32): Int32 =
+        let ids = List.range(1, n);
+        let parents = ids |> List.map(id -> (id, (id - 1) / 4)) |> List.toMap;
+        let order = ids |> List.map(id -> (id, id)) |> List.toMap;
+        let measures = ids |> List.map(id -> (id, ({x = 10.0, y = 10.0}: Vec2.Vec2))) |> List.toMap;
+        let input = ({styles = Map.empty(), parents = parents, order = order,
+                      measures = measures, visible = Map.empty()}: UiLayout.LayoutInput);
+        let rootRect = ({position = {x = 0.0, y = 0.0}, size = {x = 1000.0, y = 1000.0}}: Rect2.Rect2);
+        UiLayout.computeLayout(input, 0, rootRect) |> Map.size
+
+    /// 幅 1 の通路（n×1 マス）を端から塗る。到達できるマス数がそのまま n になるので、
+    /// N を増やしても近傍の数（1 マスあたり 4）は動かない。
+    def reachableCells(n: Int32): Int32 =
+        GridSearch.reachable(c -> Grid.inRect(c, n, 1), (0, 0), n) |> List.length
+
+    /// 割り当てバイト数を読める JVM である（読めないと以下の 3 つは 0 しか見ない）
     @Test
     def testThreadAllocatedMemoryIsEnabled(): Unit \ Assert =
         Assert.assertTrue(AllocMeter.isThreadAllocatedMemoryEnabled())
@@ -51,6 +68,22 @@ mod TestAllocGrowth {
     def testSustainOpsAllocatesLinearlyInDeclarationCount(): Unit \ Assert =
         let small = AllocMeter.measureBytes(3, _ -> sustainNames(100));
         let large = AllocMeter.measureBytes(3, _ -> sustainNames(800));
+        let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
+        Assert.assertTrue(ratio < 16.0)
+
+    /// UiLayout.computeLayout の割り当ては UI ツリーの要素数に比例する（8 倍で 16 倍を超えない）
+    @Test
+    def testComputeLayoutAllocatesLinearlyInTreeSize(): Unit \ Assert =
+        let small = AllocMeter.measureBytes(3, _ -> layoutTree(100));
+        let large = AllocMeter.measureBytes(3, _ -> layoutTree(800));
+        let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
+        Assert.assertTrue(ratio < 16.0)
+
+    /// GridSearch.reachable の割り当ては到達できるマス数に比例する（8 倍で 16 倍を超えない）
+    @Test
+    def testReachableAllocatesLinearlyInCellCount(): Unit \ Assert =
+        let small = AllocMeter.measureBytes(3, _ -> reachableCells(100));
+        let large = AllocMeter.measureBytes(3, _ -> reachableCells(800));
         let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
         Assert.assertTrue(ratio < 16.0)
 }

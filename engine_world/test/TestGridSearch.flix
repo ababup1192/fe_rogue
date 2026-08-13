@@ -30,6 +30,18 @@ mod TestGridSearch {
         Assert.assertEq(expected = 13,
             List.length(GridSearch.reachable(_ -> true, (0, 0), 2)))
 
+    /// 2 歩ぶんの訪問順を丸ごと pin する。1 歩目の 4 マスを全部出してから 2 歩目に移り、
+    /// 2 歩目の中は 1 歩目のマスの順（上→下→左→右）ごとにその近傍が並ぶ。
+    /// 既に出たマスは 2 度目には出ない（(0,0) の再訪や (-1,-1) の重複が落ちる）。
+    @Test
+    def testReachableOrderTwoSteps(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (0, 0) :: (0, -1) :: (0, 1) :: (-1, 0) :: (1, 0)
+                    :: (0, -2) :: (-1, -1) :: (1, -1)
+                    :: (0, 2) :: (-1, 1) :: (1, 1)
+                    :: (-2, 0) :: (2, 0) :: Nil,
+            GridSearch.reachable(_ -> true, (0, 0), 2))
+
     /// canEnter で壁 (1,0) を塞ぐと、直進 2 歩の (2,0) は迂回（4 歩）が要るので 2 歩では届かない。
     /// start 自身は canEnter に関わらず含まれる（出発点はいつでも居られる）。
     @Test
