@@ -1,5 +1,5 @@
 // TestRichText — スパン列の素の文章・長さ・先頭切り出し（文字送り連携）を具体値で固定する。
-// place（描画）は atlas が要るのでここでは扱わない — 幾何は消費側の view guard が守る。
+// place（描画）は手組みの atlas を使って、返る順序・1 字ずつの位置・色を具体値で固定する。
 mod TestRichText {
 
     def spans(): List[RichText.Span] =
@@ -73,4 +73,104 @@ mod TestRichText {
             (RichText.wrapLinesBy(unitWidth, 9.0, Nil) |> List.map(RichText.plainText),
              RichText.wrapLinesBy(unitWidth, 9.0, RichText.plain("") :: Nil) |> List.map(RichText.plainText),
              RichText.wrapLinesBy(unitWidth, 9.0, RichText.plain("a\n") :: Nil) |> List.map(RichText.plainText)))
+
+    // ========================================================================
+    // place: 1 字ずつの描画アイテム（返る順序・位置の積み上がり・色）
+    // ========================================================================
+
+    /// 'A' = 送り 10、'B' = 20、'C' = 5 の手組み atlas。fontSize 16 で size 16 なら等倍。
+    /// 送り幅を字ごとに変えてあるので、x の積み上がりが壊れると位置がずれて落ちる。
+    def sampleAtlas(): FontAtlas =
+        let metrics = (advance -> ({
+            xOff = 0.0, yOff = 0.0, glyphW = advance, glyphH = 10.0,
+            advance = advance, s0 = 0.0, t0 = 0.0, s1 = 1.0, t1 = 1.0
+        }: TextLayout.GlyphMetrics));
+        let glyphs = Map.empty()
+            |> Map.insert(65, metrics(10.0))   // 'A'
+            |> Map.insert(66, metrics(20.0))   // 'B'
+            |> Map.insert(67, metrics(5.0));   // 'C'
+        ({
+            textureName = "atlas",
+            fontSize    = 16.0,
+            textureSize = 256.0,
+            ascent      = 8.0,
+            descent     = 2.0,
+            lineGap     = 0.0,
+            glyphs      = glyphs
+        }: FontAtlas)
+
+    def ink(): Color = {r = 0.1, g = 0.2, b = 0.3}
+
+    /// 左上 (100, 200)・行間 3・文字サイズ 16 の置き方。maxWidth だけテストごとに変える。
+    def placement(maxWidth: Float64): RichText.Placement =
+        { atlas = sampleAtlas(), size = 16.0, baseTint = ink(), z = 40,
+          pos = {x = 100.0, y = 200.0}, maxWidth = maxWidth, lineGap = 3.0 }
+
+    /// 1 アイテムを (字, x, y) に畳む。
+    def glyphAt(placed: Render.PlacedItem): (String, Float64, Float64) =
+        match placed#item {
+            case Render.Item.Text(r) => (r#text, placed#at#x, placed#at#y)
+            case _                   => ("?", placed#at#x, placed#at#y)
+        }
+
+    /// 1 アイテムの色を (r, g, b) に畳む。
+    def glyphTint(placed: Render.PlacedItem): (Float64, Float64, Float64) =
+        match placed#item {
+            case Render.Item.Text(r) => (r#tint#r, r#tint#g, r#tint#b)
+            case _                   => (-1.0, -1.0, -1.0)
+        }
+
+    // 1 行に並ぶ字は書いた順で返り、x は前の字の送り幅を足した値になる
+    // （'A'=10 → 'B'=20 → 'C'=5 なので 100, 110, 130）。
+    @Test
+    def testPlaceOrderAndCumulativeX(): Unit \ Assert =
+        let items = RichText.place(placement(1000.0),
+            RichText.plain("AB") :: RichText.colored("C", {r = 0.0, g = 0.0, b = 1.0}) :: Nil);
+        Assert.assertEq(
+            expected = ("A", 100.0, 200.0) :: ("B", 110.0, 200.0) :: ("C", 130.0, 200.0) :: Nil,
+            items |> List.map(glyphAt))
+
+    // スパンをまたいでも x は続きから積む（1 字だけのスパンを 3 つ並べても上と同じ位置）。
+    @Test
+    def testPlaceCarriesXAcrossSpans(): Unit \ Assert =
+        let items = RichText.place(placement(1000.0),
+            RichText.plain("A") :: RichText.plain("B") :: RichText.plain("C") :: Nil);
+        Assert.assertEq(
+            expected = ("A", 100.0, 200.0) :: ("B", 110.0, 200.0) :: ("C", 130.0, 200.0) :: Nil,
+            items |> List.map(glyphAt))
+
+    // 太字スパンは 1 字につき 2 アイテム。素の字が先・半ピクセル右のコピーが後で、
+    // x の積み上げには素の送り幅しか効かない（2 字目は 110 のまま）。
+    @Test
+    def testPlaceBoldEmitsTwoItemsPerChar(): Unit \ Assert =
+        let items = RichText.place(placement(1000.0), RichText.strong("AB") :: Nil);
+        Assert.assertEq(
+            expected = ("A", 100.0, 200.0) :: ("A", 100.5, 200.0)
+                    :: ("B", 110.0, 200.0) :: ("B", 110.5, 200.0) :: Nil,
+            items |> List.map(glyphAt))
+
+    // 折り返した 2 行目は x が左端に戻り、y は size + lineGap = 19 だけ下がる。
+    // maxWidth 25 では 'A'(10) の後に 'B'(20) が入らないので 2 行になる。
+    @Test
+    def testPlaceWrapsToNextLine(): Unit \ Assert =
+        let items = RichText.place(placement(25.0), RichText.plain("AB") :: Nil);
+        Assert.assertEq(
+            expected = ("A", 100.0, 200.0) :: ("B", 100.0, 219.0) :: Nil,
+            items |> List.map(glyphAt))
+
+    // 端: スパン 0 個なら空、1 スパン 1 字なら左上ぴったりに 1 個だけ。
+    @Test
+    def testPlaceEmptyAndSingle(): Unit \ Assert =
+        Assert.assertEq(expected = (0, ("A", 100.0, 200.0) :: Nil),
+            (List.length(RichText.place(placement(1000.0), Nil)),
+             RichText.place(placement(1000.0), RichText.plain("A") :: Nil) |> List.map(glyphAt)))
+
+    // 色: tint 無指定は baseTint、指定ありはその色。太字のコピーも同じ色になる。
+    @Test
+    def testPlaceTints(): Unit \ Assert =
+        let items = RichText.place(placement(1000.0),
+            RichText.plain("A") :: RichText.strong("B") :: RichText.colored("C", {r = 1.0, g = 0.0, b = 0.0}) :: Nil);
+        Assert.assertEq(
+            expected = (0.1, 0.2, 0.3) :: (0.1, 0.2, 0.3) :: (0.1, 0.2, 0.3) :: (1.0, 0.0, 0.0) :: Nil,
+            items |> List.map(glyphTint))
 }
