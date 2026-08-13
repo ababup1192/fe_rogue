@@ -19,7 +19,8 @@ mod TerrainDoc {
     /// 表の1行の宣言。char = rows の文字、name = パレットに出る名前(Studio の1ボタン)、
     /// fill = 塗り("#rrggbb" | "@wall")、edge / edgeWidth = 輪郭フチ、
     /// style = 角の形("round"|"square"|"diamond"|"mix")、jitter = 対角辺の岩肌の揺らぎ、
-    /// surface = 表面の粒(preset 名+1色)、mottle = セル別の明度ゆらぎの最大量(0 = なし)、
+    /// surface = 表面の粒(preset 名+1色。preset は "grain"|"sparkle"|"scales"|"bubble"|"glow")、
+    /// mottle = セル別の明度ゆらぎの最大量(0 = なし)、
     /// height = 持ち上げ(None = 平ら)。
     pub type alias EntryDoc = {
         char = Char, name = String,
@@ -236,8 +237,11 @@ mod TerrainDoc {
               color = JsonCodec.stringOr("color", "#ff00ff", fxObj) })
 
     /// presetOf が受け取れる名前だけを通す(decode 時の除去と specOf 側の None の二重防衛)。
+    /// presetOf の case と 1 対 1 で対応させる — 片方だけ増やすと、その preset は
+    /// ここで捨てられて presetOf まで届かず、絵が出ないまま警告 1 行で終わる。
     def isKnownPreset(name: String): Bool =
-        name == "sparkle" or name == "scales" or name == "bubble" or name == "glow"
+        name == "grain" or name == "sparkle" or name == "scales"
+            or name == "bubble" or name == "glow"
 
     /// 持ち上げの読み。height が無い・オブジェクトでないときは None = 平ら。
     def heightDocOf(fill: String, obj: Map[String, Json]):
