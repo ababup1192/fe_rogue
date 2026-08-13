@@ -53,7 +53,7 @@ templates 6 本の `f32` リテラルは **91 箇所**。外部の実利用リ�
 
 割る理由は 3 つ。
 
-1. **絵が変わる範囲が 1 対 1 で追える。** 後述のとおり両方の段で reference が割れる。
+1. **絵が変わる範囲が 1 対 1 で追える。** 後述のとおり両方の段階で reference が割れる。
    1 リリースにまとめると、割れた絵がどちらの変更のせいか分離できない（`make diff` は
    前と後の 2 状態しか比べられない）
 2. **外部リポの追随の手間が違う。** alpha は `f32` を 1 トークン消すだけ。
@@ -72,15 +72,15 @@ skill への「Float32 は慎重に」という追記は不要**。むしろ既�
 
 層（engine → engine_world → templates）で切ると、その間ずっと templates が型エラーで赤くなり、
 **全量ゲート `make test-par` が使えない**。群ごとに全パッケージを貫いて、
-**各段の終わりで `make test-par` が緑**になる形にする。
+**各段階の終わりで `make test-par` が緑**になる形にする。
 
 ### リリース 1 本目（0.23.5 → 0.24.0）
 
-| 段 | 内容 | 日 |
+| 段階 | 内容 | 日 |
 |---|---|---|
 | 0 | `bin/lint-f32.py` + `make lint-f32` 配線。この時点では違反 26 件を全部 EXEMPT に入れて緑 | 0.5 |
 | 1 | **alpha 群を縦に貫く** — engine 8 宣言 / `engine_world` の `Render.flix` 10 箇所 + `UiWidget` + `UiShape` + `UiStore` + `UiDoc` / `render_gl` の `Frame`・`Sprite`・**`Render.flix:23`** / `engine_tools` の `SoftRaster.lerp3` 分割 / **`editor_server`（23 件）** / **`bench/gl_parity` + `bench/sprite_stress`（14 件）** / templates 6 本の 51 箇所 | 3 |
-| 2 | 段 1 で割れた reference の焼き直しと目視（本命は race-starter） | 0.5 |
+| 2 | 段階 1 で割れた reference の焼き直しと目視（本命は race-starter） | 0.5 |
 | 3 | **音を縦に貫く** — `Sustain` / `Audio.setVolume,setPitch,setMasterVolume`（eff の op）/ `AudioStreamPlayer` / `LwjglLayer` の `Float32.max` クランプ / templates 4 箇所 | 1 |
 | 4 | シーングラフ `setAlpha` 群（`Rect` / `Arc` / `Polygon` / `drawable/Sprite`） | 0.5 |
 | 5 | lint の EXEMPT を `Color` 関連だけに絞り、pre-commit へ配線 | 0.5 |
@@ -89,23 +89,23 @@ skill への「Float32 は慎重に」という追記は不要**。むしろ既�
 
 ### リリース 2 本目（0.24.0 → 0.25.0）
 
-| 段 | 内容 | 日 |
+| 段階 | 内容 | 日 |
 |---|---|---|
 | 7 | `Color` の r/g/b を Float64 に。engine 全域へ波及（`Color.flix` / `ShaderEval` の `mixColor`・`cosColor`・`gradientColor` / `Daylight` / `Material` / `SoftRaster` の `awtColor`・`byteOf` / `Frame.flix`）+ templates 36 箇所 | 1.5 |
 | 8 | **割れた reference 26 枚を 1 枚ずつ判定**（精度が上がった結果か、間違いか） | 1.5〜2.5 |
 | 9 | lint の EXEMPT を空にする。版上げ・リリース | 1 |
 | | **合計** | **4〜5** |
 
-**段 8 が 2 本目の本体**。実装は 1.5 日で終わるが、絵の判定がその倍かかる。
+**段階 8 が 2 本目の本体**。実装は 1.5 日で終わるが、絵の判定がその倍かかる。
 
-`Color` の中でも**危ない口と安全な口を分ける**:
+`Color` の中でも**危ない API と安全な API を分ける**:
 
 - **安全（値が 1 ビットも変わらない）**: `rgb` / `rgb8` / `hex` / `hsv`。
   今も Float64 で計算して最後に 1 回丸めるだけなので、丸めの回数が変わらない
 - **危ない（丸めの回数が変わる）**: `mix` / `lighten` / `darken` / `warm` / `cool` と、
   `ShaderEval` / `Daylight` の補間。ここだけ慎重に見る
 
-各段の前に `make sync`（`sync-engine → sync-render-gl → sync-engine-world → sync-engine-tools →
+各段階の前に `make sync`（`sync-engine → sync-render-gl → sync-engine-world → sync-engine-tools →
 sync-engine-full` の順序依存がある。部分 sync だと「engine は Float64、fpkg は Float32」で
 意味の分からないエラーになる）。
 
@@ -114,7 +114,7 @@ sync-engine-full` の順序依存がある。部分 sync だと「engine は Flo
 ## 検証 — 「SHA 全一致」は合格線にならない
 
 **当初この計画は「値を変えないので 5 テンプレの reference SHA が全部一致するのが合格線」と
-書いていたが、これは誤り。両方の段で割れる。**
+書いていたが、これは誤り。両方の段階で割れる。**
 
 `engine_tools/src/SoftRaster.flix:939-941` の `lerp3` は
 `f32(w0*f64(a) + w1*f64(b) + w2*f64(c))` の形で**色と alpha を共用**している。
@@ -124,10 +124,10 @@ alpha が Float64 になると最後の `f32()` が消え、出口の 8bit 量�
 実測（レビューで tetris の `gradient` 背景を 120 万サンプル）:
 **1 枚の PNG につき 3.8 チャンネル前後が変わる。**
 
-| 段 | 割れる見込み | 理由 |
+| 段階 | 割れる見込み | 理由 |
 |---|---|---|
-| 段 1（alpha） | **race-starter 8 枚**が本命 | `ViewRoad.flix` が大きなグラデーションを敷いている |
-| 段 7（Color） | **tetris-starter 5 枚**は確実 | `tetris.shader.json` の `gradient` は field が連続値 |
+| 段階 1（alpha） | **race-starter 8 枚**が本命 | `ViewRoad.flix` が大きなグラデーションを敷いている |
+| 段階 7（Color） | **tetris-starter 5 枚**は確実 | `tetris.shader.json` の `gradient` は field が連続値 |
 | | rpg / novel / platformer は割れない見込み | rpg の `town.shader.json` は field が `quantize` を通っていて色の候補が離散 |
 
 **合格線を差し替える**: SHA 全一致ではなく、**`bin/img-digest.py` の差が数画素以内、
@@ -135,7 +135,7 @@ alpha が Float64 になると最後の `f32()` が消え、出口の 8bit 量�
 （race 8 / tetris 5）を超えたら止めて原因を見る。
 
 その他のゲート: `make test-par`（`editor_server` と templates を含む）、
-`make gl-parity`（`bench/gl_parity` が対象。段 1 で bench 自体を直すので必須）、
+`make gl-parity`（`bench/gl_parity` が対象。段階 1 で bench 自体を直すので必須）、
 `make lint-f32`、`make check-docs-sync`。
 
 ---
@@ -169,7 +169,7 @@ alpha が Float64 になると最後の `f32()` が消え、出口の 8bit 量�
   型で区別されているのが正しい
 - ただし逆向きの `Float64.floor(v) |> Float64.tryToInt32 |> Option.getWithDefault(0)` は
   使い勝手が悪い。**engine 内部にも同じ形がある**（`ShaderEval.clampTexel:314` / `powProduct:330`、
-  `platformer-starter/src/Physics.flix:211`）ので、`Num` に安全な口を 1 本足す価値はある。
+  `platformer-starter/src/Physics.flix:211`）ので、`Num` に安全な API を 1 本足す価値はある。
   **これは engine API の追加なので別途相談**。この計画には含めない
 
 ## 破壊的変更の扱い
