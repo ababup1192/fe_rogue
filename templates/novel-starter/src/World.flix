@@ -35,7 +35,7 @@ mod World {
         sprites = PxSpriteDoc.Doc
     }
 
-    /// ゲームの状態。section / idx = 台本上の現在地、kit = 会話窓と選択肢、
+    /// ゲームの状態。section / idx = 台本上の現在地、kit = ダイアログと選択肢、
     /// cursor = 選択肢のカーソル位置、lightsOut = 消えた灯りの数（疑うたびに増える）、
     /// t = 起動からの積み上げ秒（雨・炎の揺らぎ・埃が見る。読んでいる間も部屋を止めない）。
     pub type alias World = {
@@ -77,7 +77,7 @@ mod World {
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
     /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
     /// 表紙も部屋と額縁と台本の題を描くので story / theme / sprite は常に表示中。
-    /// 会話窓（ui）と手触り（kind: 文字送り・暗さ）は本文に入ってから —
+    /// ダイアログ（ui）と手触り（kind: 文字送り・暗さ）は本文に入ってから —
     /// 全部を常時 active にしない（バッジの意味が死ぬ）。
     pub def activeDocs(w: World): List[(String, List[String])] =
         let base = ("story", StoryDoc.path() :: Nil)
@@ -179,7 +179,7 @@ mod World {
             |> Option.map(ask -> ask#options)
             |> Option.getWithDefault(Nil)
 
-    /// 毎フレーム: 文字送りを進め、キットの状態を UI へ刻む（表紙では窓は閉じている）。
+    /// 毎フレーム: 文字送りを進め、キットの状態を UI へ刻む（表紙ではダイアログは閉じている）。
     /// 毎フレーム: 文字送りを進め、時計を進める。時計は場面を問わず進む —
     /// 読んでいる間も表紙でも、雨は降り炎は揺れる（動かない絵は止まって見える）。
     pub def step(dt: Float64, w: World): World =

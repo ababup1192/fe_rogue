@@ -10,7 +10,7 @@
 //
 // ── 絵は 2 系統（camera の掛かり方が違う）──
 //   frame = world 側（camera が掛かる）: 盤・扉・薬草・灯り・住人・主人公・ふきだし
-//   hud   = 画面固定側（camera を掛けない）: 空・霧・表紙とクリアの幕・戦いの窓
+//   hud   = 画面固定側（camera を掛けない）: 空・霧・表紙とクリアの幕・戦いのウィンドウ
 // 重なり順は 2 つのリストの並びでなく zIndex が決める（Render.draw が安定ソート）。
 //
 // ── 里の層（奥から手前へ）──
@@ -30,7 +30,7 @@
 //               表紙や幕の下でも t は進み続ける（World の doc 参照）。
 //
 // ── 戦いの層（奥から手前へ）──
-//   夜空のグラデ → 霧 → 地面のグラデ → 魔物の影 → 魔物（息をする）→ 窓(hud)
+//   夜空のグラデ → 霧 → 地面のグラデ → 魔物の影 → 魔物（息をする）→ ウィンドウ(hud)
 // 戦いの背景と魔物は画面座標のまま world 側に組む — 戦いでは camera が design 中央に
 // 固定される（World.cameraCenter）ので、ずらしは常にゼロになる。
 mod View {
@@ -380,7 +380,7 @@ mod View {
 
     // ── ふきだし（住人の頭の上。本文は文字送りの途中まで） ──
     // 枠は ui.json（UiStore）にしない: ふきだしは話し相手のマスに吸い付く世界側の物で、
-    // 画面に固定の窓ではないため。開閉・行送り・文字送りの状態はエンジンの UiDialog が持ち、
+    // 画面に固定のウィンドウではないため。開閉・行送り・文字送りの状態はエンジンの UiDialog が持ち、
     // ここは visibleBody を RichText.place で描くだけ（文字折りも自前で書かない）。
 
     def bubble(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
@@ -481,7 +481,7 @@ mod View {
     // ══════════════════════════════════════════════════════
     //
     // 里の絵は出さない（盤・霧の帯・ふきだしは village 側の物）。ここは
-    // 「夜空 → 霧 → 地面 → 魔物」の 4 段（窓は hud 側）で、視線が魔物と下の文に集まるようにする。
+    // 「夜空 → 霧 → 地面 → 魔物」の 4 段（ウィンドウは hud 側）で、視線が魔物と下の文に集まるようにする。
 
     def battleWorld(w: World.World): List[Render.PlacedItem] =
         List.flatten(
@@ -558,10 +558,10 @@ mod View {
                                 flipX = false, scale = foeScale(), z = zFoe(),
                                 fallback = ThemeDoc.resolver(w#theme, "foe") })
 
-    // ── 窓（ドラクエ風の「紙の縁 + 濃い地」）──
+    // ── ウィンドウ（ドラクエ風の「紙の縁 + 濃い地」）──
 
-    /// 窓 1 枚。紙色の縁を敷き、その内側を濃い地で塗る。中身は呼び側が上に置く。
-    /// 角丸や影を足さないのは、この画風の窓が「紙を切って貼った物」だから。
+    /// ウィンドウ 1 枚。紙色の縁を敷き、その内側を濃い地で塗る。中身は呼び側が上に置く。
+    /// 角丸や影を足さないのは、この画風のウィンドウが「紙を切って貼った物」だから。
     def window(rect: Rect2.Rect2, theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         let inset = 2.0;
            { at = rect#position, item = RawDraw.box(rect#size, theme#paper, zWindow()) }
@@ -570,11 +570,11 @@ mod View {
                  ThemeDoc.darken(theme#ink, 0.15), zWindow() + 1) }
         :: Nil
 
-    /// 窓の中に 1 行置く。
+    /// ウィンドウの中に 1 行置く。
     def windowLine(atlas: FontAtlas, text: String, at: Vec2.Vec2, color: Color): Render.PlacedItem =
         { at = at, item = Render.textTinted(text, atlas, 12.0, color, zWindowText()) }
 
-    /// 体力の窓（左上）。数だけでなく残りの帯も出す — 数を読まなくても危なさが判る。
+    /// 体力のウィンドウ（左上）。数だけでなく残りの帯も出す — 数を読まなくても危なさが判る。
     def statusWindow(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         let rect = { position = { x = 16.0, y = 14.0 }, size = { x = 132.0, y = 44.0 } };
         let maxHp = Int32.max(1, w#battleDoc#heroMaxHp);
@@ -592,7 +592,7 @@ mod View {
                  item = RawDraw.box({ x = barW * ratio, y = 6.0 }, barColor, zWindowText() + 1) }
             :: Nil)
 
-    /// コマンドの窓（左下）。コマンドを選んでいる間だけ出す。
+    /// コマンドのウィンドウ（左下）。コマンドを選んでいる間だけ出す。
     /// 選んでいる行にはまたたく三角を置く（点滅は「いま入力を待っている」の合図）。
     def commandWindow(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         if (w#battle#step != World.BattleStep.Choosing) Nil
@@ -616,8 +616,8 @@ mod View {
             List.append(window(rect, w#theme), rows)
         }
 
-    /// 文の窓（下）。いま読ませたい行を上から順に並べる。
-    /// 行が無いとき（コマンド選び中）は出さない — 空の窓は画面を狭くするだけ。
+    /// 文のウィンドウ（下）。いま読ませたい行を上から順に並べる。
+    /// 行が無いとき（コマンド選び中）は出さない — 空のウィンドウは画面を狭くするだけ。
     def messageWindow(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         if (List.isEmpty(w#battle#lines)) Nil
         else {

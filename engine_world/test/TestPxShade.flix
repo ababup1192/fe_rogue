@@ -70,7 +70,7 @@ mod TestPxShade {
 
     @Test
     def testUnknownCharactersAreUntouched(): Unit \ Assert =
-        // 表に無い文字（輪郭など）は素通り。
+        // 表に無い文字（輪郭など）は変えずそのまま出す。
         let rows = "kkk" :: "kmk" :: "kkk" :: Nil;
         let out = PxShade.polish(spec(), ramp(), rows);
         Assert.assertEq(expected = "kMk", List.nth(1, out) |> Option.getWithDefault(""))

@@ -28,7 +28,7 @@
 //
 // スロットは最大 7 個（味方メニューの拾う/あける/階段/攻撃/アイテム/交換/待機が最大数）。
 // 各フレーム、成立した項目を先頭スロットから順に流し込み、余ったスロットは visible=false で
-// レイアウトから外す（display:none で窓が縮む）＋ meta を消して選択カーソルの対象から外す。
+// レイアウトから外す（display:none でパネルが縮む）＋ meta を消して選択カーソルの対象から外す。
 
 mod ActionMenuUi {
 
@@ -36,7 +36,7 @@ mod ActionMenuUi {
     // spec 置き場 / 名前パス
     // ========================================================================
 
-    /// ui.json の置き場。起動時の spawnAsset・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAsset・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/ActionMenu.ui.json")
 
     /// root（可視トグルの対象）とリスト所有 entity（選択カーソルのキー）の名前パス。
@@ -67,7 +67,7 @@ mod ActionMenuUi {
     /// 内容フィットで毎フレーム UiWorldState へ設定し、panelDesignRight がそれを読み戻す。
     def panelWidth(): Float64 = 40.0
 
-    /// パネル右端の design x。武器選択 / アイテム窓が右隣に重ねて出るときの追従基準。
+    /// パネル右端の design x。武器選択 / アイテムメニューが右隣に重ねて出るときの追従基準。
     /// パネル幅は内容（最長項目・見出し）に合わせて毎フレーム変わるので、現在のパネル幅を
     /// UiWorldState から読み戻して右端を出す。
     pub def panelDesignRight(): Float64 \ UiWorldState.State =
@@ -203,7 +203,7 @@ mod ActionMenuUi {
             or phase == TurnPhase.Phase.TradeInventory
 
     /// items をスロット 0..N へ流し込む。項目のあるスロットは label text/meta を設定して可視化、
-    /// 余ったスロットは meta を消して不可視にする（display:none で窓が縮む＋選択対象から外れる）。
+    /// 余ったスロットは meta を消して不可視にする（display:none でパネルが縮む＋選択対象から外れる）。
     /// 項目数がスロット数を超えたら（ui.json の slot 宣言不足）flow が破綻するので bug! で検知する。
     def fillSlots(items: List[ItemEntry], ui: UiStore.UiWorld): UiStore.UiWorld =
         if (List.length(items) > maxSlots())

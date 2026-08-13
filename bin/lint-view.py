@@ -60,7 +60,7 @@ def rect_counts(src: str):
 
 
 def is_target(path: Path) -> bool:
-    # 名前では絞らない — 名前を変えると素通りできる穴になる。
+    # 名前では絞らない — 名前を変えるとスキップできる穴になる。
     # 描画をほとんど含まないファイルは MIN_DRAWS で除外される。
     return path.name.endswith(".flix")
 

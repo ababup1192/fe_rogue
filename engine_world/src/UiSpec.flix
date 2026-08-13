@@ -1,7 +1,7 @@
 // UiSpec — UI ツリーの宣言層（ui.json → UiStore spawn）
 //
 // ui.json のパースは UiDoc（唯一のパーサ）に一本化し、ここは UiDoc.Spec を UiStore 向けの
-// flat な Spec へ射影して spawn / respawn / リロード台帳を担う。
+// flat な Spec へ射影して spawn / respawn / リロードレジストリを担う。
 //
 // UiDoc の poly rotation/pivot 拡張は UiStore 経路では未対応 — 黙って無視すると同じ JSON が
 // 経路によって絵を変えてしまうため、loud に Err する。
@@ -146,8 +146,8 @@ mod UiSpec {
         let (id, ui2) = spawnRoot(spec, UiStore.despawnRoot(rootPath, ui));
         (id, UiStore.applyVisibleByPath(visibleBefore, ui2))
 
-    /// ui.json を読み込んで spawnRoot し、root 名パス→アセットパスを sources 台帳へ登録する。
-    /// これ 1 本で「読む・木を作る・リロード台帳に載せる」が揃う。load/parse 失敗は Err。
+    /// ui.json を読み込んで spawnRoot し、root 名パス→アセットパスを sources レジストリへ登録する。
+    /// これ 1 本で「読む・木を作る・リロードレジストリに載せる」が揃う。load/parse 失敗は Err。
     pub def spawnAsset(path: String, ui: UiStore.UiWorld): Result[JsonError, (EntityId, UiStore.UiWorld)] \ Fs.FileRead =
         forM (spec <- load(path)) yield {
             let (id, ui2) = spawnRoot(spec, ui);
@@ -156,7 +156,7 @@ mod UiSpec {
 
     /// `spawnAsset` の別名 root 版。同じアセットを複数の root として組みたいとき（味方カードと
     /// 敵カードが 1 枚の `UnitCard.ui.json` を左右 2 root で使う等）に、spec の root 名を
-    /// `rootName` に差し替えてから spawn し、`rootName` をキーに sources 台帳へ登録する。
+    /// `rootName` に差し替えてから spawn し、`rootName` をキーに sources レジストリへ登録する。
     /// sources のキー（登録した root 名）は名前パス機構とコードの契約なので、reloadAll は
     /// このキーへ強制的に付け直す（後述 reloadOne）。load/parse 失敗は Err。
     pub def spawnAssetAs(path: String, rootName: String, ui: UiStore.UiWorld): Result[JsonError, (EntityId, UiStore.UiWorld)] \ Fs.FileRead =
@@ -170,9 +170,9 @@ mod UiSpec {
         let Spec.Spec(fields) = spec;
         Spec.Spec({name = rootName | fields})
 
-    /// sources 台帳の全 root を走査し、各アセットを読み直して respawn する（F1 ホットリロード）。
+    /// sources レジストリの全 root を走査し、各アセットを読み直して respawn する（F1 ホットリロード）。
     /// load/parse に失敗した root は旧ツリーを保持し、残りの root のリロードは続行する。
-    /// respawn は sources を触らないため、走査中に台帳は変わらない。
+    /// respawn は sources を触らないため、走査中にレジストリは変わらない。
     pub def reloadAll(ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
         let (ui2, _) = reloadAllWithReport(ui);
         ui2

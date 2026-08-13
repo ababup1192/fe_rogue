@@ -42,7 +42,7 @@ mod UnitCardUi {
     // spec 置き場 / root 名 / 名前パス
     // ========================================================================
 
-    /// ui.json の置き場。起動時の spawnAssetAs・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAssetAs・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/UnitCard.ui.json")
 
     /// 味方カード（左）/ 敵カード（右）の root 名。同じアセットを 2 root で spawn する。
@@ -205,7 +205,7 @@ mod UnitCardUi {
                                                                |> Option.getWithDefault(d)))
             |> Option.map(enemyView)
 
-    /// いま狙っている敵の id（左の予報ミニ窓 BattlePanel と同じ対象）。
+    /// いま狙っている敵の id（左の予報ミニウィンドウ BattlePanel と同じ対象）。
     def targetEnemyId(phase: TurnPhase.Phase):
             Option[Int32] \ {SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         match phase {

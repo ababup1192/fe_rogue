@@ -9,7 +9,7 @@
       "kind": "field",
       "type": "json",
       "label": "粒の群れ（生 JSON。count・shape・color・life・speed・dir・turn …）",
-      "help": "1 要素 = 粒の群れ 1 種。色は \"#rrggbb\" か \"@smoke\" \"@flame\" \"@flameCore\" \"@spark\"（テーマ由来）。dir.mode: \"even\" で射出方向を粒の番号で等分（輪になる）、turn: {base, spread, spin, spinSpread} で粒を傾け回す（回転数 — 1 周 = 1.0・box のみ）。語彙の正本はエンジンの docs/fx.schema.json。",
+      "help": "1 要素 = 粒の群れ 1 種。色は \"#rrggbb\" か \"@smoke\" \"@flame\" \"@flameCore\" \"@spark\"（テーマ由来）。dir.mode: \"even\" で射出方向を粒の番号で等分（輪になる）、turn: {base, spread, spin, spinSpread} で粒を傾け回す（回転数 — 1 周 = 1.0・box のみ）。語彙の source of truth はエンジンの docs/fx.schema.json。",
       "order": 4
     }
   }

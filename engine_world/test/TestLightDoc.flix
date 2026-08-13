@@ -185,7 +185,7 @@ mod TestLightDoc {
             List.head(cfg#lights) |> Option.map(l -> (l#at#x, l#at#y)))
 
     /// LightDoc.empty() は Light.items にそのまま渡してもクラッシュしない
-    /// （lights=Nil なので全面暗幕のみになる ＝ 未読込時の fail-open な絵）。
+    /// （lights=Nil なので全面オーバーレイのみになる ＝ 未読込時の fail-open な絵）。
     @Test
     def testEmptySpecFeedsLightItems(): Unit \ Assert =
         let cfg = LightDoc.toConfig(LightDoc.empty(), ctxFor(Nil));

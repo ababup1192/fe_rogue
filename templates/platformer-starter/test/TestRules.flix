@@ -204,7 +204,7 @@ mod TestRules {
     @Test
     def testBlinkPhaseFromClock(): Unit \ Assert =
         // 消える床: 周期の前半だけ硬い(位相 0 のマス)。時刻の純関数なので値で縛れる。
-        // 期待値は Doc から導く: 硬い窓の内 / 外 / 次の周期の内。
+        // 期待値は Doc から導く: 硬い区間の内 / 外 / 次の周期の内。
         Assert.assertEq(expected = (true, false, true),
             (World.blinkOn(m(), 0.1, 0, 0),
              World.blinkOn(m(), m()#blinkOnSec + 0.1, 0, 0),

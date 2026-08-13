@@ -1,5 +1,5 @@
 // Gallery — 挙動ショーケースを生成する。Replay で純粋な update を駆動してシナリオを再現し、
-// SoftRaster で 1 枚ずつ描いて PNG・GIF・フィルムストリップにし、SnapshotSite でページ化する。
+// SoftRaster で 1 枚ずつ描いて PNG・GIF・フィルムストリップにし、ReferenceSite でページ化する。
 // シナリオの初期 World は Trace が供給する（テストと同じデータ）ので、ギャラリーは
 // 「テストで固定した挙動」をそのまま絵にしたものになる。
 //
@@ -59,9 +59,9 @@ mod Gallery {
 
     /// シナリオを Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて GIF＋コマ別 PNG に生成する。
     /// annotate は各フレームの World から重ねる注釈（SPEED の読みなど。不要なら _ -> Nil）。
-    /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
+    /// 返り値は ReferenceSite 用のフィルムストリップ情報（駒送りビューア）。
     def bakeGif(atlas: FontAtlas, world: Field.World, frames: Int32, stride: Int32,
-                name: String, annotate: Field.World -> List[Render.PlacedItem]): SnapshotSite.Filmstrip \ IO =
+                name: String, annotate: Field.World -> List[Render.PlacedItem]): ReferenceSite.Filmstrip \ IO =
         let film = Replay.timeline(Step.update, Trace.dt(), Trace.flight(frames), world);
         Bakery.bakeGif(config(atlas), film, stride, w -> worldCmds(atlas, w, annotate(w)), name)
 
@@ -154,7 +154,7 @@ mod Gallery {
 
         // サイト生成。
         run {
-            SnapshotSite.generate(
+            ReferenceSite.generate(
                 { outDir = outDir(), title = "Breakout Gallery", cssScale = 2 },
                 catalog({ side = sideFilm, below = belowFilm, corner = cornerFilm,
                           breaking = breakFilm, shake = shakeFilm,
@@ -165,13 +165,13 @@ mod Gallery {
 
     /// カタログに並べるフィルムストリップ一式（名前渡しで取り違えを防ぐ）。
     type alias Films = {
-        side = SnapshotSite.Filmstrip, below = SnapshotSite.Filmstrip,
-        corner = SnapshotSite.Filmstrip, breaking = SnapshotSite.Filmstrip,
-        shake = SnapshotSite.Filmstrip, pocket = SnapshotSite.Filmstrip,
-        ramp = SnapshotSite.Filmstrip
+        side = ReferenceSite.Filmstrip, below = ReferenceSite.Filmstrip,
+        corner = ReferenceSite.Filmstrip, breaking = ReferenceSite.Filmstrip,
+        shake = ReferenceSite.Filmstrip, pocket = ReferenceSite.Filmstrip,
+        ramp = ReferenceSite.Filmstrip
     }
 
-    def catalog(films: Films): List[SnapshotSite.Item] =
+    def catalog(films: Films): List[ReferenceSite.Item] =
         png("screen_title", "タイトル画面", "Screens") ::
         png("screen_level1", "レベル1: 導入のピラミッド（通常ブロックのみ）", "Screens") ::
         png("screen_level2", "レベル2: 不壊の帯（金属）に 2 本のスリット", "Screens") ::
@@ -187,13 +187,13 @@ mod Gallery {
         gif("pocket_rampage", "レベル3の縦通路へ撃ち込むと、天井と不壊の帯の間で壊れ続ける", "Pocket", films#pocket) ::
         gif("speed_ramp", "パドルヒット毎に +2.5% 加速（端当てはさらに +5%・上限 1.6 倍）。残像の色が冷→温→熱と変わり、SPEED の読みも伸びる", "Speed", films#ramp) :: Nil
 
-    def png(name: String, desc: String, scenario: String): SnapshotSite.Item =
+    def png(name: String, desc: String, scenario: String): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "png",
           pxWidth = pxWidth(), generateHint = Some("run `flix test` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 
-    def gif(name: String, desc: String, scenario: String, filmstrip: SnapshotSite.Filmstrip): SnapshotSite.Item =
+    def gif(name: String, desc: String, scenario: String, filmstrip: ReferenceSite.Filmstrip): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "gif",
           pxWidth = pxWidth(), generateHint = Some("run `flix test` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = Some(filmstrip) }
+          lint = ReferenceSite.noLint(), filmstrip = Some(filmstrip) }
 }

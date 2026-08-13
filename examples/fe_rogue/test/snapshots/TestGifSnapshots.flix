@@ -10,7 +10,7 @@
 // sanity assert する。閲覧用の build/snapshots/*.gif は SnapshotSupport.syncGifs が
 // test/snapshots/gifs/ からコピーして作る（素の flix test でも毎回コピーするので、既存 GIF は
 // クリーンビルドしても消えない）。ページの束ねは各機能の scenario（目録・種別は SnapshotCatalog、
-// ページ生成は SnapshotSite）。
+// ページ生成は ReferenceSite）。
 //
 // 入力→API の対応は Game.flix の dispatch を写す:
 //   ActionMenu: ↑↓ = ActionMenuUi.moveSelection(∓1)
@@ -66,15 +66,15 @@ mod TestGifSnapshots {
         GifEncoder.encode(frames, frameDelayMs(), gifPath(name));
         discard Filmstrip.bake(frames, stripPath(name))
 
-    /// 生成済みのストリップから、GIF エントリ名 → SnapshotSite.Filmstrip の対応を組む。
+    /// 生成済みのストリップから、GIF エントリ名 → ReferenceSite.Filmstrip の対応を組む。
     /// build/snapshots/<name>_strip.png があるものだけ入る（無ければカードは従来の GIF 表示に落ちる）。
-    pub def filmstripByName(): Map[String, SnapshotSite.Filmstrip] \ IO =
+    pub def filmstripByName(): Map[String, ReferenceSite.Filmstrip] \ IO =
         SnapshotCatalog.gifEntries() |> List.foldLeft((m, entry) ->
             match SnapshotSupport.readFilmstrip(stripPath(entry#name), stripFile(entry#name),
                                                 gifFrameW(), gifFrameH(), gifFps()) {
                 case Some(fs) => Map.insert(entry#name, fs, m)
                 case None     => m
-            }, (Map.empty(): Map[String, SnapshotSite.Filmstrip]))
+            }, (Map.empty(): Map[String, ReferenceSite.Filmstrip]))
 
     /// FE_ROGUE_SNAPSHOT_GIF が空でなければ GIF を生成する。
     def gifEnabled(): Bool \ IO =
@@ -86,7 +86,7 @@ mod TestGifSnapshots {
     // ════════════════════════════════════════════════════════
 
     /// 全 GIF を生成し、各 sanity 用フレームの Drawable 数を assert する。
-    /// 環境変数が無ければ即 no-op（通常の flix test は GIF なしで素通り）。
+    /// 環境変数が無ければ即 no-op（通常の flix test は GIF なしでスキップする）。
     @Test
     def testGifSnapshots(): Unit \ {Assert, Fs.FileRead, Fs.FileWrite, IO} = region rc {
         if (not gifEnabled())
@@ -114,7 +114,7 @@ mod TestGifSnapshots {
             // この一発の実行でも GIF が各ページに載るよう、test/snapshots/gifs/ から build/snapshots/
             // へコピーしてからサイトを生成し直す（存在チェックで生成済み GIF は img に、未生成は案内に切り替わる）。
             SnapshotSupport.syncGifs(SnapshotCatalog.gifEntries() |> List.map(entry -> entry#name));
-            SnapshotSite.generate(TestUiSnapshots.siteConfig(), TestUiSnapshots.catalogItems());
+            ReferenceSite.generate(TestUiSnapshots.siteConfig(), TestUiSnapshots.catalogItems());
             // sanity: どの最終フレームも空でない（描画が成立している）。
             Assert.assertEq(expected = true,
                 c1 > 5 and c2 > 5 and c3 > 5 and c4 > 5 and c5 > 5 and c6 > 5 and c7 > 5 and c8 > 5
@@ -311,7 +311,7 @@ mod TestGifSnapshots {
                         logFrames(ctx, framesRef, 3);
                         GameLogger.enemyLog("ゴブリン の こうげき");
                         logFrames(ctx, framesRef, 3);
-                        // 6 行目でいちばん古い行が押し出される（窓は maxQueue()=5 行）。
+                        // 6 行目でいちばん古い行が押し出される（表示範囲は maxQueue()=5 行）。
                         GameLogger.playerLog("剣士 の とどめ");
                         logFrames(ctx, framesRef, 4);
                         let full = drawableCount();  // 帯が満ちた（消える前の）Drawable 数
@@ -369,10 +369,10 @@ mod TestGifSnapshots {
         count
 
     // ════════════════════════════════════════════════════════
-    // flow_item_scroll（16 個満載で窓スクロール）
+    // flow_item_scroll（16 個満載で表示範囲がスクロール）
     // ════════════════════════════════════════════════════════
 
-    /// 武器 16 本を持つ味方（窓 3 行を溢れさせて ↓ でスクロールさせる）。
+    /// 武器 16 本を持つ味方（表示範囲 3 行を溢れさせて ↓ でスクロールさせる）。
     def itemScrollConfig(): SnapshotHarness.Config \ Fs.FileRead =
         let ids = "iron_sword" :: "steel_sword" :: "silver_sword" :: "killing_edge" :: "iron_lance"
                     :: "steel_lance" :: "silver_lance" :: "keen_lance" :: "iron_axe" :: "steel_axe"
@@ -480,7 +480,7 @@ mod TestGifSnapshots {
             case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Down)    => ItemMenuUi.moveSelection(1)
             case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Confirm) => ItemMenuUi.confirmCurrentSelection()
             case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Cancel)  => ItemMenuUi.onActionCancelled()
-            // WeaponSelect（武器窓）
+            // WeaponSelect（武器パネル）
             case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Up)      => WeaponSelectUi.moveSelection(-1)
             case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Down)    => WeaponSelectUi.moveSelection(1)
             case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Confirm) => WeaponSelectUi.confirmCurrentSelection()
@@ -489,7 +489,7 @@ mod TestGifSnapshots {
             case _ => ()
         }
 
-    /// 3 メニュー窓（コマンド / 武器 / 持ち物）の frameStep を毎フレーム回して収録する tick。
+    /// 3 メニューパネル（コマンド / 武器 / 持ち物）の frameStep を毎フレーム回して収録する tick。
     /// gameLoop が全 UI の frameStep を毎フレーム呼ぶのと同じく、各 frameStep が phase で自己 gate し、
     /// 可視・内容・パネル追従を実ロジックで組む
     /// （可変状態は phase / 選択 / UiWorld / World などの resource 側に載る）。
@@ -503,7 +503,7 @@ mod TestGifSnapshots {
         ItemMenuUi.frameStep(TestUiSnapshots.dt());
         captureFrame(ctx, framesRef)
 
-    /// flow_open_item / flow_attack_weapon 共通の drive。3 窓を spawn し、execute 全体を 1 回だけ
+    /// flow_open_item / flow_attack_weapon 共通の drive。3 パネルを spawn し、execute 全体を 1 回だけ
     /// `withFullMocks` で包む（可変 phase が 1 スコープを貫通）。最終フレームの Drawable 数を返す。
     def genFlow(rc: Region[r], ctx: SnapshotSupport.Ctx, name: String,
                 cfg: SnapshotHarness.Config, script: List[ReplayScript.Step]):
@@ -524,7 +524,7 @@ mod TestGifSnapshots {
         bakeFilm(collectFrames(framesRef), name);
         count
 
-    // ── flow_open_item（コマンド→アイテム確定で持ち物窓が開き、X で閉じる）──
+    // ── flow_open_item（コマンド→アイテム確定で持ち物パネルが開き、X で閉じる）──
 
     /// 主人公(id0)が武器 3 本を持ち、射程内に敵（攻撃成立）・隣接味方なし（交換は出ない）。
     /// 項目は「攻撃(0) / アイテム(1) / たいき(2)」。↓ で「アイテム」へ寄せて Z で開く。
@@ -549,10 +549,10 @@ mod TestGifSnapshots {
     def genFlowOpenItem(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
         genFlow(rc, ctx, "flow_open_item", flowOpenItemConfig(), flowOpenItemScript())
 
-    // ── flow_attack_weapon（攻撃確定で武器窓が右に開き、↓ で武器切替）──
+    // ── flow_attack_weapon（攻撃確定で武器パネルが右に開き、↓ で武器切替）──
 
     /// 主人公(id0)が武器 2 本を持ち、射程内に敵。項目「攻撃(0)」を Z で確定すると
-    /// enterWeaponSelect が phase=WeaponSelect にし、武器窓が ActionMenu の右隣に開く（実遷移）。
+    /// enterWeaponSelect が phase=WeaponSelect にし、武器パネルが ActionMenu の右隣に開く（実遷移）。
     /// PlayerAttackHold まで進めず WeaponSelect で止め、↓ で武器カーソルを動かす。
     def flowAttackWeaponConfig(): SnapshotHarness.Config \ Fs.FileRead =
         let lord = TestUiSnapshots.mkPlayer(
@@ -566,7 +566,7 @@ mod TestGifSnapshots {
          | SnapshotHarness.config(world)}
 
     def flowAttackWeaponScript(): List[ReplayScript.Step] =
-        ReplayScript.Step.KeyPress(ReplayScript.Key.Confirm) :: // 攻撃確定 → 武器窓が開く（WeaponSelect）
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Confirm) :: // 攻撃確定 → 武器パネルが開く（WeaponSelect）
         ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::    // 武器切替
         ReplayScript.Step.KeyPress(ReplayScript.Key.Down) :: Nil
 

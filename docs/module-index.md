@@ -91,7 +91,7 @@
 | 床丸め・最近整数（0.5 は上へ）で Int32 に落とす（負の座標もマスが揃う） | Num.floorInt / roundInt |
 | 素の中心＋幅高の箱どうし・点×箱の重なりを聞く（接するのは外） | Hit.boxBox / pointBox |
 | スプライトが無い・読めないとき仮色の板に倒す（穴を開けない） | RawDraw.orBoxAt |
-| Doc の一覧を台帳 1 枚にし watchFile・一括リロード・表示中バッジを導出 | DocTable |
+| Doc の一覧を一覧表 1 枚にし watchFile・一括リロード・表示中バッジを導出 | DocTable |
 | 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
 | 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
 | 修飾パイプの末尾で置き場所を与える（`{ at = …, item = … }` の糖衣。中心置きは At 族） | Render.at |
@@ -108,7 +108,7 @@
 | 放射状の明かり・翳りを 1 枚で置く（松明・スポットライト・vignette。アセット不要） | Render（lightAt / darkAt。組み込みテクスチャは engine の RadialBuiltin） |
 | 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |
 | 箱に枠線を付ける（半透明の枠も） | Render（outline / outlineA） |
-| 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light（実例: `examples/feature_lab/src/World.flix`） |
+| 暗い部屋に光源を置く（穴あきの暗くするオーバーレイ+ハロ） | Light（実例: `examples/feature_lab/src/World.flix`） |
 | 複数光源＋影（光マップ。Pass に灯りを集めて Multiply で貼る） | Light（lightMapPass / lightMapOverlay）+ App.withPasses（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
 | 光源を JSON で宣言する（light.json） | LightDoc + Light |
 | 壁に影を落とす（単一光源のハードシャドウ） | Shadow（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
@@ -184,7 +184,7 @@
 - **Viewport** — 画面の矩形の外へ出た物を見つけて返す。
 - **Transition** — 進行度 t から画面を覆う/晴らす描画物を作る（フェード・ワイプ）。
 - **Light** — 光源の値（位置・半径・色）から灯りの絵を導く。方式は 2 つで使い分ける:
-  暗幕方式（items。穴の外は一様な闇。pass 不要で rim・ハロ拡大の質感あり。影は単一光源のみ）と
+  暗くするオーバーレイ方式（items。穴の外は一様な闇。pass 不要で rim・ハロ拡大の質感あり。影は単一光源のみ）と
   光マップ方式（lightMapPass / lightMapOverlay。環境光のある夜。光源が何個でも光ごとに影が落ちる。
   App.withPasses と組む。光 A の影は光 B の灯りも消す割り切り）。
 - **Shadow** — 光と壁の頂点列から影の四角形を導く（当たり判定の形からも作れる）。
@@ -264,7 +264,7 @@
 1. **Schema** — 形を宣言する（`*.schema.json`。任意）
 2. **`<X>Doc.flix`** — 型と fromJson/toJson を書く（decode は JsonCodec、エラー位置は DocJson.atNode）
 3. **DocJson** — decodeObject で fromJson を 1 行に / loadOr で fail-open 読み
-4. **DocTable** — 台帳に 1 行足す（watch・F1 リロード・表示中バッジが導出される）
+4. **DocTable** — 一覧表に 1 行足す（watch・F1 リロード・表示中バッジが導出される）
 5. **Persistence / EcsCodec** — セーブに乗る値だけ（表なら EcsCodec）
 
 - **Persistence** — 値をディスクに保存し、また読み戻すための汎用のしくみ。
@@ -286,7 +286,7 @@
 ## デバッグ・開発
 
 - **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジの窓口。同じ内容なら書かない）。
-- **DocTable** — Doc の台帳（id・パス・読み直し）1 枚から、watchFile の配線・一括リロード・ActiveDocs の名乗りを導出する。一覧の手写しを 1 か所に。
+- **DocTable** — Doc の一覧表（id・パス・読み直し）1 枚から、watchFile の配線・一括リロード・ActiveDocs の名乗りを導出する。一覧の手写しを 1 か所に。
 - **Annotate** — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲んで記録する。
 - **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /bake は App.onBakeRequest で登録した「生成の実体」を温まった JVM で実行し、生成したパス列を返す（プレイ状態には触れない）。
 - **GameLogger** — 起きたことを 1 行ずつログに積み、あとでまとめて取り出す effect。

@@ -28,7 +28,7 @@ mod LightDoc {
 
     /// ドキュメント全体。darkness/rim/haloDiameterFactor は Light.SceneLightConfig の
     /// 同名フィールドへそのまま流し込む値。ambient/shadowStrength は光マップ方式
-    /// （Light.LightMapConfig）でだけ使う値 — 暗幕方式の toConfig はどちらも読まない。
+    /// （Light.LightMapConfig）でだけ使う値 — オーバーレイ方式の toConfig はどちらも読まない。
     pub type alias Spec = {
         darkness = Float64,
         rimWidth = Float64, rimStrength = Float64,

@@ -1905,7 +1905,7 @@ mod Harness {
         GifEncoder.encode(frames, gifFrameDelayMs(), path)
 ```
 
-`flix test` を走らせると `gallery/` が満ちていきます: スクリーンショット4枚（タイトルページ、静止したレベル1、スライド中間で凍った押し、7手を数える CLEAR パネル）、フィルム3本 — `solve_level1.gif` はタイトルから最初の CLEAR までの開幕、`full_clear.gif` はゲームまるごと1周 — 両レベル、両 CLEAR、そしてタイトルへの帰還、`rewind_demo.gif` は3手進めて Z 長押し、ロボットと木箱が家へ滑って帰るあいだ目覚まし時計が反時計回りに回る — そして全部をページに並べる `index.html` ダッシュボード（engine_tools の SnapshotSite）。フォルダごと消しても、テスト1回で全ピクセルが再建されます。
+`flix test` を走らせると `gallery/` が満ちていきます: スクリーンショット4枚（タイトルページ、静止したレベル1、スライド中間で凍った押し、7手を数える CLEAR パネル）、フィルム3本 — `solve_level1.gif` はタイトルから最初の CLEAR までの開幕、`full_clear.gif` はゲームまるごと1周 — 両レベル、両 CLEAR、そしてタイトルへの帰還、`rewind_demo.gif` は3手進めて Z 長押し、ロボットと木箱が家へ滑って帰るあいだ目覚まし時計が反時計回りに回る — そして全部をページに並べる `index.html` ダッシュボード（engine_tools の ReferenceSite）。フォルダごと消しても、テスト1回で全ピクセルが再建されます。
 
 そして3つ目の成果物は無料です: 失敗する Trace は**そのまま**バグ報告です。「この入力列で、この結果」 — チケットに貼れば永遠に再現し、`tick` に畳めばそのまま回帰テストです。
 

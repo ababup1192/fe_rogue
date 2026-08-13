@@ -1,4 +1,4 @@
-// UiScroll — 「窓より長い内容を、位置をひとつ持って覗く」の共通の勘定(純粋)。
+// UiScroll — 「ビューポートより長い内容を、位置をひとつ持って覗く」の共通の勘定(純粋)。
 // 単位は呼び側が決める(行・項目・ピクセル)。offset は「末尾から何単位遡ったか」で、
 // 0 = 末尾に張り付き。会話ログ・チャット・履歴のような「新しいものが下へ増える」UI の
 // 既定に合わせる — 先頭基準で使いたい呼び側は top を読めばよい。
@@ -7,7 +7,7 @@
 
 mod UiScroll {
 
-    /// 遡れる上限。内容が窓に収まるなら 0。
+    /// 遡れる上限。内容がビューポートに収まるなら 0。
     pub def maxOffset(size: {content = Int32, viewport = Int32}): Int32 =
         Int32.max(0, size#content - size#viewport)
 
@@ -55,7 +55,7 @@ mod UiScroll {
     /// 行の高さが一定のリストをピクセル位置で覗くときの描画計画:
     /// first = 最初に描く行(先頭から数えて)、shift = その行を上へずらす量(0 ≦ shift < rowH)、
     /// count = 部分行を含めて描く行数。呼び側は first から count 行を y - shift から並べる
-    /// (窓の外へはみ出す端は、クリップか覆いで隠す)。
+    /// (ビューポートの外へはみ出す端は、クリップか覆いで隠す)。
     pub def rowWindow(rowH: Float64, size: {contentPx = Float64, viewportPx = Float64},
                       offsetPx: Float64): { first = Int32, shift = Float64, count = Int32 } =
         if (rowH <= 0.0)

@@ -1,7 +1,7 @@
 // View — World から「(置き場所, 見せたい物) のリスト」への投影（純粋）。
 // 場面は雨の夜の書斎: 壁・雨の窓・絵が消えた額縁（ドット絵）・館の灯り。
-// 疑うたびに灯りが消え、部屋には暗幕が重なる（濃さは novel.kind.json の dim）。
-// 会話窓と選択肢の枠は ui.json（UiRender）、本文の文字送りは NovelKit.body が描く。
+// 疑うたびに灯りが消え、部屋には暗くするオーバーレイが重なる（濃さは novel.kind.json の dim）。
+// ダイアログと選択肢の枠は ui.json（UiRender）、本文の文字送りは NovelKit.body が描く。
 //
 // ── この画面の画風（AGENTS.local.md と同じ宣言）──
 // 「雨の夜の書斎。光は灯りの周りだけで、そこから離れるほど部屋は闇に沈む」。
@@ -12,11 +12,11 @@
 //
 // ── 画面の層（奥から手前へ）──
 //   壁（縦のグラデ）→ 床（縦のグラデ + 灯りの映り込み）→ 雨の窓（すじが落ちる）
-//   → 額縁の落ち影 → 額縁 → 灯り（炎が揺れる）→ 灯りの中を舞う埃 → 暗幕 → 表紙
-//   会話窓・本文・エラーバナーは withHudView 側（hud）— 部屋の z に関わらず必ず手前
+//   → 額縁の落ち影 → 額縁 → 灯り（炎が揺れる）→ 灯りの中を舞う埃 → 暗くするオーバーレイ → 表紙
+//   ダイアログ・本文・エラーバナーは withHudView 側（hud）— 部屋の z に関わらず必ず手前
 mod View {
 
-    // ── z 層（部屋 0..9 / 額縁 10 / 灯り 20 / 暗幕 50 / 表紙 60。UI は ui.json 側で 100+） ──
+    // ── z 層（部屋 0..9 / 額縁 10 / 灯り 20 / 暗くするオーバーレイ 50 / 表紙 60。UI は ui.json 側で 100+） ──
 
     def zRoom(): Int32 = 0
     def zWall(): Int32 = 1
@@ -42,7 +42,7 @@ mod View {
             :: title(ctx#atlas, w)
             :: Nil)
 
-    /// 画面固定の絵（会話窓・選択肢・本文・エラーバナー）。App.withHudView へ繋ぐ —
+    /// 画面固定の絵（ダイアログ・選択肢・本文・エラーバナー）。App.withHudView へ繋ぐ —
     /// world 側の z がどれだけ大きくても、読ませたい文字は必ず手前に出る。
     pub def hud(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         List.flatten(
@@ -216,7 +216,7 @@ mod View {
                 })
             })
 
-    // ── 暗幕（消えた灯りの数 × dim の濃さで部屋が沈む） ──
+    // ── 暗くするオーバーレイ（消えた灯りの数 × dim の濃さで部屋が沈む） ──
 
     def veil(w: World.World): List[Render.PlacedItem] =
         let alpha = Float64.min(1.0, Int32.toFloat64(w#lightsOut) * w#kind#dim);

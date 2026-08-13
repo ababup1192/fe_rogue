@@ -326,7 +326,7 @@ mod LwjglLayer {
 
     pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader - RenderTarget.Target + IO =
         // GLFW と AWT は macOS で同じメインスレッド・GL を取り合って固まるため、
-        // この窓（GLFW）のプロセスでは AWT を headless に固定する。注釈のスクリーンショット
+        // このウィンドウ（GLFW）のプロセスでは AWT を headless に固定する。注釈のスクリーンショット
         // 保存（BufferedImage / Graphics2D / ImageIO）はオフスクリーン描画なので headless でも動く。
         discard System.setProperty("java.awt.headless", "true");
         if (not GLFW.glfwInit()) {
@@ -343,7 +343,7 @@ mod LwjglLayer {
         // 8bit のステンシルを確保する。使うのはマスク描画のときだけ（通常描画は無影響）。
         GLFW.glfwWindowHint(GLFW.GLFW_STENCIL_BITS, 8);
 
-        // 隠し窓モード（GL 突き合わせ harness 用）。Retina の 2 倍化を切るのは、
+        // 隠しウィンドウモード（GL 突き合わせ harness 用）。Retina の 2 倍化を切るのは、
         // フレームバッファ = design 寸に固定しないと letterbox 補間が乗り、
         // 画素の突き合わせが成立しないため。
         let hidden = not Object.isNull(System.getenv("FLIX_GE_HIDDEN"));
@@ -352,15 +352,15 @@ mod LwjglLayer {
             GLFW.glfwWindowHint(GLFW.GLFW_COCOA_RETINA_FRAMEBUFFER, GL11.GL_FALSE)
         } else ();
 
-        // 隠し窓は design 寸（ポイント）で作る。この開発機の実測では、隠し窓の drawable は
-        // Retina 倍にならず窓のポイント寸のままなので、これで drawable = design になる。
+        // 隠しウィンドウは design 寸（ポイント）で作る。この開発機の実測では、隠しウィンドウの drawable は
+        // Retina 倍にならずウィンドウのポイント寸のままなので、これで drawable = design になる。
         // Retina 倍になる環境でも drawable は design より大きいだけで、描画も読み出しも
         // 左下 design 領域の 1:1 で完結する（下の隅印の門番が実測で確かめる）。
         let (createW, createH) = if (hidden) (config#designWidth, config#designHeight)
                                  else (config#windowWidth, config#windowHeight);
         let window = GLFW.glfwCreateWindow(createW, createH, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
         GLFW.glfwMakeContextCurrent(window);
-        // 隠し窓では垂直同期を待たない — 見えない窓・画面ロック中は swap 1 回が
+        // 隠しウィンドウでは垂直同期を待たない — 見えないウィンドウ・画面ロック中は swap 1 回が
         // 1 秒級に落ちることがあり、harness の実行時間と安定性を壊す。
         GLFW.glfwSwapInterval(if (hidden) 0 else 1);
         // Sticky mouse buttons: 1 フレーム未満の press→release（macOS の
@@ -379,13 +379,13 @@ mod LwjglLayer {
         discard MemoryStack.stackPop();
         println("Framebuffer size: ${fbMeasuredW}x${fbMeasuredH}");
 
-        // 隠し窓では glfwGetFramebufferSize を信用せず fb 寸 = design 寸に固定する。
-        // この開発機の実測では、隠し窓の実 drawable は窓のポイント寸のままなのに、
+        // 隠しウィンドウでは glfwGetFramebufferSize を信用せず fb 寸 = design 寸に固定する。
+        // この開発機の実測では、隠しウィンドウの実 drawable はウィンドウのポイント寸のままなのに、
         // 問い合わせは Retina 倍を返して嘘をつく — 嘘の寸で描くと絵が 1/4 に潰れる。
         let (fbWidth, fbHeight) = if (hidden) (config#designWidth, config#designHeight)
                                   else (fbMeasuredW, fbMeasuredH);
 
-        // fb == design の門番(隠し窓モードのみ)。design の右上隅 1px に scissor で印を塗り、
+        // fb == design の門番(隠しウィンドウモードのみ)。design の右上隅 1px に scissor で印を塗り、
         // 読み戻して実測で確かめる — 実 drawable が design 寸に届かない環境だと、絵の欠けが
         // 「全画素不一致」に化けて原因が突き合わせ経路の差に見えてしまうため、ここで落とす。
         if (hidden) {
@@ -417,7 +417,7 @@ mod LwjglLayer {
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
-        // 窓は既に出ているのに、ここまで一度も塗っていないと中身は未定義（白やゴミ）のまま。
+        // ウィンドウは既に出ているのに、ここまで一度も塗っていないと中身は未定義（白やゴミ）のまま。
         // シェーダの用意を待たずにまず一掃しておく。色はこの先のフレームと同じ物を使う —
         // 別の色で塗ると、起動画面の 1 枚目が出た瞬間に画面の色がパッと変わって見える。
         let clear = config#clearColor;
@@ -447,7 +447,7 @@ mod LwjglLayer {
             RenderShader.spriteInstancedFragmentShaderSource());
         RenderShader.setProjectionMatrix(instShader, screenW, screenH);
 
-        // 連続する同 blend / 切り抜き窓の多角形を 1 draw call に畳むバッチ描画用（頂点色）。
+        // 連続する同 blend / 切り抜き clip 矩形の多角形を 1 draw call に畳むバッチ描画用（頂点色）。
         let polyBatchShader = RenderShader.createShaderProgram(
             RenderShader.polyBatchVertexShaderSource(),
             RenderShader.polyBatchFragmentShaderSource());
@@ -466,7 +466,7 @@ mod LwjglLayer {
         // 初めの大きさは「よくある画面」の見当で、足りなければ描画側が広げる。
         let instBuf = RenderBuf.make(4096 * 38);
         let polyBuf = RenderBuf.make(16384 * 6);
-        // タイル VAO → インスタンス VBO の台帳。updateTileBuffer（既存 VAO への
+        // タイル VAO → インスタンス VBO のレジストリ。updateTileBuffer（既存 VAO への
         // 入れ直し）が再アップロード先の VBO をここから引く。
         let tileVboRegistry: Ref[Map[Int32, Int32], Static] = Ref.fresh(Static, Map.empty());
 
@@ -488,7 +488,7 @@ mod LwjglLayer {
         // 見つからないと知らせた tex 場のテクスチャ名（missingFontRef と同じ「一度だけ鳴らす」控え）。
         let missingSurfaceTexRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
 
-        // レンダーターゲット（eff RenderTarget.Target の FBO）の台帳: 名前 → GL 実体。
+        // レンダーターゲット（eff RenderTarget.Target の FBO）のレジストリ: 名前 → GL 実体。
         // ターゲットは初回の beginTarget で作られ、寸法が変わらない限り使い回す。
         let targetsRef: Ref[Map[String, RenderTargetGl.Entry], Static] = Ref.fresh(Static, Map.empty());
         // いま開いているターゲット (幅, 高さ, clear 指定)。renderCommands がこれを見て
@@ -624,11 +624,11 @@ mod LwjglLayer {
 
         // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
         // フレームバッファサイズ変更コールバックで再描画を行う。
-        // **読み込みを始める前に付ける** — 読み込み中も起動画面が出ているぶん窓を掴まれる。
+        // **読み込みを始める前に付ける** — 読み込み中も起動画面が出ているぶんウィンドウを掴まれる。
         // 付いていないと、その間のサイズ変更が誰にも拾われず、読み込み後もずれたまま描き続ける。
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
-                // 隠し窓では無視する — fb 寸は design 寸に固定済みで、この callback が
+                // 隠しウィンドウでは無視する — fb 寸は design 寸に固定済みで、この callback が
                 // 万一発火すると（問い合わせ同様に嘘をつく）実測値で上書きされてしまう。
                 if (hidden) ()
                 else {
@@ -641,7 +641,7 @@ mod LwjglLayer {
         });
 
         // ===== 起動画面 =====
-        // ここから下は読み込みで数秒〜十数秒止まる。窓は既に出ているので、何も描かないと
+        // ここから下は読み込みで数秒〜十数秒止まる。ウィンドウは既に出ているので、何も描かないと
         // 固まったように見える。組み込みの絵だけで進み具合を出し続ける。
         Ref.put(RenderSplash.install(), registryRef);
         let splashState = RenderSplash.newState();
@@ -649,9 +649,9 @@ mod LwjglLayer {
         let splashShotAt = Array#{0i64} @ Static;
         let frameShotTaken = Array#{0} @ Static;
         let splashDesign = { x = screenW, y = screenH };
-        // 起動画面も renderStateHolder へ入れる。読み込み中に窓の大きさを変えると
+        // 起動画面も renderStateHolder へ入れる。読み込み中にウィンドウの大きさを変えると
         // リサイズ callback が holder の中身で描き直すので、空だと真っ黒に落ちる。
-        // macOS では画面を出すたびにイベントを汲まないと窓が「応答なし」になる。
+        // macOS では画面を出すたびにイベントを汲まないとウィンドウが「応答なし」になる。
         let drawSplash = (ds: List[GameEngine.Drawable]) -> {
             Array.put((ds, Nil, Nil, None, Nil), 0, renderStateHolder);
             let (splashW, splashH) = Array.get(0, framebufferSizeHolder);
@@ -749,7 +749,7 @@ mod LwjglLayer {
 
         // 読み込みは済んだので画面の垂直同期を戻す。ここから先（ゲームの下ごしらえ）も
         // 起動画面は出続けるが、枚数が知れているので待ちは体感に出ない。
-        // 隠し窓では戻さない（swap の 1 秒級の待ちを避ける理由が本編でも変わらないため）。
+        // 隠しウィンドウでは戻さない（swap の 1 秒級の待ちを避ける理由が本編でも変わらないため）。
         GLFW.glfwSwapInterval(if (hidden) 0 else 1);
 
         // Windows だけ、毎フレームの受け渡し後に GPU の完了を待つ。ドライバが 2〜3 フレーム
@@ -976,7 +976,7 @@ mod LwjglLayer {
                         k((vaoId, List.length(instances)))
                     }
                     case None => {
-                        // 台帳に無い VAO（理論上来ない）: 新規に焼いて返す。
+                        // レジストリに無い VAO（理論上来ない）: 新規に焼いて返す。
                         let instanceVBO = RenderSprite.buildTileInstanceVBO(instances);
                         let fresh = RenderSprite.buildTileMapVAO(quadVBO, instanceVBO);
                         Ref.put(Map.insert(fresh, instanceVBO, Ref.get(tileVboRegistry)), tileVboRegistry);
@@ -1273,7 +1273,7 @@ mod LwjglLayer {
             }
         } with handler RenderTarget.Target {
             def beginTarget(name, w, h, clearOp, k) = {
-                // 台帳から引く。無い・寸法が変わったら作り直す（古い方は必ず捨てる）。
+                // レジストリから引く。無い・寸法が変わったら作り直す（古い方は必ず捨てる）。
                 let freshEntry = () -> {
                     let fresh = RenderTargetGl.create(w, h);
                     Ref.put(Map.insert(name, fresh, Ref.get(targetsRef)), targetsRef);

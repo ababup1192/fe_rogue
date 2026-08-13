@@ -244,7 +244,7 @@ mod RenderFrame {
         // 同じ z 安定ソート列に混ぜて描くので重なり順は壊れない。camera（viewOffset/viewScale）
         // は各レンジが持ち、halfDesign は design/2 をここで計算して当てる。
         staticRanges = List[RenderStatic.Range],
-        // 同 blend / 切り抜き窓の連続多角形を 1 draw call に畳むバッチ描画用。
+        // 同 blend / 切り抜き clip 矩形の連続多角形を 1 draw call に畳むバッチ描画用。
         polyBatchShader = Int32,
         polyBatchVao = Int32,
         polyBatchVbo = Int32,
@@ -369,7 +369,7 @@ mod RenderFrame {
         }
 
     // ── 詰め込みループの run 状態 ──────────────────────────────
-    // run（同テクスチャ・同窓・同 blend の連続列）の状態は Int32 配列 1 本に置き、
+    // run（同テクスチャ・同 clip 矩形・同 blend の連続列）の状態は Int32 配列 1 本に置き、
     // 吐き出しに要る GL ハンドル定数も同じ配列に同居させる。組やレコードの acc を
     // 持ち回らないのは、1 item ごとに組の作り直しと Option+組の等価比較が走り、
     // 物量シーンでフレーム時間に乗るため（スレッドダンプ実測）。局所クロージャに
@@ -398,7 +398,7 @@ mod RenderFrame {
     /// scissor を張り替える。y は GL の左下原点へ反転し、viewport と交差する
     /// （clip が画面外へ食み出しても letterbox の黒帯を侵さない）。
     /// 幅か高さが 0 以下の矩形は glScissor(…, 0, 0) になり、その run は何も描かない。
-    /// clipFlag = 0 は「窓なし」（scissor 無効化）。
+    /// clipFlag = 0 は「clip 矩形なし」（scissor 無効化）。
     def setScissorAt(st: Array[Int32, Static], clipFlag: Int32,
                      x0: Int32, y0: Int32, x1: Int32, y1: Int32): Unit \ IO =
         if (clipFlag == 0) GL11.glDisable(GL11.GL_SCISSOR_TEST)
@@ -443,10 +443,10 @@ mod RenderFrame {
             Array.put(0, 25, st)
         }
 
-    /// 積むときにその場で入れ物へ書く。テクスチャ・窓・重ね方が変わるところでは
+    /// 積むときにその場で入れ物へ書く。テクスチャ・clip 矩形・重ね方が変わるところでは
     /// **先に**溜めた run を吐く — 吐くと書き込み位置が先頭へ戻るため、
     /// 書いてから吐くと新しい 1 体が前の run に混ざって出てしまう。
-    /// clip の一致は clip有無 + 矩形 4 値の Int32 比較で見る（窓なしどうしは矩形を見ない —
+    /// clip の一致は clip有無 + 矩形 4 値の Int32 比較で見る（clip 矩形なしどうしは矩形を見ない —
     /// 前の run の古い矩形が残っていても None == None と同じ判定になるように）。
     def pushSpriteKeyed(st: Array[Int32, Static], instData: FloatBuffer,
                         texId: Int32, clipFlag: Int32,
@@ -476,7 +476,7 @@ mod RenderFrame {
             Array.put(1, 18, st)
         }
 
-    /// 1 多角形を三角形化して入れ物へ直に書く（窓か重ね方が変わるところでは先に吐く）。
+    /// 1 多角形を三角形化して入れ物へ直に書く（clip 矩形か重ね方が変わるところでは先に吐く）。
     /// 頂点数が 3 未満（退化）なら何も積まない（run の鍵も進めない — 空 run のまま）。
     def pushPolyKeyed(st: Array[Int32, Static], polyData: FloatBuffer,
                       uniforms: RenderShader.PolyBatchUniforms, clipFlag: Int32,
@@ -505,7 +505,7 @@ mod RenderFrame {
             }
         }
 
-    /// clip 窓を run 鍵の Int32 群へほどいて push する。Option の組を item ごとに
+    /// clip 矩形を run 鍵の Int32 群へほどいて push する。Option の組を item ごとに
     /// 作って等価比較する形にしないのは、その作り直しと多相比較が詰め込みループの
     /// 大きな取り分だったため（プロファイル実測）。矩形の量子化は DrawCmd.clipPixels の
     /// 1 本に寄せたまま（GL と SoftRaster が同じ画素集合を見る保証を崩さない）。
@@ -642,7 +642,7 @@ mod RenderFrame {
             }))
         }
 
-    /// 多角形 1 個を run へ積む（clip 窓を Int32 鍵へほどく）。
+    /// 多角形 1 個を run へ積む（clip 矩形を Int32 鍵へほどく）。
     def emitPoly(st: Array[Int32, Static], polyData: FloatBuffer,
                  uniforms: RenderShader.PolyBatchUniforms,
                  scaleX: Float64, scaleY: Float64, pc: RenderType.PolygonCmd): Unit \ IO =
@@ -734,7 +734,7 @@ mod RenderFrame {
                     case Merged.MSurface(s) =>
                         // シェーダー面が来たら両 run を吐いてから 1 枚描く（列順＝重なり順を守る）。
                         // 面は矩形全体を塗るので scissor は viewport 全体に戻す
-                        // （前 run の clip 窓を持ち越さない）。
+                        // （前 run の clip 矩形を持ち越さない）。
                         flushSprites(st, instData);
                         flushPolys(st, polyData, polyBatchUniforms);
                         setScissorAt(st, 0, 0, 0, 0, 0);
@@ -820,7 +820,7 @@ mod RenderFrame {
             // 「同 z ならタイル層が奥」が安定ソートの規約としてそのまま立つ
             // （タイル層を手前に出すには大きい zIndex）。
             let sortedMerged = mergedByZ(tileMaps, sprites, polygons, staticRanges, surfaces);
-            // clip 窓 → framebuffer 座標の整数 scissor 矩形 (x0, y0, x1, y1)（top-left 原点）。
+            // clip 矩形 → framebuffer 座標の整数 scissor 矩形 (x0, y0, x1, y1)（top-left 原点）。
             // record に Eq が無いので、run の分断キーはこの int 組で比較する（fb 画素への
             // 量子化を兼ね、1px 未満の差で run を無駄に割らない）。
             let scaleX = Int32.toFloat64(vpW) / designW;

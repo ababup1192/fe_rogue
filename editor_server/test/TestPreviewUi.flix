@@ -1,5 +1,5 @@
 // TestPreviewUi — 合成プレビューと data 流し込みの純粋な部分を固定する。
-// 描画そのもの (PNG の中身) は目視検品に任せ、ここでは封筒の解釈・spawn の台帳・
+// 描画そのもの (PNG の中身) は目視検品に任せ、ここでは封筒の解釈・spawn の一覧表・
 // warning の導出だけを見る。
 
 mod TestPreviewUi {
@@ -132,7 +132,7 @@ mod TestPreviewUi {
             expected = (Some("old"), Some("hello")),
             (UiStore.textOf("A/label", spawned#ui), UiStore.textOf("B/label", spawned#ui)))
 
-    /// roots は spawn 順 (奥→手前) の台帳になり、layer は配列位置で付け直される
+    /// roots は spawn 順 (奥→手前) の一覧表になり、layer は配列位置で付け直される
     /// (合成の前後関係は文書側の layer でなく配列順が契約)。bind key は全文書ぶん集まる。
     @Test
     def testSpawnDocsRootsAndLayers(): Unit \ Assert =

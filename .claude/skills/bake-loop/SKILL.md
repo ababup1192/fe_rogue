@@ -12,18 +12,18 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 生成した絵を毎回目視すると 1 枚数千トークン燃える。じょうごで絞る:
 
-1. まず `make -C templates/<name> snapshot-check`（スナップショットとのハッシュ突き合わせ）。**全一致ならここで終わり** —
+1. まず `make -C templates/<name> reference-check`（リファレンス画像とのハッシュ突き合わせ）。**全一致ならここで終わり** —
    digest も目視も要らない
 2. 不一致の名前が出た時だけ、その名前を渡して数値で当たりを付ける:
    ```
-   python3 bin/img-digest.py snapshot/ gallery/ battle.png   # 名前を挙げた絵だけ要約
+   python3 bin/img-digest.py reference/ gallery/ battle.png   # 名前を挙げた絵だけ要約
    python3 bin/img-digest.py old.png new.png               # 2 枚だけ比べる
    ```
    差分画素率・変化した領域・色数・明るさが数行で出る
 3. **画像を開くのは最終確認の 1 回だけ**
 
 - 機械的リファクタ（分割・Doc 化）は「前後の PNG バイト一致」で見た目不変を証明する
-- リグレッション防護はスナップショット（`gallery/` vs `snapshot/` のバイト比較）に任せる
+- リグレッション防護はリファレンス画像（`gallery/` vs `reference/` のバイト比較）に任せる
 
 ## 一度に 1 つだけ直す
 
@@ -52,12 +52,12 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 最終コマ→0 コマの継ぎ目が浮いていないか機械検査する。fade・wipe など
 最初から戻らない演出は対象外。
 
-## Bake / スナップショットの作り方（まだ無いゲームに足すとき）
+## Bake / リファレンス画像の作り方（まだ無いゲームに足すとき）
 
 配管一式（Bake entrypoint・flix.toml・フォント・Bakery 呼び出し）の写経元は
-docs/headless-bake-recipe.md。スナップショットの更新は `make -C templates/<name> snapshot-update`（bin/snapshot-update.sh）、
-比較は `make -C templates/<name> snapshot-check`（bin/snapshot-check.sh）。git に入るのは SHA256SUMS.txt と title.png だけ。
-守ることは 2 つ: 調整中の画は `debug/` 行きの別 entrypoint に分けてスナップショットを汚さない・
+docs/headless-bake-recipe.md。リファレンス画像の更新は `make -C templates/<name> reference-update`（bin/reference-update.sh）、
+比較は `make -C templates/<name> reference-check`（bin/reference-check.sh）。git に入るのは SHA256SUMS.txt と title.png だけ。
+守ることは 2 つ: 調整中の画は `debug/` 行きの別 entrypoint に分けてリファレンス画像を汚さない・
 テストは検証だけ（生成は `Bake.all` の仕事）。
 
 ## 手順

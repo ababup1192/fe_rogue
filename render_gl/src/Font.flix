@@ -88,7 +88,7 @@ mod RenderFont {
     /// このゲームが画面に出さない字が大量に入っている（拾うと焼く量が跳ね上がる）。
     def skipDirs(): List[String] =
         "lib" :: "build" :: "target" :: ".git" :: ".devbox" :: "node_modules"
-            :: "docs" :: "debug" :: "gallery" :: "snapshot" :: Nil
+            :: "docs" :: "debug" :: "gallery" :: "reference" :: Nil
 
     /// 配布用に固めた物（dist / dist-win / ...）はゲーム本体の複製なので、
     /// 読むと同じ字を二度拾ったうえ、古い置き土産まで一緒に拾ってしまう。

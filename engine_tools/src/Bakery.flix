@@ -1,5 +1,5 @@
 // Bakery — ギャラリー生成の共通配管。描画コマンド列を PNG に、フレーム列を GIF＋コマ別 PNG に
-// 生成し、SnapshotSite 用のフィルムストリップ情報を返す。
+// 生成し、ReferenceSite 用のフィルムストリップ情報を返す。
 //
 // 各ゲームは「1回だけ宣言する設定（BakeConfig）」と「World → 描画コマンドへの投影」だけ用意すれば、
 // RasterReq 組み立て・SoftRaster 呼び出し・GIF エンコード・コマ別 PNG 書き出し・間引きは Bakery に任せられる。
@@ -220,10 +220,10 @@ mod Bakery {
         renderPngWithImages(cfg, images, drawables, polygons, surfaces, name)
 
     /// frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に生成する。
-    /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
+    /// 返り値は ReferenceSite 用のフィルムストリップ情報（駒送りビューア）。
     pub def bakeGif(cfg: BakeConfig, frames: List[w], stride: Int32,
                     toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]),
-                    name: String): SnapshotSite.Filmstrip \ IO =
+                    name: String): ReferenceSite.Filmstrip \ IO =
         bakeGifFonts(cfg, Map.empty(), frames, stride, toCmds, name)
 
     /// 複数フォントで生成する bakeGif。`extraFonts` はテクスチャ名（実機の project.json の
@@ -233,7 +233,7 @@ mod Bakery {
     pub def bakeGifFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry],
                          frames: List[w], stride: Int32,
                          toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]),
-                         name: String): SnapshotSite.Filmstrip \ IO =
+                         name: String): ReferenceSite.Filmstrip \ IO =
         let sampled = every(stride, frames);
         // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（同じ警告が何十行も並ばない）。
         List.head(sampled) |> Option.forEach(w -> warnDropped(fst(toCmds(w)), name));
@@ -260,7 +260,7 @@ mod Bakery {
     pub def bakeGifWith(cfg: BakeConfig, frames: List[w], stride: Int32,
                         toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd],
                                       List[SoftRaster.SurfaceCmd]),
-                        name: String): SnapshotSite.Filmstrip \ IO =
+                        name: String): ReferenceSite.Filmstrip \ IO =
         let sampled = every(stride, frames);
         // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（bakeGifFonts と同じ）。
         List.head(sampled) |> Option.forEach(w -> {
@@ -293,7 +293,7 @@ mod Bakery {
                               toCmds: w -> (List[PassSpec], List[GameEngine.Drawable],
                                             List[GameEngine.PolygonRenderCmd],
                                             List[SoftRaster.SurfaceCmd]),
-                              name: String): SnapshotSite.Filmstrip \ IO =
+                              name: String): ReferenceSite.Filmstrip \ IO =
         let sampled = every(stride, frames);
         // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（bakeGifWith と同じ）。
         List.head(sampled) |> Option.forEach(w -> {

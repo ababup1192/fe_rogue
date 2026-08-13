@@ -60,7 +60,7 @@ mod Char01 {
             case _                       => 0.0
         }
 
-    /// 着地スカッシュ: 着地の瞬間が最大で 0.2 秒（LandMode の窓いっぱい）かけて戻る。
+    /// 着地スカッシュ: 着地の瞬間が最大で 0.2 秒（LandMode の区間いっぱい）かけて戻る。
     def squashOf(stage: CharStage.Stage): Float64 =
         match stage#mode {
             case CharStage.Mode.LandMode => Float64.max(0.0, 1.0 - stage#modeT / 0.2)

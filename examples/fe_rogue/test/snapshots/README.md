@@ -25,7 +25,7 @@ GIF は PNG と違って毎回焼き直すには重いので、`test/snapshots/g
 
 - `index.html` … ハブ。ゲーム機能ごとに「代表サムネ + 件数 + 説明」のカードが並ぶ（末尾にタグ目次）。
 - `page_<scenario>.html` … 機能別ギャラリー。パンくず（← index）＋前後機能導線つき。ページ内は
-  「基本状態 → エッジケース → 操作フロー」の 3 節（節の判定は `SnapshotSite.sectionOf`。ext が
+  「基本状態 → エッジケース → 操作フロー」の 3 節（節の判定は `ReferenceSite.sectionOf`。ext が
   `"gif"` なら操作フロー、タグに `"edge-case"` を含めばエッジケース、それ以外は基本状態）。
   各項目は名前のコード表記（クリックでコピー）＋説明＋タグ（クリックでタグページへ）＋画像。
   GIF が `test/snapshots/gifs/` にも無ければ生成コマンドの案内が出る。
@@ -40,7 +40,7 @@ GIF は PNG と違って毎回焼き直すには重いので、`test/snapshots/g
 | ファイル | 責務 |
 |----------|------|
 | `SnapshotCatalog.flix` | **目録（純データ）**。全 34 枚の name/desc/kind(Png/Gif)/scenario/tags を宣言。ゲーム側。 |
-| `SnapshotSite.flix` | **汎用サイト生成器**。カタログ → HTML 群への変換。ゲーム非依存（Flix 標準 + Fs + java.io.File のみ）。 |
+| `ReferenceSite.flix` | **汎用サイト生成器**。カタログ → HTML 群への変換。ゲーム非依存（Flix 標準 + Fs + java.io.File のみ）。 |
 | `SnapshotSupport.flix` | mock Game・テクスチャ表・決定的フォーマット・golden 比較・PNG 焼き・GIF 永続化コピー（`syncGifs`）。 |
 | `SnapshotHarness.flix` | フィクスチャ用の effect 束（World/フェーズ/クエリ等）を巻く。 |
 | `TestUiSnapshots.flix` | PNG の drive（`driveByName`）と @Test オーケストレータ。サイト設定・Item 変換・毎回の GIF 同期・lint 実行もここ。 |
@@ -59,7 +59,7 @@ GIF は PNG と違って毎回焼き直すには重いので、`test/snapshots/g
 - 複数 HUD を組み合わせたコンボ（例: TopBar + アクションメニュー）は、独立ページを作らず、最も体感が
   強い機能のページへ合流させる（例は `action-menu` へ）。
 - 満載・境界などのエッジケースも独立ページを作らず、同じ機能ページ内に留め、`tags` に必ず
-  `"edge-case"` を含める。`SnapshotSite` がこのタグでページ内の節を自動振り分けする。
+  `"edge-case"` を含める。`ReferenceSite` がこのタグでページ内の節を自動振り分けする。
 - 複数機能にまたがる GIF（例: コマンド→アイテムの遷移）は、遷移の起点になる機能を主 `scenario` にし、
   もう一方の機能名を `tags` に足す。これで両方の機能ページから辿れる（主機能側のページ本体＋もう一方は
   `tag_<その機能名>.html` 経由）。
@@ -70,9 +70,9 @@ GIF は PNG と違って毎回焼き直すには重いので、`test/snapshots/g
 
 - **スナップショットを 1 枚足す** = `SnapshotCatalog.entries()` に 1 行足す（name/desc/kind/scenario/tags）＋
   `TestUiSnapshots.driveByName` に腕を 1 つと drive 関数を 1 個足す（GIF なら `TestGifSnapshots` に gen 関数を 1 個）。
-- **ゲーム機能を 1 つ足す** = 新しい `scenario` 文字列を書くだけ。`SnapshotSite` が自動でページを増やし、
+- **ゲーム機能を 1 つ足す** = 新しい `scenario` 文字列を書くだけ。`ReferenceSite` が自動でページを増やし、
   ハブのカードと前後導線に組み込む。宣言順がそのまま表示順・ページ順・前後導線の順序になる。
-- **タグを 1 つ足す** = 既存/新規のエントリの `tags` にタグ文字列を書くだけ。`SnapshotSite` が
+- **タグを 1 つ足す** = 既存/新規のエントリの `tags` にタグ文字列を書くだけ。`ReferenceSite` が
   `tag_<tag>.html` を自動生成し、index のタグ目次にも並ぶ。
 
 ## RenderLint（描画データの自動破綻検知）
@@ -111,10 +111,10 @@ scale）で bbox を取る（レイアウトが確保する箱ではなく実描
 
 ### ダッシュボード表示
 
-`SnapshotSite.Item` に `lint`（`LintBadge` 構造データ）フィールドを持たせ、各シーンカードにバッジを
+`ReferenceSite.Item` に `lint`（`LintBadge` 構造データ）フィールドを持たせ、各シーンカードにバッジを
 出す: 違反なしは `✓ lint`、有効違反ありは `⚠ N`（＋抑制があれば `抑制 N`）。⚠ の詳細は各カード内の
 折りたたみ（`<details>`）に全 Finding を並べる。GIF など未検査の項目はバッジを出さない
-（`checked=false`）。バッジ描画は `SnapshotSite`（ゲーム非依存）が構造データを見て行うだけ。
+（`checked=false`）。バッジ描画は `ReferenceSite`（ゲーム非依存）が構造データを見て行うだけ。
 
 ### 今日の実バグ群がどのルールで捕まるか
 
@@ -138,7 +138,7 @@ scale）で bbox を取る（レイアウトが確保する箱ではなく実描
 
 ## engine 抽出の見立て
 
-`SnapshotSite.flix` はゲーム固有の型を一切 import しない汎用パーツ（入力は構造的な `Item` レコードだけ）なので、
+`ReferenceSite.flix` はゲーム固有の型を一切 import しない汎用パーツ（入力は構造的な `Item` レコードだけ）なので、
 そのまま engine 側の「カタログ → HTML サイト」ユーティリティへ吸い出せる。抽出時に残る作業は、
 `Item` 契約（name/desc/scenario/tags/ext/pxWidth/generateHint/lint）と `Config`（outDir/title/cssScale）を
 engine の公開 API として据え、ゲーム側は `SnapshotCatalog` のような目録 + アダプタ（`toItems`）を持つだけにする。

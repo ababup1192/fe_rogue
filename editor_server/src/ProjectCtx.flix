@@ -45,7 +45,7 @@ mod ProjectCtx {
 
     /// ドキュメントが使うフォント名の一覧から atlas 表と代表フォントを組む。
     /// ラスタライザは TTF 1 本しか受けないので、複数フォントの使用は代表 1 本に寄せて warning にする。
-    /// atlas は caches の台帳経由で引く (同じ TTF の焼き直しは mtime が変わったときだけ)。
+    /// atlas は caches のレジストリ経由で引く (同じ TTF の焼き直しは mtime が変わったときだけ)。
     pub def fontSetup(usedFonts: List[String], dir: String, caches: Caches.Caches, ctx: Ctx): FontSetup \ IO =
         let used = List.distinct(usedFonts);
         let (primaryOpt, primaryWarnings) = primaryEntry(used, dir, ctx);
@@ -72,7 +72,7 @@ mod ProjectCtx {
                   warnings = folded#warnings }
         }
 
-    /// atlas 構築の途中経過。同じ TTF を二度焼かないよう byPath を台帳にする
+    /// atlas 構築の途中経過。同じ TTF を二度焼かないよう byPath をレジストリにする
     /// (atlas 構築は全グリフ走査で重い)。
     type alias FontAcc = {
         byPath   = Map[String, FontAtlas],
@@ -140,7 +140,7 @@ mod ProjectCtx {
         warnings = List[String]
     }
 
-    /// ドキュメントが使うテクスチャ名の一覧から実寸表を組む。実寸は caches の台帳経由で引く
+    /// ドキュメントが使うテクスチャ名の一覧から実寸表を組む。実寸は caches のレジストリ経由で引く
     /// (同じ画像のデコードは mtime が変わったときだけ)。
     /// manifest に無い・画像が読めない名前は表に載せず warning にする
     /// (寸法無しでも sprite 以外は描けるので、プレビュー全体は止めない)。

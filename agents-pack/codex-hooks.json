@@ -17,7 +17,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/after-flix-edit.py",
+            "command": "python3 .claude/hooks/after-flix-touch.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/after-flix-work.py",
+            "timeout": 40
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/after-flix-work.py",
             "timeout": 40
           }
         ]

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "sync-agents の配布物一覧の正本。Makefile 版 (bin/sync-agents.py) と Studio 版 (NewGame.flix) はこれを読むだけで、リストを二重に持たない。キー名 copy / copyIfAbsent / copyDirs は Studio の Flix 実装と共有するので変えない。src は engine リポからの相対パス、dst はゲームリポからの相対パス。copyIfAbsent はユーザ編集を守るため既存を上書きしない。",
+  "note": "sync-agents の配布物一覧の source of truth。Makefile 版 (bin/sync-agents.py) と Studio 版 (NewGame.flix) はこれを読むだけで、リストを二重に持たない。キー名 copy / copyIfAbsent / copyDirs は Studio の Flix 実装と共有するので変えない。src は engine リポからの相対パス、dst はゲームリポからの相対パス。copyIfAbsent はユーザ編集を守るため既存を上書きしない。",
   "copy": [
     {"src": "bin/lint-view.py", "dst": "bin/lint-view.py"},
     {"src": "bin/lint-palette.py", "dst": "bin/lint-palette.py"},
@@ -17,6 +17,8 @@
     {"src": "bin/precommit.py", "dst": "bin/precommit.py"},
     {"src": "bin/githooks/pre-commit", "dst": "bin/githooks/pre-commit"},
     {"src": ".claude/hooks/after-flix-edit.py", "dst": ".claude/hooks/after-flix-edit.py"},
+    {"src": ".claude/hooks/after-flix-work.py", "dst": ".claude/hooks/after-flix-work.py"},
+    {"src": ".claude/hooks/after-flix-touch.py", "dst": ".claude/hooks/after-flix-touch.py"},
     {"src": ".claude/hooks/session-diet.py", "dst": ".claude/hooks/session-diet.py"}
   ],
   "copyIfAbsent": [

@@ -39,7 +39,7 @@ mod PreviewUi {
     /// spawn 直前まで解決済みの 1 文書。主 doc も合成文書もこの形に揃えて同じ道を通す。
     pub type alias DocToSpawn = { path = String, spec = UiSpec.Spec, data = Map[String, String] }
 
-    /// spawn 済み root の台帳 1 行 (応答の composed とレイアウトの入口に使う)。
+    /// spawn 済み root の一覧表 1 行 (応答の composed とレイアウトの入口に使う)。
     pub type alias SpawnedRoot = { path = String, root = String, id = EntityId }
 
     /// data / compose の解決済み入力 (リクエスト明示 > sidecar > 空)。
@@ -524,7 +524,7 @@ mod PreviewUi {
         { ui = acc#ui, roots = acc#roots, bindKeys = acc#bindKeys }
 
     /// data をこの文書の bind (docBindings) だけに適用する。流し込みの本体はゲームと同じ
-    /// UiBinding.apply — bindings 台帳を一時的にこの文書ぶんへ絞って通し、通した後に元へ戻す。
+    /// UiBinding.apply — bindings レジストリを一時的にこの文書ぶんへ絞って通し、通した後に元へ戻す。
     def applyDocData(docBindings: Map[EntityId, String], data: Map[String, String], ui: UiStore.UiWorld): UiStore.UiWorld =
         if (Map.isEmpty(data)) ui
         else {
@@ -545,7 +545,7 @@ mod PreviewUi {
     // warning の導出 (純粋 — テストの入口)
     // ════════════════════════════════════════════════════════
 
-    /// 同じ root 名の文書を重ねると、名前パス台帳が後勝ちで上書きされ先の文書は rects からも
+    /// 同じ root 名の文書を重ねると、名前パスのレジストリが後勝ちで上書きされ先の文書は rects からも
     /// 絵からも消える。黙って消さず 1 行で伝える (重複した名前ごとに 1 行)。
     pub def duplicateRootWarnings(rootNames: List[String]): List[String] =
         rootNames

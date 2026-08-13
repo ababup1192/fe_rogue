@@ -1,13 +1,13 @@
 {
-  "//": "project.json の形の宣言（Studio の sections 方言）。editor.resources（この一覧そのものの台帳）はわざと載せない — 目次を編集画面から壊さないため。保存は触った値だけを書き換えるので、載せていないフィールドが消えることはない。",
+  "//": "project.json の形の宣言（Studio の sections 方言）。editor.resources（この一覧そのもののレジストリ）はわざと載せない — 目次を編集画面から壊さないため。保存は触った値だけを書き換えるので、載せていないフィールドが消えることはない。",
   "version": 1,
   "sections": {
-    "title":         { "kind": "field", "type": "text", "label": "ゲームの題（窓のタイトルに出る）", "group": "題と画面", "order": 1, "required": true },
+    "title":         { "kind": "field", "type": "text", "label": "ゲームの題（ウィンドウのタイトルに出る）", "group": "題と画面", "order": 1, "required": true },
     "designWidth":   { "kind": "field", "type": "int", "label": "絵を描く基準の幅（px。この座標系で全部描く）", "group": "題と画面", "order": 2, "min": 160, "max": 1920, "default": 640 },
     "designHeight":  { "kind": "field", "type": "int", "label": "絵を描く基準の高さ（px。変えると見える範囲が変わる）", "group": "題と画面", "order": 3, "min": 120, "max": 1080, "default": 360 },
-    "windowWidth":   { "kind": "field", "type": "int", "label": "窓の幅（px。絵の見え方は変わらない）", "group": "題と画面", "order": 4, "min": 320, "max": 3840, "default": 1280 },
-    "windowHeight":  { "kind": "field", "type": "int", "label": "窓の高さ（px）", "group": "題と画面", "order": 5, "min": 240, "max": 2160, "default": 720 },
-    "windowScale":   { "kind": "field", "type": "int", "label": "窓の拡大率（等倍 = 1。ドットの粗さが変わる）", "group": "題と画面", "order": 6, "min": 1, "max": 8, "default": 2 },
+    "windowWidth":   { "kind": "field", "type": "int", "label": "ウィンドウの幅（px。絵の見え方は変わらない）", "group": "題と画面", "order": 4, "min": 320, "max": 3840, "default": 1280 },
+    "windowHeight":  { "kind": "field", "type": "int", "label": "ウィンドウの高さ（px）", "group": "題と画面", "order": 5, "min": 240, "max": 2160, "default": 720 },
+    "windowScale":   { "kind": "field", "type": "int", "label": "ウィンドウの拡大率（等倍 = 1。ドットの粗さが変わる）", "group": "題と画面", "order": 6, "min": 1, "max": 8, "default": 2 },
 
     "maxDeltaTime":  { "kind": "field", "type": "float", "label": "1 フレームで進める秒の上限（重いときにすり抜けないための天井）", "group": "動きと文字", "order": 10, "min": 0.01, "max": 0.5, "default": 0.05 },
     "glyphs":        { "kind": "field", "type": "text", "label": "起動時に焼く字（auto=出た字から / used=ソースとアセットの字を先に / all=全字）", "group": "動きと文字", "order": 11, "default": "auto" },

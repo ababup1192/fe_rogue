@@ -8,7 +8,7 @@
 //   gallery/solve_level1.gif   — ゲーム全体: タイトル、Enter、7手、CLEAR
 //   gallery/rewind_demo.gif    — 3手、その後 Z を押し続ける: 映像が逆再生される
 //                                間、時計は反時計回りに回る
-//   gallery/index.html         — 上記すべてを見せる SnapshotSite ダッシュボード
+//   gallery/index.html         — 上記すべてを見せる ReferenceSite ダッシュボード
 //
 // どの画像も同じ生地から裁断される: Trace（Replay）が純粋な tick を駆動し、各フ
 // レームはランチャーが使うのと同じ frame + projectUi + renderUi によって、ウィ
@@ -89,7 +89,7 @@ mod GameGallery {
     /// シナリオを Replay.timeline で駆動し、GIF＋コマ送りビューア用のコマ別 PNG を焼く
     /// （配管は Bakery が担う）。返り値はカタログに差し込む (名前, フィルムストリップ情報)。
     def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue[Board.Input]],
-                start: Worldline[Board.World], name: String): (String, SnapshotSite.Filmstrip) \ IO =
+                start: Worldline[Board.World], name: String): (String, ReferenceSite.Filmstrip) \ IO =
         let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
         let fs = Bakery.bakeGif(config(atlas), film, gifSampleStride(),
                                 l -> { let sc = scene(atlas, ui, l); (sc#drawables, sc#polygons) }, name);
@@ -114,7 +114,7 @@ mod GameGallery {
         }
 
     /// robot2_walk のフィルムストリップ情報（未生成なら None → 従来 GIF カードに落ちる）。
-    def robotFilmstrip(): Option[SnapshotSite.Filmstrip] \ IO =
+    def robotFilmstrip(): Option[ReferenceSite.Filmstrip] \ IO =
         let frameW = 576i32;
         let w = stripWidth("gallery/robot2_walk_strip.png");
         if (w <= 0i32) None
@@ -122,8 +122,8 @@ mod GameGallery {
                    frameW = frameW, frameH = 184i32, fps = 7i32})
 
     /// 各カタログ Item に、名前が一致すればフィルムストリップ情報を差し込む。
-    def withFilmstrips(fsByName: Map[String, SnapshotSite.Filmstrip],
-                       items: List[SnapshotSite.Item]): List[SnapshotSite.Item] =
+    def withFilmstrips(fsByName: Map[String, ReferenceSite.Filmstrip],
+                       items: List[ReferenceSite.Item]): List[ReferenceSite.Item] =
         List.map(it -> {filmstrip = Map.get(it#name, fsByName) | it}, items)
 
     /// オープニング: タイトルが待ち、Enter がレベル1を開き、7手がそれを解き、
@@ -169,16 +169,16 @@ mod GameGallery {
     // ── ダッシュボード ──
 
     def item(name: String, desc: String, scenario: String, ext: String,
-             pxWidth: Int32): SnapshotSite.Item =
+             pxWidth: Int32): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = ext,
           pxWidth = pxWidth, generateHint = Some("run `flix test` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 
     /// lint バッジを名前で差し込んだカタログ。検査していない項目（GIF・ボード
     /// が主役のスクリーンショット・ロボット画像）は未検査バッジのまま。
-    def catalogWithLint(lintByName: Map[String, SnapshotSite.LintBadge]): List[SnapshotSite.Item] =
+    def catalogWithLint(lintByName: Map[String, ReferenceSite.LintBadge]): List[ReferenceSite.Item] =
         catalog() |> List.map(entry ->
-            { lint = Option.getWithDefault(SnapshotSite.noLint(), Map.get(entry#name, lintByName)) | entry })
+            { lint = Option.getWithDefault(ReferenceSite.noLint(), Map.get(entry#name, lintByName)) | entry })
 
     /// 撮影と同じ projectUi でページをめくった UiWorld を、SokobanLint 経由で
     /// RenderLint の検査入力へ射影する。同じ UiWorld の読み取りだけなので描画
@@ -191,7 +191,7 @@ mod GameGallery {
         SokobanLint.buildInput(
             { sceneName = name, allow = Nil, screen = design(), atlas = atlas }, projected)
 
-    def catalog(): List[SnapshotSite.Item] =
+    def catalog(): List[ReferenceSite.Item] =
         item("screen_title", "The title page — everything on it is Spec", "Screens", "png", 640) ::
         item("screen_level1", "Level 1 at rest, move zero", "Screens", "png", 640) ::
         item("screen_push", "A push frozen mid-slide (t = 0.5)", "Screens", "png", 640) ::
@@ -232,7 +232,7 @@ mod GameGallery {
                     case None     => gameFs
                 };
                 run {
-                    SnapshotSite.generate(
+                    ReferenceSite.generate(
                         { outDir = "gallery", title = "Sokoban Gallery", cssScale = 2 },
                         withFilmstrips(fsByName, catalogWithLint(Map#{
                             "screen_title" => SokobanLint.badgeOf(titleFindings),

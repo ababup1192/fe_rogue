@@ -1,7 +1,7 @@
 // エントリーポイント。
 //
 // フロー地図: Main は App に三点 — World の出発点・Controls.step・View.frame — を繋ぎ、
-// 外の世界（窓・時計・ファイル）に触れるハンドラを `with` で明示的に張って launch へ渡す。
+// 外の世界（ウィンドウ・時計・ファイル）に触れるハンドラを `with` で明示的に張って launch へ渡す。
 //   毎フレーム: App がキーと時計を Frame に焼く（外の世界）→ Controls.step が World を進める（純粋）→
 //   View.frame が絵へ投影する（純粋）→ App が画面へ描く（外の世界）。
 //   値が流れ、Step で進み、View で絵になる。effect は隠さず Main の with で列挙する。

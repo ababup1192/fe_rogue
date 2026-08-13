@@ -1,4 +1,4 @@
-// Caches — プレビュー要求のたびに作り直すと重いものを、リクエストをまたいで覚える台帳。
+// Caches — プレビュー要求のたびに作り直すと重いものを、リクエストをまたいで覚えるレジストリ。
 // エディタは打鍵ごと (300ms debounce) にプレビューを要求するので、フォント atlas
 // (TTF 全グリフ走査) とテクスチャ実寸 (画像デコード) の作り直しが応答時間を支配する。
 // キーはファイルパスで、値に mtime の印を添える。印が今のファイルと違ったら作り直すので、
@@ -25,7 +25,7 @@ mod Caches {
     pub def make(): Caches \ IO =
         { fontAtlases = new JMap(), textureSizes = new JMap() }
 
-    /// TTF パスから FontAtlas を引く。台帳に無い・ファイルが更新された、のときだけ焼き直す。
+    /// TTF パスから FontAtlas を引く。レジストリに無い・ファイルが更新された、のときだけ焼き直す。
     // WhyNot: キーに fontSize を含めない — 焼き込みサイズは HeadlessFont 側の固定値で、
     // manifest の fontSize は表示時の縮小倍率にしか使われず、atlas の中身を変えないため。
     pub def fontAtlas(ttfPath: String, caches: Caches): FontAtlas \ IO =

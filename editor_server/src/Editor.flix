@@ -433,7 +433,7 @@ mod Editor {
     /// PUT /file (body: {path, content, ifMtime?}) — dir 相対パスへ書き込む。
     /// プロジェクト外・親ディレクトリ不在は拒否する。
     /// ifMtime (GET /file が返した mtime) 付きなら、ディスクの現 mtime と違うとき 409 を返す —
-    /// 別の窓・別プロセスが先に保存した内容を黙って上書きしない(最後の書き手勝ちの事故防止)。
+    /// 別のウィンドウ・別プロセスが先に保存した内容を黙って上書きしない(最後の書き手勝ちの事故防止)。
     /// 省略時は従来どおり無条件で書く(後方互換)。
     def handleWriteFile(dir: String, bodyText: String, exchange: HttpExchange): Unit \ IO =
         let parsed = DocJson.parse(bodyText) |> Option.flatMap(JsonCodec.expectObject);

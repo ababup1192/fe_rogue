@@ -1,16 +1,16 @@
 /// ItemPickupPopupState — 中央アイテム取得ポップアップの論理状態を保持する effect
 ///
 /// 中央ポップアップ（`ItemPickupPopupUi` が描く World-entity UI）の「演出段階」「段階内の経過時間」
-/// 「取得音の予約」「表示中の文言」をまとめて持つ。見た目（中央の窓 + 文字のフェード）は `UiRender` が
+/// 「取得音の予約」「表示中の文言」をまとめて持つ。見た目（中央のウィンドウ + 文字のフェード）は `UiRender` が
 /// UiWorldState から毎フレーム描き、この resource は演出の進行状態だけを持つ。
 /// `LogState` / `TitleMenuState` と同じ Ref-based handler 注入パターンに揃える。
 mod ItemPickupPopupState {
 
     /// 演出段階。
-    ///   Idle    — フェード終了後に戻る終端状態。ratio=0 で窓も非表示。`show` で FadeIn へ抜け出す。
+    ///   Idle    — フェード終了後に戻る終端状態。ratio=0 でウィンドウも非表示。`show` で FadeIn へ抜け出す。
     ///   FadeIn  — ratio が 0→1 に上がる過渡状態。完了即 Hold へ。
     ///   Hold    — ratio=1.0 固定のまま holdDuration だけ待つ（補間は不要なので elapsed だけ加算）。
-    ///   FadeOut — ratio が 1→0 に下がる過渡状態。完了即 Idle へ戻り窓を消す。
+    ///   FadeOut — ratio が 1→0 に下がる過渡状態。完了即 Idle へ戻りウィンドウを消す。
     pub enum Stage with Eq, ToString {
         case Idle
         case FadeIn

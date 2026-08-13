@@ -17,13 +17,13 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 
 | コマンド | 何をするか |
 |---|---|
-| `make run`    | ゲームを起動する（窓が開く） |
+| `make run`    | ゲームを起動する（ウィンドウが開く） |
 | `make debug`  | 保存即反映(watchFile)と F8 を有効にして起動 |
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
 | `make bake`   | ギャラリー PNG を焼く（決定的な 4 場面: s1_start / s2_stack / s3_clear / s4_over） |
-| `make snapshot-check`  | 焼いた絵をスナップショットとバイト比較する |
-| `make snapshot-update` | いまの gallery をスナップショットとして更新する |
+| `make reference-check`  | 焼いた絵をリファレンス画像とバイト比較する |
+| `make reference-update` | いまの gallery をリファレンス画像として更新する |
 
 ## 読む順（全体像のつかみ方）
 
@@ -42,7 +42,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    4. `src/View.flix` … 状態を絵に写す（盤・固定セル・落下中ミノ・ゴースト・NEXT・スコア・
       ライン消しの閃光を、何をどこに描くか）。
    5. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
-   6. `src/bake/Bake.flix` … 決定的な 4 場面を PNG に焼く（スナップショット比較・目視批評）。
+   6. `src/bake/Bake.flix` … 決定的な 4 場面を PNG に焼く（リファレンス画像比較・目視批評）。
 3. 数値と色をいじる（保存すると走行中のゲームに即反映されます）:
    - `assets/tetris.rules.json` … 落下速度・接地の猶予・得点。
    - `assets/tetris.theme.json` … 盤・枠・ミノ・閃光の色。

@@ -1,7 +1,7 @@
 /// ItemPickupPopupUi の純粋な状態更新 `step` を検証する。
 ///
 /// `step` は (1) 取得音の予約を1回だけ消費する、(2) フェードの段階を時間で進めて
-/// 表示の濃さ `ratio` を返す、を担う。窓の alpha・文字色・可視への反映は scene 副作用なので、
+/// 表示の濃さ `ratio` を返す、を担う。ポップアップの alpha・文字色・可視への反映は scene 副作用なので、
 /// ここでは扱わず実機確認に委ねる。
 ///
 /// 段階の長さ: 浮かび上がり 300ms / 表示保持 1100ms / 消える 400ms。
@@ -70,7 +70,7 @@ mod TestItemPickupPopupUi {
 
     /// アイテム取得時に呼ぶ `reserveGetItemSound` は、ポップアップ(stage)を動かさず
     /// `soundPending` だけ true にする。これにより次フレームの step が get_item を 1 回鳴らし
-    /// （`testSoundPlaysOnFirstFrame` 参照）、窓は出ない(stage=Idle 維持)。
+    /// （`testSoundPlaysOnFirstFrame` 参照）、ポップアップは出ない(stage=Idle 維持)。
     /// 状態は resource（`ItemPickupPopupState.State`）が持つ。withState で包み、reserveGetItemSound の
     /// 後に State を読んで soundPending=true・stage=Idle 維持を確認する。
     @Test

@@ -131,7 +131,7 @@ mod RenderSprite {
         GL30.glBindVertexArray(0)
 
     // ========================================================================
-    // Polygon Batch Rendering — 同じ blend / 切り抜き窓の多角形を 1 draw call で
+    // Polygon Batch Rendering — 同じ blend / 切り抜き clip 矩形の多角形を 1 draw call で
     // ========================================================================
 
     /// 多角形バッチ用の VAO と動的 VBO を生成する（起動時に 1 回）。
@@ -249,7 +249,7 @@ mod RenderSprite {
 
     /// 三角形化済みの多角形頂点をまとめて 1 回の draw call で塗る。
     /// data は 1 頂点 6 floats（位置 2 + 色 4）を列順に並べたもの（RenderFrame が組む）。
-    /// blend は run 内で均一（RenderFrame が blend / 切り抜き窓の変化で run を切る）。
+    /// blend は run 内で均一（RenderFrame が blend / 切り抜き clip 矩形の変化で run を切る）。
     /// glBufferData で丸ごと差し替える（orphaning。drawSpriteInstanced と同方式）。
     pub def drawPolygonBatch(shader: Int32, vao: Int32, vbo: Int32,
                               uniforms: RenderShader.PolyBatchUniforms, blend: DrawCmd.BlendMode,

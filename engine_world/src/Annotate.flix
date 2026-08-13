@@ -292,7 +292,7 @@ mod Annotate {
                 // シェーダー面の外形は塗る矩形そのもの（rect が位置とサイズを持つ）。
                 s#rect
             case Render.Item.Clipped(c) =>
-                // 窓の外は描かれないので、外形も窓と交差させる — 完全に切り取られて
+                // clip 矩形の外は描かれないので、外形も clip 矩形と交差させる — 完全に切り取られて
                 // 見えない物が注釈やヒット一覧に載る嘘を作らない(交差が空なら負サイズ)。
                 Rect2.intersect(c#rect, itemAabb(sizeOf, { at = pos, item = c#inner }))
         }
@@ -331,7 +331,7 @@ mod Annotate {
         let size = { x = base#x * Float64.abs(d#scale#x), y = base#y * Float64.abs(d#scale#y) };
         let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0)) else d#position;
         let aabb = { position = topLeft, size = size };
-        // clip 窓の外は描かれない — 外形も窓と交差させる(itemAabb の Clipped と同じ理由)。
+        // clip 矩形の外は描かれない — 外形も clip 矩形と交差させる(itemAabb の Clipped と同じ理由)。
         match d#clip {
             case None    => aabb
             case Some(r) => Rect2.intersect(r, aabb)
@@ -352,7 +352,7 @@ mod Annotate {
             case Render.Item.Shader(s) =>
                 { kind = "shader", name = s#spec#name, position = pos, zIndex = s#zIndex, aabb = aabb }
             case Render.Item.Clipped(c) =>
-                // Hit の種類・名前・z は窓ではなく中身のもの。
+                // Hit の種類・名前・z は clip 矩形ではなく中身のもの。
                 hitOf({ at = pos, item = c#inner }, aabb)
         }
 
@@ -431,7 +431,7 @@ mod Annotate {
         else ds |> List.map(d -> { position = toScreen(view, d#position),
                                    scale = Vec2.mul(d#scale, view#zoom),
                                    style = Option.map(st -> scaleStyle(view#zoom, st), d#style),
-                                   // clip 窓も一緒に写す — 忘れると中身だけ動いて、切り口が
+                                   // clip 矩形も一緒に写す — 忘れると中身だけ動いて、切り口が
                                    // スクリーンに置き去りになる(ズームすると見当違いに切れる)。
                                    clip = Option.map(r -> inspectRect(view, r), d#clip) | d })
 

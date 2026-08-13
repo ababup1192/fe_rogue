@@ -1,7 +1,7 @@
 // 起動: Session（UI ページ + 部屋の World）を組み、App に部品を繋いで走らせる。
 // キー入力（外の世界）→ Controls.step が Session を進める（純粋）→ Controls.projectUi が
 // ページを整える（純粋）→ View.compose が絵へ投影する（純粋）→ App が画面へ描く（外の世界）。
-// 外の世界（窓・時計・ファイル）に触れるハンドラは Main が `with` で明示的に張る（effect は隠さない）。
+// 外の世界（ウィンドウ・時計・ファイル）に触れるハンドラは Main が `with` で明示的に張る（effect は隠さない）。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()

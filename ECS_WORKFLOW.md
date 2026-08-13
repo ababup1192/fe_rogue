@@ -191,7 +191,7 @@
 - [~] 1. hide-then-render 廃止: そもそもノードを積まない（判定: `addChild` 使用が Game/GameLifecycle 以外ゼロ）
   - 調査済み（2 agent 棚卸し）: **engine 追加は不要**（テキスト=Label2D.make+toDrawables は pure／sprite=SpriteResource→Sprite2D 値→Renderable.toDrawables／矩形=solidBox／ポリゴン=toRenderCmd(s) が全て tree 非依存）。残置必須ノード= Camera2D（viewTransform 源）・AudioStreamPlayer（BGM）・ユニット Marker2D（lunge target/位置権威/Data store）・敵 Sprite（deathBlink alpha target）・Cursor（snag isPlaying 入力ゲート）・ItemList（選択状態=P4(b)）・driver タグ 3 種。Title/CharacterSelect はダンジョン外＝スコープ外。
   - ✅ P6-1a Range タイル Panel 撤去（renderRangeOverlays が唯一経路・hideRangeTiles 撤去）
-  - ✅ P6-1b Fog 暗幕 ColorRect プール撤去（renderFog が唯一経路・hideHaze 撤去。applyFogWith は点灯 visibility 制御のみ残る）
+  - ✅ P6-1b Fog 暗くするオーバーレイ ColorRect プール撤去（renderFog が唯一経路・hideHaze 撤去。applyFogWith は点灯 visibility 制御のみ残る）
   - ✅ P6-1c Stairs 脱ノード（**ノードを一切積まない第一号**。見た目= scene.json→定数化〔texture/spriteScale/spriteZIndex〕、renderStairs が World.stairsPos+fog lit ゲートで直描き。Minimap/Chest 占有の階段読みを World へ flip。NodeTag.Stairs/isAt/getPos は legacy 杖 twin+golden fixture の手組みノード用 seam として残置）
   - ✅ P6-1d Chest 脱ノード（renderChests=chestKey→ChestCatalog sprite 直描き・`Cmd.ClearChests` を build choke 2 経路の**頭**で emit〔addFromSnaps より前が必須〕・refreshMirror/syncFromScene は preserve 化・takeAt は store 存在ゲート＋Cmd のみ）
   - ✅ P6-1e GroundItem 脱ノード（renderItems=spriteOf 直描き・本体 z5＋縁取り 4 枚 z4・**点滅位相は Data#elapsed を stepWorld が tick**〔per-item stagger 維持・fx と同じ lane〕・`Cmd.ClearItems`・pickup/auto-pickup/階段占有/minimap の読みを World へ flip。**GroundItem の手組みノード→syncFromScene seed はテスト seam として残置**〔stairs と同型〕・fixture/assert は withTracedWorld（ONE Ref の Command+Query）へ移行）
@@ -259,7 +259,7 @@
 
 **現在フェーズ: 🏁 全フェーズ完了（2026-07-02）— P1〜P6 の計画は final。** 到達状態:
 - **World が唯一の sim 真実源**: 全 store が command 駆動（Spawn/Despawn/ClearUnits 含む）。frame 境界の scene⇄World 同期（syncTreeFromWorld/refreshMirror の derive・prune/起動 syncFromScene）は全廃＝refreshMirror は frame カウンタのみ。
-- **render-from-World**: ダンジョン内の描画対象ノードはゼロ（range/fog 暗幕/階段/宝箱/床アイテム/fx/HP バー/武器アイコン/ユニット sprite すべて直描き）。残ノード＝Camera/Audio/ユニット Marker2D（位置権威・lunge target）/カーソル/HUD・メニュー（P4(b) 未実施）/driver タグ。
+- **render-from-World**: ダンジョン内の描画対象ノードはゼロ（range/fog の暗くするオーバーレイ/階段/宝箱/床アイテム/fx/HP バー/武器アイコン/ユニット sprite すべて直描き）。残ノード＝Camera/Audio/ユニット Marker2D（位置権威・lunge target）/カーソル/HUD・メニュー（P4(b) 未実施）/driver タグ。
 - **legacy ゼロ**: `*Legacy`・トグル 3 個・戦闘 legacy 閉包を撤去。golden は「ECS 実行＋frozen literal」と「wrapper↔system 整合 pin」。
 - **恒久 invariant guard**: gameLoop の 4 DIFF（ATTACKTARGET/F2 PHASE/PLAYERDATA/ENEMYDATA）＝「scene 権威 field の変更は Cmd 併記」契約の frame 末検査（撤去しない）。
 - **hybrid-A の最終形**: scene 権威で残る field（statuses/weapons/在庫/facing/selectedItem/hidden/acted 等）は dual-write が設計（stale ではない）。Data record は overlay（dataFromWorld）の view-type を兼ねるため field 削除はしない。

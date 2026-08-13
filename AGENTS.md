@@ -93,9 +93,9 @@ lint 群（矩形だけの View・色票・画像の量・画素の並び・コ�
 
 ### 生成した絵は git に入れない
 
-生成した `gallery/` と `snapshot/*.png` は git 管理外。人に見せる絵は
+生成した `gallery/` と `reference/*.png` は git 管理外。人に見せる絵は
 [docs/gallery/](docs/gallery/README.md) へ選んでコピー、退行検知は
-`templates/*/snapshot/SHA256SUMS.txt`（例外は Studio が読む `snapshot/title.png` のみ）。
+`templates/*/reference/SHA256SUMS.txt`（例外は Studio が読む `reference/title.png` のみ）。
 違反はコミット時に pre-commit ゲートが止める（配線 `make hooks`、理屈ごと `bin/precommit.py`）。
 
 ## 検証

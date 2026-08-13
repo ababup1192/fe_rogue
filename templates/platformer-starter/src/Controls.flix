@@ -2,7 +2,7 @@
 // どのキーがどの操作かは KeysDoc(player.keys.json)が決める — 既定は
 // ←→(A・D)で歩き、Space か ↑(W)でジャンプ、↓(S)で一方通行から降りる、
 // B(Shift・X)を押しっぱなしで B ダッシュ。エディタで割り当てを変えて保存すると即反映。
-// Doc の保存即反映(watchFile)と F1 一括リロードの台帳もここに 1 枚だけ置く。
+// Doc の保存即反映(watchFile)と F1 一括リロードの一覧表もここに 1 枚だけ置く。
 mod Controls {
 
     /// このフレームのキーを World.Input へ。操作ごとのキーの列(keys Doc)の
@@ -21,7 +21,7 @@ mod Controls {
     pub def step(frame: App.Frame, w: World.World): World.World =
         World.step(inputOf(frame, w#keys), frame#dt, w)
 
-    /// Doc の台帳(DocTable)。watchFile(保存即反映)と F1 の一括リロードは
+    /// Doc の一覧表(DocTable)。watchFile(保存即反映)と F1 の一括リロードは
     /// どちらもこの 1 枚から導出する — 足し忘れで「保存しても効かない」を作らないため。
     /// docId は project.json の editor.resources[] の id と同じ物 — これで
     /// 「いま画面に出ているファイル」を Studio に名乗れる(ActiveDocs)。
@@ -40,7 +40,7 @@ mod Controls {
     pub def reloads(): List[(String, World.World -> World.World \ Fs.FileRead)] =
         DocTable.reloads(docTable())
 
-    /// F1: 台帳の順に全 Doc を読み直す(絵と数値の一括リロード)。
+    /// F1: 一覧表の順に全 Doc を読み直す(絵と数値の一括リロード)。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
         DocTable.reloadAll(docTable(), w)
 }

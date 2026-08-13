@@ -30,7 +30,7 @@ mod LevelUpPanelUi {
     // spec 置き場 / 名前パス
     // ========================================================================
 
-    /// ui.json の置き場。起動時の spawnAsset・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAsset・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/LevelUpPanel.ui.json")
 
     /// root（可視トグルの対象）と各ノードの名前パス。

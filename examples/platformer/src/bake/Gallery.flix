@@ -1,5 +1,5 @@
 // Gallery — 挙動ショーケースを焼く。Replay で純粋な update を駆動してシナリオを再現し、
-// SoftRaster で 1 枚ずつ描いて PNG・GIF・フィルムストリップにし、SnapshotSite でページ化する。
+// SoftRaster で 1 枚ずつ描いて PNG・GIF・フィルムストリップにし、ReferenceSite でページ化する。
 // シナリオの初期 World と台本は Trace が供給する（テストと同じデータ）ので、ギャラリーは
 // 「テストで固定した挙動」をそのまま絵にしたものになる。
 //
@@ -60,9 +60,9 @@ mod Gallery {
         Bakery.renderPng(wide, drawables, polygons, name)
 
     /// シナリオ（初期 World + 台本）を Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて
-    /// GIF＋コマ別 PNG に焼く。返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
+    /// GIF＋コマ別 PNG に焼く。返り値は ReferenceSite 用のフィルムストリップ情報（駒送りビューア）。
     def bakeGif(atlas: FontAtlas, world: Field.World, cues: List[Replay.Cue[Field.Input]],
-                stride: Int32, name: String): SnapshotSite.Filmstrip \ IO =
+                stride: Int32, name: String): ReferenceSite.Filmstrip \ IO =
         let film = Replay.timeline(Step.update, Trace.dt(), cues, world);
         Bakery.bakeGif(config(atlas), film, stride, w -> worldCmds(atlas, w), name)
 
@@ -126,7 +126,7 @@ mod Gallery {
 
         // サイト生成。
         run {
-            SnapshotSite.generate(
+            ReferenceSite.generate(
                 // 出力が等倍になったので cssScale も 1（表示 = 実ピクセル 480×360）。
                 { outDir = outDir(), title = "Platformer Gallery", cssScale = 1 },
                 catalog({ full = fullFilm, tap = tapFilm, across = acrossFilm,
@@ -140,22 +140,22 @@ mod Gallery {
 
     /// カタログに並べるフィルムストリップ一式（名前渡しで取り違えを防ぐ）。
     type alias Films = {
-        full = SnapshotSite.Filmstrip,
-        tap = SnapshotSite.Filmstrip,
-        across = SnapshotSite.Filmstrip,
-        dash = SnapshotSite.Filmstrip,
-        death = SnapshotSite.Filmstrip,
-        lift = SnapshotSite.Filmstrip,
-        drop = SnapshotSite.Filmstrip,
-        clearRun = SnapshotSite.Filmstrip,
-        slope = SnapshotSite.Filmstrip,
-        stomp = SnapshotSite.Filmstrip,
-        flyerBob = SnapshotSite.Filmstrip,
-        spikyTrap = SnapshotSite.Filmstrip,
-        parade = SnapshotSite.Filmstrip
+        full = ReferenceSite.Filmstrip,
+        tap = ReferenceSite.Filmstrip,
+        across = ReferenceSite.Filmstrip,
+        dash = ReferenceSite.Filmstrip,
+        death = ReferenceSite.Filmstrip,
+        lift = ReferenceSite.Filmstrip,
+        drop = ReferenceSite.Filmstrip,
+        clearRun = ReferenceSite.Filmstrip,
+        slope = ReferenceSite.Filmstrip,
+        stomp = ReferenceSite.Filmstrip,
+        flyerBob = ReferenceSite.Filmstrip,
+        spikyTrap = ReferenceSite.Filmstrip,
+        parade = ReferenceSite.Filmstrip
     }
 
-    def catalog(films: Films): List[SnapshotSite.Item] =
+    def catalog(films: Films): List[ReferenceSite.Item] =
         png("screen_field", "classic 地形の全景: 崖 2 本で 3 分割の地面 + 浮き床 3 枚 + 左右の壁。球体がプレイヤー", "Screens") ::
         pngAt("level_overview", "本番レベルの全景: 208×30 のテキストグリッド（3328×480px・マリオ 1-1 の文法）。丘の坂・P スピードゲートの大穴・敵 8 体・階段とゴールの旗", "Level", 3328) ::
         gif("full_jump", "満タンジャンプ: 24 フレームで頂点 96px、頂点付近はふわり（0.5 倍重力）、下降は 1.8 倍で速い", "Jump", films#full) ::
@@ -173,20 +173,20 @@ mod Gallery {
         gifAt("charparade", "キャラクターラボ: 候補 15 体が同じ 6 秒の演技（走り→Bダッシュ→スキッド→折り返し→ジャンプ→着地→待機）を横並びで踊る", "Characters", 1800, films#parade) ::
         pngAt("charlineup", "キャラクターラボの整列写真: t=5.0 の待機（呼吸）で全 15 体をラベル付きで並べた 1 枚", "Characters", 1800) :: Nil
 
-    def png(name: String, desc: String, scenario: String): SnapshotSite.Item =
+    def png(name: String, desc: String, scenario: String): ReferenceSite.Item =
         pngAt(name, desc, scenario, pxWidth())
 
-    def pngAt(name: String, desc: String, scenario: String, px: Int32): SnapshotSite.Item =
+    def pngAt(name: String, desc: String, scenario: String, px: Int32): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "png",
           pxWidth = px, generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 
-    def gif(name: String, desc: String, scenario: String, filmstrip: SnapshotSite.Filmstrip): SnapshotSite.Item =
+    def gif(name: String, desc: String, scenario: String, filmstrip: ReferenceSite.Filmstrip): ReferenceSite.Item =
         gifAt(name, desc, scenario, pxWidth(), filmstrip)
 
     def gifAt(name: String, desc: String, scenario: String, px: Int32,
-              filmstrip: SnapshotSite.Filmstrip): SnapshotSite.Item =
+              filmstrip: ReferenceSite.Filmstrip): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "gif",
           pxWidth = px, generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = Some(filmstrip) }
+          lint = ReferenceSite.noLint(), filmstrip = Some(filmstrip) }
 }

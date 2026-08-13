@@ -2,7 +2,7 @@
 // 一致保証が無いため。docs/backend-parity.md の tex 場の行を参照）。
 // 不一致があれば「GL | Soft | 違いヒート」を横に並べた 1 枚を debug/diff/ に焼く。
 // 画像の合成は Graphics2D を使わず Raster 直コピーだけ — macOS の -XstartOnFirstThread 下で
-// AWT Toolkit の初期化待ちにハングしうるため（GoldenDiff.sideBySide と同じ理由）。
+// AWT Toolkit の初期化待ちにハングしうるため（ReferenceDiff.sideBySide と同じ理由）。
 mod PixelDiff {
     import java.awt.image.BufferedImage
     import java.io.File

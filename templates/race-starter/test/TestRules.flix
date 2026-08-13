@@ -249,7 +249,7 @@ mod TestRules {
     // ══════════════════════════════════════════════════════
 
     /// 真横 5px にライバルが並んで触れている 1 拍前（自機は直線・舵は中立）。
-    /// baseSpeed = 0 にしてライバルの前進を止め、1 拍のあいだ当たり判定の窓から出ないようにする。
+    /// baseSpeed = 0 にしてライバルの前進を止め、1 拍のあいだ当たり判定の区間から出ないようにする。
     def sideBySide(): World.World =
         let w = racing();
         { rivals = rivalAt(World.playerDistOf(w), w#playerOff - 5.0, 0.0) :: Nil | w }

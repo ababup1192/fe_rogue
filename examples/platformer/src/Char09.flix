@@ -122,7 +122,7 @@ mod Char09 {
         { at = {x = stage#pos#x, y = cy}, item = RawDraw.polygon(starVerts(spin), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
-    /// 着地: 低い台形状に潰れ、左右へ破片が跳ねる。窓の終わりで元の五角形へ戻る。
+    /// 着地: 低い台形状に潰れ、左右へ破片が跳ねる。区間の終わりで元の五角形へ戻る。
     def crashBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let squash = 1.0 - stage#modeT / 0.2;
         let cy = groundCenterY(rollAngle(stage)) * (1.0 - 0.45 * squash);

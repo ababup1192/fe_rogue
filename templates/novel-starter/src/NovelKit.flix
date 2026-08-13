@@ -1,4 +1,4 @@
-// NovelKit — 会話窓と選択肢の「キット」。見た目は assets/ui/*.ui.json が持ち、
+// NovelKit — ダイアログと選択肢の「キット」。見た目は assets/ui/*.ui.json が持ち、
 // ここは状態（いま何を話していて、何を選ばせているか）とその進め方だけを持つ（純粋）。
 // 中身はエンジンの UiDialog（開閉と行送り）+ UiTypewriter（文字送り）+ UiSlots（選択肢の
 // 流し込み）の組み合わせで、クリックの意味は meta 文字列（novel/choice/N）で伝える。
@@ -31,7 +31,7 @@ mod NovelKit {
     pub def step(cps: {cps = Float64}, dt: Float64, kit: Kit): Kit =
         { dialog = UiDialog.step(cps = cps#cps, dt, kit#dialog) | kit }
 
-    /// 決定 1 回分。選択肢待ちでは窓を閉じない（文字送りの飛ばしだけ効く）。
+    /// 決定 1 回分。選択肢待ちではダイアログを閉じない（文字送りの飛ばしだけ効く）。
     pub def advance(kit: Kit): Kit =
         if (isAsking(kit)) kit
         else { dialog = UiDialog.advance(kit#dialog) | kit }
@@ -72,8 +72,8 @@ mod NovelKit {
             case None => UiStore.setVisible("novel_choices", false, ui1)
         }
 
-    /// 本文（文字送りの途中まで）。会話窓パネルの内側に折り返して描く。
-    /// 置き場所と幅は spawn 済みの dialog.ui.json のパネルから毎回導く（座標の台帳は
+    /// 本文（文字送りの途中まで）。ダイアログパネルの内側に折り返して描く。
+    /// 置き場所と幅は spawn 済みの dialog.ui.json のパネルから毎回導く（座標の一覧表は
     /// ui.json だけ）。文字の大きさ・行間は手触り（novel.kind.json）、
     /// 文字色（ink）は色票（novel.theme.json）から来る。
     pub def body(atlas: FontAtlas, ink: Color, style: { size = Float64, lineGap = Float64 },
@@ -113,11 +113,11 @@ mod NovelKit {
                   y = panelAt#y + padTop + speakerSize + speakerGap() },
           maxWidth = panelWidth - padLeft - padRight }
 
-    /// キットが使う ui.json の一覧（spawn と「表示中」の名乗りが同じ台帳を見る）。
+    /// キットが使う ui.json の一覧（spawn と「表示中」の名乗りが同じレジストリを見る）。
     pub def uiPaths(): List[String] =
         "assets/ui/dialog.ui.json" :: "assets/ui/choices.ui.json" :: Nil
 
-    /// キットの ui.json 一式を 1 つの UiStore へ spawn する（起動と bake が同じ台帳を見る）。
+    /// キットの ui.json 一式を 1 つの UiStore へ spawn する（起動と bake が同じレジストリを見る）。
     pub def spawnAssets(): UiStore.UiWorld \ Fs.FileRead =
         List.foldLeft((ui, path) -> spawnOne(path, ui), UiStore.empty(), uiPaths())
 

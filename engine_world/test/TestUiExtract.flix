@@ -1,5 +1,5 @@
 // TestUiExtract — text の wrap（折り返し幅の解決）と fit（枠に収める縮小）の規則を固定する。
-// 折り返しの行割りそのものは engine の TestText が持ち場（ここでは繰り返さない）。
+// 折り返しの行割りそのものは engine の TestText の担当範囲（ここでは繰り返さない）。
 mod TestUiExtract {
 
     // ── 道具 ──

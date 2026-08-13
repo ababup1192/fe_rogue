@@ -2,7 +2,7 @@
 // 実行: flix run --entrypoint GifBake.all → debug/showcase.gif
 // 積み上げた盤の 1 列だけを空けておき、そこへ I ミノを縦に落として 4 段消し（テトリス）を
 // 実演する決定的な台本。Bake.flix の静止画とは別に、動きを見せたい GIF だけをここに分ける
-// （gallery/snapshot は静止画の比較専用なので、ここでは触らない）。
+// （gallery/reference は静止画の比較専用なので、ここでは触らない）。
 mod GifBake {
     import java.io.File
 

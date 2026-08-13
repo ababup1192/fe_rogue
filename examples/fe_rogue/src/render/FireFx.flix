@@ -250,7 +250,7 @@ mod FireFx {
 
     def tau(): Float64 = 6.283185307179586
 
-    /// 生存窓: 発生から delay 秒後に生まれ、life 秒だけ生きる。着弾から t 秒目がこの窓の
+    /// 生存区間: 発生から delay 秒後に生まれ、life 秒だけ生きる。着弾から t 秒目がこの区間の
     /// 外なら None、内なら進み具合 u（0..1）と発生からの経過秒 tl を draw に渡して呼ぶ。
     /// flamePiece / sparkPiece 共通の「点火判定 → 進み具合の算出」の定型をここに集約する。
     def living(delay: Float64, life: Float64, t: Float64, draw: (Float64, Float64) -> a): Option[a] =

@@ -80,7 +80,7 @@ mod Char08 {
         { wFac = 1.0 + 0.25 * e, hFac = 1.0 - 0.2 * e, taper = 1.0 - 0.45 * e,
           lean = 0.0, wobAmp = 0.8, wavePhase = stage#t * 1.5 }
 
-    /// 着地: べしゃりと水たまりに広がり、窓の終わりへ向けて盛り上がって元の山へ戻る。
+    /// 着地: べしゃりと水たまりに広がり、区間の終わりへ向けて盛り上がって元の山へ戻る。
     def landPose(stage: CharStage.Stage): Pose =
         let recover = stage#modeT / 0.2;
         let squash = 1.0 - recover;
@@ -182,7 +182,7 @@ mod Char08 {
               item = RawDraw.circle(0.8, bodyGel(), 9) |> Render.fade(0.25 * high) }
         }
 
-    /// 着地の飛沫: 左右へ低く跳ねるしずく。窓の後半で薄れて消える。
+    /// 着地の飛沫: 左右へ低く跳ねるしずく。区間の後半で薄れて消える。
     def landSplash(stage: CharStage.Stage): List[Render.PlacedItem] =
         let recover = stage#modeT / 0.2;
         List#{-1.0, 1.0} |> List.map(side ->

@@ -102,7 +102,7 @@ pub type alias TileChips = Map[(Int32, Int32), List[{x = Int32, y = Int32}]]
 
 /// フロア床の正解データ（デバッグ注釈の world.json 専用 read-model）。
 /// `floorCells` は合成後の床セル集合（decorTiles 由来・door 出っ張り込み）で、
-/// 「盤面の範囲内だが床も壁も無い空間（void）」を床と区別する唯一の情報源
+/// 「盤面の範囲内だが床も壁も無い空間（void）」を床と区別する source of truth
 /// （タイル選択の TRBL キーと IntGrid は床/void を区別するため、dump もこれで揃える）。
 /// `materialId` はアンカー部屋の material 名（フロア全体の wallMap / autoRules の出典）。
 pub type alias MapFloorInfo = {materialId = String, floorCells = Set[(Int32, Int32)]}
@@ -135,10 +135,10 @@ pub enum World {
                  // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）。フェーズ限定の view 状態だが
                  // 入力/遷移が書き render が読む論理値。World 単一権威（production は inline facade・test は `RangeOverlayState.withState` Ref）。
                  rangeOverlay = RangeOverlayState.Data,
-                 // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）。行カーソルは UI のリスト表示側が持つ。
+                 // アイテムメニューの選択状態（カテゴリ index / 一括選択マーク）。行カーソルは UI のリスト表示側が持つ。
                  // World 単一権威（production は inline facade・test は `ItemMenuState.withState` Ref）。
                  itemMenu = ItemMenuState.Data,
-                 // 物交換窓のセッション状態（members/focus/pick/origin/marks/markPane）。行カーソルは World-entity UI selection。
+                 // トレードメニューのセッション状態（members/focus/pick/origin/marks/markPane）。行カーソルは World-entity UI selection。
                  // World 単一権威（production は inline facade・test は `TradeMenuState.withState` Ref）。型は session データ TradeMenuUi.PanelData。
                  tradeMenu = TradeMenuUi.PanelData,
                  // World-entity UI の状態（全滅モーダル等の UI ノード store）。見た目は UiExtract/render が導出。
@@ -431,7 +431,7 @@ mod World {
     pub def rangeOverlayOf(world: World): RangeOverlayState.Data =
         let World.World(w) = world; w#rangeOverlay
 
-    /// World の itemMenu（アイテム窓の選択状態・単一権威）を読む（read-model アクセサ）。`ItemMenuState` facade が使う。
+    /// World の itemMenu（アイテムメニューの選択状態・単一権威）を読む（read-model アクセサ）。`ItemMenuState` facade が使う。
     pub def itemMenuOf(world: World): ItemMenuState.Data =
         let World.World(w) = world; w#itemMenu
 
@@ -673,7 +673,7 @@ mod World {
         case SetSelection(SelectedPlayer.Selection)  // 操作中プレイヤー選択状態 write（SelectedPlayer facade）
         case SetCursorLogical(CursorState.Logical)   // 選択カーソルの論理部 write（CursorState facade）
         case SetRangeOverlay(RangeOverlayState.Data)  // 範囲オーバーレイ 7 種 write（RangeOverlayState facade）
-        case SetItemMenu(ItemMenuState.Data)         // アイテム窓の選択状態 write（ItemMenuState facade）
+        case SetItemMenu(ItemMenuState.Data)         // アイテムメニューの選択状態 write（ItemMenuState facade）
         case SetTradeMenu(TradeMenuUi.PanelData)      // 物交換セッション状態 write（TradeMenuState facade）
         case SetUiWorld(UiStore.UiWorld)              // World-entity UI 状態 write（UiWorldState facade）
         case SetGatherResume(Bool)                    // 集合ターン跨ぎ継続フラグ write（GatherResume facade）

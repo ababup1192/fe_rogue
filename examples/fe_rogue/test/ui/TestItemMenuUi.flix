@@ -5,11 +5,11 @@
 ///   - actionItemsFor: 選択中アイテム種別 → サブメニュー項目の出し分け（bulk / holdOnly 含む）
 ///   - parseItemKind: metadata "w:/s:/c:/r:<idx>" の往復
 ///   - nextCategoryIn: 在庫のあるカテゴリだけを左右で循環（空はスキップ）
-///   - windowOffset: 3 行窓のスクロール offset（選択が窓に入るようクランプ）
+///   - windowOffset: 表示範囲 3 行のスクロール offset（選択が表示範囲に入るようクランプ）
 ///   - 実 asset の row 宣言数 ⇔ maxSlots() の一致
 ///   - 幾何: 武器/アイテムアイコンのチップが選択ハイライト箱に収まる（左はみ出しの回帰防止）
 ///
-/// 可視同期（frameStep）・窓流し込みは UiWorldState を要する結線なので、ここでは行データ・
+/// 可視同期（frameStep）・表示範囲への流し込みは UiWorldState を要する結線なので、ここでは行データ・
 /// サブメニュー・スクロール計算などの純粋部分を直接観測する。
 mod TestItemMenuUi {
 
@@ -173,13 +173,13 @@ mod TestItemMenuUi {
              ItemMenuUi.nextCategoryIn(1 :: Nil, 1, -1)))
 
     // ════════════════════════════════════════════════════════
-    // windowOffset: 3 行窓のスクロール offset（選択が窓に入るようクランプ）
+    // windowOffset: 表示範囲 3 行のスクロール offset（選択が表示範囲に入るようクランプ）
     //   maxSlots()=3。centerOff=(3-1)/2=1 なので選択を上から 1 行目に保つ。
     //     count<=3      : 0 固定（スクロール不要）
     //     count=5, sel  : 0→0, 1→0, 2→1, 3→2, 4→2（末尾で下停止）
     // ════════════════════════════════════════════════════════
 
-    /// count が窓（3）以下ならスクロールせず offset=0（末尾 sel でも 0）。
+    /// count が表示範囲（3）以下ならスクロールせず offset=0（末尾 sel でも 0）。
     @Test
     def testWindowOffsetNoScrollWhenFits(): Unit \ Assert =
         Assert.assertEq(
@@ -217,7 +217,7 @@ mod TestItemMenuUi {
             PlayerData.marksDescendingPerList(marks))
 
     // ════════════════════════════════════════════════════════
-    // 実 asset の行宣言数 ⇔ maxSlots() の一致（窓の行数を pin）
+    // 実 asset の行宣言数 ⇔ maxSlots() の一致（表示範囲の行数を pin）
     //   ui.json は row0..row{maxSlots-1} を宣言し、row{maxSlots} は宣言しない。
     // ════════════════════════════════════════════════════════
 
@@ -228,7 +228,7 @@ mod TestItemMenuUi {
             case Err(_)   => bug!("ItemMenu.ui.json load failed")
         }
 
-    /// 実 asset の row 宣言数が `ItemMenuUi.maxSlots()` と一致する（窓の行数の宣言過不足を弾く）。
+    /// 実 asset の row 宣言数が `ItemMenuUi.maxSlots()` と一致する（表示範囲の行数の宣言過不足を弾く）。
     @Test
     def testRowDeclarationCountMatchesMaxSlots(): Unit \ {Assert, Fs.FileRead} =
         Assert.assertEq(expected = ItemMenuUi.maxSlots(), itemMenuRowCount())

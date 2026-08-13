@@ -1,6 +1,6 @@
 // DocJson — Doc（*.kind.json）を読むときの JSON 道具箱。parse / デコード補助（atNode・jsonError・
 // getAtKey 系）と、壊れた JSON を既定値へ落とす fail-open 読み込み（loadOr・checkVersion）を持つ。
-// 境界: 値 ⇄ Json の純変換は JsonCodec、Doc 1 種ごとの型と読み書きは各 *Doc モジュールの持ち場。
+// 境界: 値 ⇄ Json の純変換は JsonCodec、Doc 1 種ごとの型と読み書きは各 *Doc モジュールの責務。
 // 注意: flix-json 互換の呼び出し形（`getAtKey(Root, ...)` 等）を残している。flix-json はエラーに
 //   パス接頭辞 (`Root`) を持たせるが、`Util.Json` は decode 時に内部でパスを構築するため、
 //   呼び出し側が渡す接頭辞は捨てる。
@@ -143,8 +143,8 @@ mod DocJson {
     pub def atNode(path: String, r: Result[JsonError, a]): Result[JsonError, a] =
         Result.mapErr(e -> Decode(JsonPath.empty(), TypeMismatch("at ${path}: ${describe(e)}")), r)
 
-    /// エラーを編集者向けの一文にする。jsonError / atNode が詰めた文章は `TypeMismatch` の器を
-    /// 借りているだけなので、器の定型句（"type mismatch: expected"）を剥がして中身だけ返す。
+    /// エラーを編集者向けの一文にする。jsonError / atNode が詰めた文章は `TypeMismatch` のコンテナを
+    /// 借りているだけなので、コンテナの定型句（"type mismatch: expected"）を剥がして中身だけ返す。
     /// Util.Json 由来の本物の型不一致（メッセージが "Float64" 等の型名 1 語）まで裸にすると
     /// 文脈が消えるので、空白を含む文章のときだけ剥がす。
     pub def describe(e: JsonError): String =

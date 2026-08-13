@@ -1,6 +1,6 @@
 ---
 name: add-template
-description: "templates/ にスターターを足す・更新する手順。snapshot/title.png・lint-palette・Doc 外形規約・画風の宣言・Studio への登録と swap-jar まで、どれか 1 つ欠けると Studio で「出ない / 絵がない / 作れない」になる 7 手順を出す。新しいジャンルのテンプレを作るとき、templates/ 配下を直すとき、make new-game が動かないとき、Studio のジャンルカードに絵が出ないときに使う。"
+description: "templates/ にスターターを足す・更新する手順。reference/title.png・lint-palette・Doc 外形規約・画風の宣言・Studio への登録と swap-jar まで、どれか 1 つ欠けると Studio で「出ない / 絵がない / 作れない」になる 7 手順を出す。新しいジャンルのテンプレを作るとき、templates/ 配下を直すとき、make new-game が動かないとき、Studio のジャンルカードに絵が出ないときに使う。"
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -11,7 +11,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ## 2 系統ある
 
 - **具体値式**（rpg / novel / race / tetris / platformer-starter）: 値をそのまま書く。**in-repo で
-  `make -C templates/<name> check / test / bake` が通りスナップショットを持つ**作り込み例。
+  `make -C templates/<name> check / test / bake` が通りリファレンス画像を持つ**作り込み例。
   凝った演出もテストも載せられる。Studio の「はじめる」は複製で始まる。
 - **トークン式**（game-starter）: `__NAME__` `__W__` などを埋めた最小の骨組み。
   in-repo ではビルドしない（`make new-game` が置換して初めて動く）。W/H を引数で決める素体。
@@ -28,8 +28,8 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 **どれか欠けると Studio で「出ない / 絵がない / 作れない」になる。**
 
 ```
-- [ ] 1. templates/<genre>-starter/ を作った（rpg-starter を写経元に。具体値式ならスナップショットも生成する）
-- [ ] 2. snapshot/title.png を用意した
+- [ ] 1. templates/<genre>-starter/ を作った（rpg-starter を写経元に。具体値式ならリファレンス画像も生成する）
+- [ ] 2. reference/title.png を用意した
 - [ ] 3. make lint-palette が通った
 - [ ] 4. Doc の外形規約を守った（全 Doc に version・schema は sections 方言）
 - [ ] 5. 画風を宣言した（AGENTS.local.md + View.flix 冒頭の層の並び）
@@ -37,15 +37,15 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 - [ ] 7. make swap-jar して Studio を Cmd+Q → 開き直した
 ```
 
-### 2. `snapshot/title.png` を必ず用意する
+### 2. `reference/title.png` を必ず用意する
 
 Studio のジャンルカードのサムネイルは `GET /genesis/title` がこれを読む（無いと空絵に倒れる）。
-生成に `title` シーンを 1 枚足してスナップショットを更新する。
+生成に `title` シーンを 1 枚足してリファレンス画像を更新する。
 
-更新は `make -C templates/<name> snapshot-update`。これが `gallery/*.png` を `snapshot/` へ写し、
-**`snapshot/SHA256SUMS.txt` まで作り直す**。git に入るのはこの一覧と `title.png` だけで、
-他のスナップショット PNG は管理外（`make snapshot-check` は一覧と突き合わせて退行を見る）。
-`SHA256SUMS.txt` を作り忘れると、clone した人の `make snapshot-check` が「スナップショットがまだ作られていません」で止まる。
+更新は `make -C templates/<name> reference-update`。これが `gallery/*.png` を `reference/` へ写し、
+**`reference/SHA256SUMS.txt` まで作り直す**。git に入るのはこの一覧と `title.png` だけで、
+他のリファレンス画像 PNG は管理外（`make reference-check` は一覧と突き合わせて退行を見る）。
+`SHA256SUMS.txt` を作り忘れると、clone した人の `make reference-check` が「リファレンス画像がまだ作られていません」で止まる。
 
 ### 3. `make lint-palette` を通す
 

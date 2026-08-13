@@ -54,13 +54,13 @@
 - passes を宣言順に生成してから本編を PNG に生成する（GL の renderFrame と同じ順序 —
   `pub def renderPngWithPasses(cfg: BakeConfig, passes: List[PassSpec], drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
 - frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に生成する。
-  `pub def bakeGif(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): SnapshotSite.Filmstrip \ IO`
+  `pub def bakeGif(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): ReferenceSite.Filmstrip \ IO`
 - 複数フォントで生成する bakeGif。`extraFonts` はテクスチャ名（実機の project.json の
-  `pub def bakeGifFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry], frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): SnapshotSite.Filmstrip \ IO`
+  `pub def bakeGifFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry], frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): ReferenceSite.Filmstrip \ IO`
 - シェーダー面つきの bakeGif（renderPngWith の GIF 版）。toCmds が各コマの
-  `pub def bakeGifWith(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): SnapshotSite.Filmstrip \ IO`
+  `pub def bakeGifWith(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): ReferenceSite.Filmstrip \ IO`
 - pass つきの bakeGif（renderPngWithPasses の GIF 版）。toCmds が各コマの
-  `pub def bakeGifWithPasses(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[PassSpec], List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): SnapshotSite.Filmstrip \ IO`
+  `pub def bakeGifWithPasses(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[PassSpec], List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): ReferenceSite.Filmstrip \ IO`
 - stride 枚ごとに 1 枚を残す（0 番から）。
   `pub def every(stride: Int32, xs: List[a]): List[a]`
 
@@ -82,10 +82,6 @@
 - アニメ GIF を `outPath` へ書き出す。`frames` は同寸の BufferedImage 列、`delayMs` は各フレームの
   `pub def encode(frames: List[BufferedImage], delayMs: Int32, outPath: String): Unit \ IO`
 
-## GoldenDiff — `engine_tools/src/GoldenDiff.flix`
-- 環境変数で受け取って焼く。DIFF_DIR = ゲームのディレクトリ、
-  `pub def pairs(): Unit \ IO`
-
 ## HeadlessFont — `engine_tools/src/HeadlessFont.flix`
 - AWT をヘッドレスに固定する。macOS では `-XstartOnFirstThread`（GLFW/AppKit がメインスレッドを
   `pub def ensureHeadless(): Unit \ IO`
@@ -97,7 +93,7 @@
 ## RadialGlow — `engine_tools/src/RadialGlow.flix`
 - Addハロ用の1画素: rgb=白固定、alpha=中心で高く縁で0（straight alpha）。
   `pub def haloPixel(curve: Float64 -> Float64, t: Float64): Int32`
-- Multiply穴あき暗幕用の1画素: alpha=255固定（不透明）、
+- Multiply穴あきオーバーレイ用の1画素: alpha=255固定（不透明）、
   `pub def maskPixel(curve: Float64 -> Float64, t: Float64): Int32`
 - 0(中心)→1(縁)を素通しする既定カーブ（直線減衰）。
   `pub def linearCurve(t: Float64): Float64`
@@ -109,6 +105,26 @@
   `pub def maskCurveWithHole(holeFrac: Float64, curve: Float64 -> Float64, t: Float64): Float64`
 - size×size の正方形の中で、画素 (x, y) の中心から 0(中心)→1(縁) に正規化した距離。
   `pub def normalizedRadius(size: Int32, x: Int32, y: Int32): Float64`
+
+## ReferenceDiff — `engine_tools/src/ReferenceDiff.flix`
+- 環境変数で受け取って焼く。DIFF_DIR = ゲームのディレクトリ、
+  `pub def pairs(): Unit \ IO`
+
+## ReferenceSite — `engine_tools/src/ReferenceSite.flix`
+- サイト全体の設定。1 サイト 1 レコードで名前渡しする。
+  `pub type alias Config = { outDir = String, title = String, cssScale = Int32 }`
+- カタログ 1 項目の表示情報（生成器が受け取る唯一の入力形）。
+  `pub type alias Item = { name = String, desc = String, scenario = String, tags = List[String], ext = String, pxWidth = Int32, generateHint = Option[String], lint = LintBadge, filmstrip = Option[Filmstrip] }`
+- フィルムストリップ（コマ送りビューア）に要る情報。素材は 2 形態のどちらか:
+  `pub type alias Filmstrip = { strip = String, frameCount = Int32, frameW = Int32, frameH = Int32, fps = Int32 }`
+- フィルムストリップ無し（従来カードのままにする項目の既定）。
+  `pub def noFilmstrip(): Option[Filmstrip]`
+- カード 1 枚に添える幾何リンタの結果（ゲーム非依存の構造データ）。
+  `pub type alias LintBadge = { checked = Bool, findingCount = Int32, suppressedCount = Int32, details = List[String] }`
+- 未検査バッジ（GIF など lint を通していない項目の既定）。
+  `pub def noLint(): LintBadge`
+- index.html（ハブ）・各 page_<scenario>.html・各 tag_<tag>.html を outDir に書き出す。
+  `pub def generate(config: Config, items: List[Item]): Unit \ IO + Fs.FileWrite`
 
 ## RenderLint — `engine_tools/src/RenderLint.flix`
 - 要素の描画種別（リンタ内の分類。ゲームの widget 名とは独立）。
@@ -167,22 +183,6 @@
   `pub def writeBytes(path: String, bytes: Bytes): Unit \ IO`
 - 音のセットをまとめて `dir` へ焼く。`(名前, サンプル列)` ごとに `dir/名前.wav` を書き出す
   `pub def bakeSet(cfg: Config, dir: String, sounds: List[(String, List[Float64])]): Unit \ IO`
-
-## SnapshotSite — `engine_tools/src/SnapshotSite.flix`
-- サイト全体の設定。1 サイト 1 レコードで名前渡しする。
-  `pub type alias Config = { outDir = String, title = String, cssScale = Int32 }`
-- カタログ 1 項目の表示情報（生成器が受け取る唯一の入力形）。
-  `pub type alias Item = { name = String, desc = String, scenario = String, tags = List[String], ext = String, pxWidth = Int32, generateHint = Option[String], lint = LintBadge, filmstrip = Option[Filmstrip] }`
-- フィルムストリップ（コマ送りビューア）に要る情報。素材は 2 形態のどちらか:
-  `pub type alias Filmstrip = { strip = String, frameCount = Int32, frameW = Int32, frameH = Int32, fps = Int32 }`
-- フィルムストリップ無し（従来カードのままにする項目の既定）。
-  `pub def noFilmstrip(): Option[Filmstrip]`
-- カード 1 枚に添える幾何リンタの結果（ゲーム非依存の構造データ）。
-  `pub type alias LintBadge = { checked = Bool, findingCount = Int32, suppressedCount = Int32, details = List[String] }`
-- 未検査バッジ（GIF など lint を通していない項目の既定）。
-  `pub def noLint(): LintBadge`
-- index.html（ハブ）・各 page_<scenario>.html・各 tag_<tag>.html を outDir に書き出す。
-  `pub def generate(config: Config, items: List[Item]): Unit \ IO + Fs.FileWrite`
 
 ## SoftRaster — `engine_tools/src/SoftRaster.flix`
 - ラスタライズ要求。design 解像度の Drawable 群を `scale` 倍に拡大して `outPath` に PNG 出力。

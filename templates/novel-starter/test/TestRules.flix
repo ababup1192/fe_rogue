@@ -51,7 +51,7 @@ mod TestRules {
 
     @Test
     def testAdvanceReadsBeatsInOrder(): Unit \ Assert =
-        // 読み終えた拍を送ると、同じ節の次の拍が窓に乗る（本文は台本の rows から導く）。
+        // 読み終えた拍を送ると、同じ節の次の拍がダイアログに乗る（本文は台本の rows から導く）。
         let w = w0() |> World.advance |> settle |> World.advance;
         let shown = UiDialog.currentLine(w#kit#dialog)
             |> Option.map(line -> RichText.plainText(line#body))
@@ -120,7 +120,7 @@ mod TestRules {
 
     @Test
     def testActiveDocsFollowPhase(): Unit \ Assert =
-        // 表紙では会話窓（ui）と手触り（kind）を名乗らない — 本文に入ってから加わる。
+        // 表紙ではダイアログ（ui）と手触り（kind）を名乗らない — 本文に入ってから加わる。
         // id は project.json の editor 宣言と対（Studio が突き合わせに使う）。
         Assert.assertEq(
             expected = ("story" :: "theme" :: "sprite" :: Nil,

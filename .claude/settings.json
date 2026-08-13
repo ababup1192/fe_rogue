@@ -22,8 +22,8 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-edit.py\"",
-            "timeout": 40
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-touch.py\"",
+            "timeout": 10
           }
         ]
       },
@@ -34,6 +34,28 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-diet.py\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-work.py\"",
+            "timeout": 40
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-work.py\"",
+            "timeout": 40
           }
         ]
       }

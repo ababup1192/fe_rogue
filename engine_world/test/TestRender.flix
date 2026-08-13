@@ -124,7 +124,7 @@ mod TestRender {
              ds |> List.drop(1) |> List.head |> Option.map(d -> d#blend),
              ps |> List.head |> Option.map(p -> p#blend)))
 
-    // blended は Clipped の窓越しに葉へ届く（fade と同じ onLeaf 規約）。窓（clip）はそのまま残る。
+    // blended は Clipped の clip 矩形越しに葉へ届く（fade と同じ onLeaf 規約）。clip 矩形（clip）はそのまま残る。
     @Test
     def testBlendedThroughClip(): Unit \ Assert =
         let clipRect = { position = Vec2.zero(), size = { x = 4.0, y = 4.0 } };
@@ -284,7 +284,7 @@ mod TestRender {
         Assert.assertEq(expected = shapeOf(items |> Render.movedAll({ x = 5.0, y = 10.0 })),
             shapeOf(twice))
 
-    /// 列の先頭の Clipped の窓 (x, y, w, h)。窓が追随したかを見る。
+    /// 列の先頭の Clipped の clip 矩形 (x, y, w, h)。clip 矩形が追随したかを見る。
     def windowOf(items: List[Render.PlacedItem]): (Float64, Float64, Float64, Float64) =
         match List.head(items) {
             case Some(p) => match p#item {
@@ -303,7 +303,7 @@ mod TestRender {
 
     @Test
     def testMovedAllShiftsWindowToo(): Unit \ Assert =
-        // 窓の規約: 平行移動は窓 rect も追随する（中身だけ窓の外へ歩かない）。
+        // clip 矩形の規約: 平行移動は clip 矩形 rect も追随する（中身だけ clip 矩形の外へ歩かない）。
         Assert.assertEq(expected = (15.0, 26.0, 30.0, 40.0),
             windowOf(Render.movedAll({ x = 5.0, y = 6.0 }, clippedBox())))
 
@@ -316,7 +316,7 @@ mod TestRender {
 
     @Test
     def testScaledAllAroundStretchesWindowToo(): Unit \ Assert =
-        // 窓の規約: 一様 scale は窓 rect も追随する（位置は pivot 不動点・大きさは factor 倍）。
+        // clip 矩形の規約: 一様 scale は clip 矩形 rect も追随する（位置は pivot 不動点・大きさは factor 倍）。
         Assert.assertEq(expected = (20.0, 40.0, 60.0, 80.0),
             windowOf(Render.scaledAllAround(2.0, Vec2.zero(), clippedBox())))
 

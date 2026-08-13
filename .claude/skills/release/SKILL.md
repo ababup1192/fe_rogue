@@ -19,7 +19,7 @@ allowed-tools: Read, Grep, Glob, Bash
 **「挙動を変えていない」と主張するリファクタの時だけ**やる。機能追加リリースでは不要。
 
 **`gallery/` は git 管理外なので `git status` では見えない。** 生成した絵の一致は
-`make snapshot-check` の SHA 突き合わせで見る。
+`make reference-check` の SHA 突き合わせで見る。
 
 1. `make bake-par`（不審なら逐次の `make bake`）
 2. `git status` で assets/sfx の差分ゼロを確認（音や素材の退行はここに出る）

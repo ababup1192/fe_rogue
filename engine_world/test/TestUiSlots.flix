@@ -84,11 +84,11 @@ mod TestUiSlots {
         });
         Assert.assertEq(expected = Some((Some("○"), Some("・"))), got)
 
-    // ── UiMenu.windowOffset: スクロール窓のクランプ ──
+    // ── UiMenu.windowOffset: スクロール範囲のクランプ ──
 
     @Test
     def testWindowOffsetPinsClampBehavior(): Unit \ Assert =
-        // 7 項目を 3 行窓で見るとき: 収まるなら 0 / 中央寄せ / 先頭 0 停止 / 末尾 4 停止。
+        // 7 項目を 3 行のビューポートで見るとき: 収まるなら 0 / 中央寄せ / 先頭 0 停止 / 末尾 4 停止。
         Assert.assertEq(expected = (0, 0, 2, 4),
             (UiMenu.windowOffset(sel = 2, count = 3, slots = 3),
              UiMenu.windowOffset(sel = 0, count = 7, slots = 3),

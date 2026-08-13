@@ -74,7 +74,7 @@ mod TestPrng {
     // (f) unitToPercent boundary mapping — SINGLE SOURCE OF TRUTH の floor 写像を厳密固定する。
     //     unitToPercent は live `World.RngDraw` ハンドラ（Game.flix）と Prng.nextPercent / oracle が
     //     共有する唯一の reduction。ここを floor→round や *100→*99 に変えると live combat の分布 AND
-    //     oracle が lockstep でずれて golden-trace は素通り＝live が無言で変わる。range [0,99] だけでなく
+    //     oracle が lockstep でずれて golden-trace は検出できない＝live が無言で変わる。range [0,99] だけでなく
     //     **正確な floor 対応**（0.0→0 / 0.5→50 / 0.01→1 / 0.99→99 / 0.999999999→99）を固定する。
     @Test
     def testUnitToPercentBoundaries(): Unit \ Assert =

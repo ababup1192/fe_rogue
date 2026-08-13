@@ -1,5 +1,5 @@
-// Light の単体テスト: singleLightItems（穴あき暗幕1+周囲黒帯4+ハロ1の6枚）と
-// multiLightItems（全面暗幕+ハロN枚の近似）の出力を、Render.draw に通した
+// Light の単体テスト: singleLightItems（穴あきオーバーレイ1+周囲黒帯4+ハロ1の6枚）と
+// multiLightItems（全面オーバーレイ+ハロN枚の近似）の出力を、Render.draw に通した
 // Drawable（record なので match 不要で読める）で個数・blend種別・zIndex・tint を pin する。
 mod TestLight {
 
@@ -20,14 +20,14 @@ mod TestLight {
           maskSprite = "glow_mask", maskSourceSize = 512.0, maskHoleFrac = holeFrac(),
           haloSprite = "glow_halo", haloSourceSize = 256.0, darkness = sampleDarkness(), z = 10 }
 
-    // singleLightItems は 7 枚（暗幕1 → 周囲黒帯4 → ハロ1、の 6 枚のはずが実装順は
-    // 暗幕 :: 黒帯4 :: ハロ = 6 枚）。
+    // singleLightItems は 7 枚（オーバーレイ1 → 周囲黒帯4 → ハロ1、の 6 枚のはずが実装順は
+    // オーバーレイ :: 黒帯4 :: ハロ = 6 枚）。
     @Test
     def testSingleLightItemsHasMaskSurroundThenHalo(): Unit \ Assert =
         let (drawables, _) = Render.draw(Light.singleLightItems(singleCfg()));
         Assert.assertEq(expected = 6, List.length(drawables))
 
-    // 暗幕は Multiply・zIndex=cfg#z・texture=maskSprite・光の位置が中心（centered sprite）・
+    // オーバーレイは Multiply・zIndex=cfg#z・texture=maskSprite・光の位置が中心（centered sprite）・
     // alpha=darkness。
     @Test
     def testSingleLightMaskIsMultiplyAtCfgZ(): Unit \ Assert =
@@ -47,7 +47,7 @@ mod TestLight {
             expected = Some((DrawCmd.BlendMode.Add, 11, "glow_halo", 1.0f32, 0.6f32, 0.2f32, 0.6f32)),
             halo |> Option.map(d -> (d#blend, d#zIndex, d#texture, d#color#r, d#color#g, d#color#b, d#alpha)))
 
-    // 暗幕のスケールは「穴の実寸半径=radius」から逆算した倍率のみ（coverage 下限は廃止）。
+    // オーバーレイのスケールは「穴の実寸半径=radius」から逆算した倍率のみ（coverage 下限は廃止）。
     // radius=40, holeFrac=0.5, maskSourceSize=512 → 40/(0.5*512/2) = 0.3125。
     // radius が小さくても、この倍率で穴半径がちゃんと radius になる（下の pin テストで確認）。
     @Test
@@ -79,7 +79,7 @@ mod TestLight {
         };
         Assert.assertEq(expected = radii, List.map(holeRadiusOf, radii))
 
-    // 周囲の黒帯4枚（暗幕の次〜ハロの前）は Multiply・cfg#z・alpha=darkness で、
+    // 周囲の黒帯4枚（オーバーレイの次〜ハロの前）は Multiply・cfg#z・alpha=darkness で、
     // mask 正方形と同じ z-index の範囲に隙間なく敷かれる。
     @Test
     def testSingleLightSurroundBoxesAreMultiplyAtCfgZWithDarkness(): Unit \ Assert =
@@ -107,13 +107,13 @@ mod TestLight {
         { lights = twoLights(), darkness = 0.8, viewport = { x = 320.0, y = 240.0 },
           haloSprite = "glow_halo", haloSourceSize = 256.0, z = 5 }
 
-    // 全面暗幕1枚 + 光の数ぶんのハロ（2 光源なら 3 枚）。
+    // 全面オーバーレイ1枚 + 光の数ぶんのハロ（2 光源なら 3 枚）。
     @Test
     def testMultiLightItemsCountsCoverPlusHaloes(): Unit \ Assert =
         let (drawables, _) = Render.draw(Light.multiLightItems(multiCfg()));
         Assert.assertEq(expected = 3, List.length(drawables))
 
-    // 全面暗幕は Multiply・zIndex=cfg#z・alpha=darkness・画面全体を覆う矩形（左上が原点）。
+    // 全面オーバーレイは Multiply・zIndex=cfg#z・alpha=darkness・画面全体を覆う矩形（左上が原点）。
     @Test
     def testMultiLightCoverIsMultiplyFullScreen(): Unit \ Assert =
         let (drawables, _) = Render.draw(Light.multiLightItems(multiCfg()));
@@ -147,7 +147,7 @@ mod TestLight {
           rimWidth = Shadow.defaultRimWidth(), rimStrength = Shadow.defaultRimStrength(),
           haloDiameterFactor = 1.0 }
 
-    // lights=0 個は multiLightItems を lights=Nil で呼ぶのと同じ枚数（全面暗幕1枚のみ）。
+    // lights=0 個は multiLightItems を lights=Nil で呼ぶのと同じ枚数（全面オーバーレイ1枚のみ）。
     @Test
     def testItemsZeroLightsIsCoverOnly(): Unit \ Assert =
         let (drawables, _) = Render.draw(Light.items(sceneCfg(Nil, Nil)));
@@ -169,7 +169,7 @@ mod TestLight {
             expected = (6, List.map(d -> d#scale#x, directDrawables)),
             (List.length(drawables), List.map(d -> d#scale#x, drawables)))
 
-    // haloDiameterFactor はハロ（末尾）だけを拡大する。暗幕（先頭）の scale は変わらない。
+    // haloDiameterFactor はハロ（末尾）だけを拡大する。オーバーレイ（先頭）の scale は変わらない。
     @Test
     def testItemsHaloDiameterFactorGrowsOnlyHalo(): Unit \ Assert =
         let cfg = { haloDiameterFactor = 2.0 | sceneCfg(sampleLight() :: Nil, Nil) };

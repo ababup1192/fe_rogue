@@ -2,7 +2,7 @@
 ///
 /// 戦闘予報パネル（`BattlePanelUi` が描く World-entity UI）は、足元 HP バーの「減る分」を
 /// 暗⇄明で点滅させる。その点滅サイクルの累積時間だけをこの resource が持ち、`BattlePanelUi.frameStep`
-/// が毎フレーム delta で進めて暗/明を判定する。見た目（予報の窓・数値・矢印）は `UiRender` が
+/// が毎フレーム delta で進めて暗/明を判定する。見た目（予報のウィンドウ・数値・矢印）は `UiRender` が
 /// `UiWorldState` から毎フレーム描き、この resource は点滅位相だけを持つ。
 /// `LogState` / `TurnEndHoldState` と同じ Ref-based handler 注入パターンに揃える。
 mod BattlePanelState {

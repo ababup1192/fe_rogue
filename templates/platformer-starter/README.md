@@ -8,7 +8,7 @@
 ## 遊ぶ
 
 ```bash
-make run     # 窓が開く。←→(A/D)で歩き、Space/↑ でジャンプ、↓ で一方通行から降りる
+make run     # ウィンドウが開く。←→(A/D)で歩き、Space/↑ でジャンプ、↓ で一方通行から降りる
              # B(Shift/X)を押しっぱなしで B ダッシュ — 最高速が上がり、離しても勢いが残る
 make debug   # 保存即反映(watchFile)+ F1 一括リロード + F8 付きで起動
 ```
@@ -40,7 +40,7 @@ make debug   # 保存即反映(watchFile)+ F1 一括リロード + F8 付きで�
 | `assets/platformer.theme.json` | 色(空・主役・地形。#RRGGBB で上書き) |
 | `assets/px.sprite.json` | ドット絵そのもの(文字格子) |
 | `assets/ui.text.json` | 画面に出る文言(CLEAR! / GAME OVER) |
-| `project.json` | ゲームの題・窓の大きさ・フォント |
+| `project.json` | ゲームの題・ウィンドウの大きさ・フォント |
 
 壊れた JSON でも既定値で必ず起動する(fail-open)。
 
@@ -57,8 +57,8 @@ make test     # ルール(手触り・収支・ギミック)と Doc 橋渡しの
 make stages   # 面の静的検査 — 罠ゼロ(BFS)と流れ(平地の単調・見せ場の空き)
 make playtest # bot に通しで遊ばせて「走れるか・詰まらないか」を測る
 make bake     # 決定的な 4 場面を gallery/ に焼く(hill / cave / tower / hud)
-make snapshot-check    # 焼いた絵を snapshot/ とバイト比較(リグレッション検知)
-make snapshot-update   # いまの gallery を新しい基準として更新する
+make reference-check    # 焼いた絵を reference/ とバイト比較(リグレッション検知)
+make reference-update   # いまの gallery を新しい基準として更新する
 make probe    # 面の読み込み・1 tick・1 フレームの部品数を測る(重い一手の切り分け)
 make checkpoints # 中間ポイント(c)を等間隔に置き直し、そのまま make stages に掛ける
 make loc      # src/ + test/ の合計行数(上限 3,000 行)

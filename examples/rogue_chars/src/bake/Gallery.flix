@@ -3,7 +3,7 @@
 //   - parade_knight.gif   … 同職 3 案の横並び同期リール（Phase 0 は 1 体 + 空レーン 2 本）
 //   - lineup.png          … 全キャラ IdleDown frame0 の 8 職 × 3 案一覧（Phase 0 は 1 体）
 //   - contrast_check.png  … fe_rogue の床っぽい緑系スウォッチの上に置いた視認性チェック
-//   - index.html          … SnapshotSite のカタログページ
+//   - index.html          … ReferenceSite のカタログページ
 //
 // 全成果物は決定的に生成される（時刻・乱数を焼き込まない）ので、挙動を変えない
 // リファクタは shasum のバイト一致で機械的に証明できる。
@@ -55,7 +55,7 @@ mod Gallery {
         registeredClassIds() |> List.forEach(cid -> bakeParade(atlas, cid, String.toUpperCase(cid)));
         bakeLineup(atlas);
         bakeContrast(atlas);
-        SnapshotSite.generate(
+        ReferenceSite.generate(
             { outDir = outDir(), title = "Rogue Chars Gallery", cssScale = 1 },
             catalog(films))
 
@@ -211,7 +211,7 @@ mod Gallery {
 
     // ── カタログ ──
 
-    def catalog(chars: List[Roster.Entry]): List[SnapshotSite.Item] =
+    def catalog(chars: List[Roster.Entry]): List[ReferenceSite.Item] =
         let charItems = chars |> List.flatMap(info -> {
             let name = "${info#classId}_${info#variant}";
             let scenario = String.toUpperCase(info#classId);
@@ -225,13 +225,13 @@ mod Gallery {
             pngItem("contrast_check", "fe_rogue の床っぽい緑系スウォッチ上の視認性チェック", "Roster", 44 * 3 * scale()) :: Nil;
         List.append(charItems, List.append(paradeItems, rosterItems))
 
-    def pngItem(name: String, desc: String, scenario: String, px: Int32): SnapshotSite.Item =
+    def pngItem(name: String, desc: String, scenario: String, px: Int32): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "png",
           pxWidth = px, generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 
-    def gifItem(name: String, desc: String, scenario: String, px: Int32): SnapshotSite.Item =
+    def gifItem(name: String, desc: String, scenario: String, px: Int32): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "gif",
           pxWidth = px, generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 }

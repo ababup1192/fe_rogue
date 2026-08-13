@@ -2337,7 +2337,7 @@ from the title to the first CLEAR; `full_clear.gif`, one full lap of the
 game, both levels, both CLEARs and back to the title; `rewind_demo.gif`,
 three moves and a held Z, the alarm clock turning counterclockwise while
 robot and crate glide home — and an `index.html` dashboard (engine_tools'
-SnapshotSite) that lays them all out in pages. Delete the folder; one bake
+ReferenceSite) that lays them all out in pages. Delete the folder; one bake
 rebuilds every pixel of it. (`make test` stays fast and pure: the tests verify,
 the bake generates — two different verbs, two different commands.)
 

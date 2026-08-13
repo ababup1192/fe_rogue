@@ -6,7 +6,7 @@
 //   init    = 出発点の World(stage.json の 1 面目にプレイヤーを立たせる)。
 //   update  = 毎フレーム(Controls.step: 入力 → World.step)。
 //   view    = World → 絵(View.frameLive。静的地形は withTileLayers の GPU 層)。
-//   reloads = 保存で読み直す Doc(台帳は Controls.docTable に 1 枚)。
+//   reloads = 保存で読み直す Doc(一覧表は Controls.docTable に 1 枚)。
 // 空・遠山は addParallaxLayer の層(視差 0〜0.25)。withCamera がプレイヤーの
 // 先読み位置(World.cameraFocus)を画面中央に映し、withCameraBounds が面の外の
 // 虚空を映さないよう収める。

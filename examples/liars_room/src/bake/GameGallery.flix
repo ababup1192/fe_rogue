@@ -7,7 +7,7 @@
 //   gallery/correct_demo.gif — 正直者を信じて「せいかい！」→ 次のへやへ
 //   gallery/wrong_demo.gif   — 嘘つきを信じて「はずれ…」（シェイク）→ やり直し
 //   gallery/memo_demo.gif    — すいりメモに 3 人ぶんのしるしを付ける
-//   gallery/index.html       — 上記すべてを見せる SnapshotSite ダッシュボード
+//   gallery/index.html       — 上記すべてを見せる ReferenceSite ダッシュボード
 mod GameGallery {
     import java.io.File
 
@@ -194,7 +194,7 @@ mod GameGallery {
     /// 台本を tick に流し、GIF＋コマ送りビューア用のコマ別 PNG を生成する（配管は Bakery が担う）。
     /// 返り値はカタログに差し込む (名前, フィルムストリップ情報)。
     def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, script: List[Room.Input],
-                name: String): (String, SnapshotSite.Filmstrip) \ IO =
+                name: String): (String, ReferenceSite.Filmstrip) \ IO =
         let frames = worldsOf(script, stage1());
         let fs = Bakery.bakeGif(config(atlas), frames, gifSampleStride(),
                                 w -> { let sc = scene(atlas, ui, w); (sc#drawables, sc#polygons) }, name);
@@ -203,12 +203,12 @@ mod GameGallery {
     // ── ダッシュボード ──
 
     def item(name: String, desc: String, scenario: String, ext: String,
-             pxWidth: Int32): SnapshotSite.Item =
+             pxWidth: Int32): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = ext,
           pxWidth = pxWidth, generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 
-    def catalog(): List[SnapshotSite.Item] =
+    def catalog(): List[ReferenceSite.Item] =
         item("screen_title", "タイトル — すべて ui.json の Spec", "Screens", "png", 640) ::
         item("screen_room", "ステージ 1 の部屋（探索中）", "Screens", "png", 640) ::
         item("screen_talk", "発言ウィンドウ（全文表示）", "Screens", "png", 640) ::
@@ -226,10 +226,10 @@ mod GameGallery {
         item("people_walk", "歩行サイクル、全員そろって行進", "People", "gif", 1152) :: Nil
 
     /// lint バッジとフィルムストリップ情報を名前で差し込んだカタログ。
-    def decorate(lintByName: Map[String, SnapshotSite.LintBadge],
-                 fsByName: Map[String, SnapshotSite.Filmstrip]): List[SnapshotSite.Item] =
+    def decorate(lintByName: Map[String, ReferenceSite.LintBadge],
+                 fsByName: Map[String, ReferenceSite.Filmstrip]): List[ReferenceSite.Item] =
         catalog() |> List.map(entry ->
-            { lint = Option.getWithDefault(SnapshotSite.noLint(), Map.get(entry#name, lintByName)),
+            { lint = Option.getWithDefault(ReferenceSite.noLint(), Map.get(entry#name, lintByName)),
               filmstrip = Map.get(entry#name, fsByName) | entry })
 
     /// 撮影と同じ projectUi でページをめくった UiWorld を lint の検査入力へ射影する
@@ -256,7 +256,7 @@ mod GameGallery {
         let talkFindings = RenderLint.check(lintInput("screen_talk", atlas, ui, talking()));
         let clearFindings = RenderLint.check(lintInput("screen_clear", atlas, ui, clearedShot()));
         run {
-            SnapshotSite.generate(
+            ReferenceSite.generate(
                 { outDir = "gallery", title = "Liars' Room Gallery", cssScale = 2 },
                 decorate(
                     Map#{

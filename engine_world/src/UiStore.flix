@@ -15,7 +15,7 @@ mod UiStore {
     /// `focus`: 入力フォーカス scope（モーダル占有。key=名前パス）。
     /// `layers`: root の描画レイヤ（CanvasLayer.layerStride 倍して zIndex に加算する）。
     /// `sources`: root 名パス→ui.json アセットパス。リロード（reloadAll）が各 root を
-    /// どのファイルから読み直すかの台帳。despawnRoot では消さず、respawn 後も引き継ぐ。
+    /// どのファイルから読み直すかのレジストリ。despawnRoot では消さず、respawn 後も引き継ぐ。
     pub type alias UiWorld = {
         nextId    = Int32,
         parents   = Map[EntityId, EntityId],
@@ -154,7 +154,7 @@ mod UiStore {
         }
 
     /// 名前パスの box コンポーネントの不透明度（fill alpha）を差し替える。box を持たなければ no-op。
-    /// 中央ポップアップの窓のようにフェードで alpha を毎フレーム動かす widget で使う。
+    /// 中央ポップアップのパネルのようにフェードで alpha を毎フレーム動かす widget で使う。
     pub def setBoxAlpha(path: String, alpha: Float32, ui: UiWorld): UiWorld =
         let updated = idOf(path, ui)
             |> Option.flatMap(id -> Map.get(id, ui#boxes) |> Option.map(comp -> (id, {alpha = alpha | comp})));
@@ -285,14 +285,14 @@ mod UiStore {
         }
 
     // ========================================================================
-    // リロード台帳（sources）と可視の名前パス採取
+    // リロードレジストリ（sources）と可視の名前パス採取
     // ========================================================================
 
     /// root 名パスに ui.json アセットパスを紐付ける（reloadAll の走査対象になる）。
     pub def putSource(rootPath: String, assetPath: String, ui: UiWorld): UiWorld =
         {sources = Map.insert(rootPath, assetPath, ui#sources) | ui}
 
-    /// root 名パスを台帳から外す（恒久削除時に呼ぶ。以後 reloadAll の対象外）。
+    /// root 名パスをレジストリから外す（恒久削除時に呼ぶ。以後 reloadAll の対象外）。
     pub def forgetSource(rootPath: String, ui: UiWorld): UiWorld =
         {sources = Map.remove(rootPath, ui#sources) | ui}
 

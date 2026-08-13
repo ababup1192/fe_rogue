@@ -270,7 +270,7 @@ mod TestGoldenTrace {
         Option.nonEmpty(World.combatViewOf(ref, worldOfCmds(cmds)))
 
     /// anti-vacuity 前提その①: 両駒の combatViewOf が Some＝Cmd 列が World combatView を解決できる
-    /// （未 seed で素通りしていない）。等価テスト・golden テスト共通の前提。
+    /// （未 seed のまま検査をすり抜けていない）。等価テスト・golden テスト共通の前提。
     def assertViewsResolvable(cmds: List[World.Cmd]): Unit \ Assert =
         Assert.assertEq(expected = true, viewSome(EntityRef.Player(0), cmds) and viewSome(EntityRef.Enemy(1), cmds))
 
@@ -469,7 +469,7 @@ mod TestGoldenTrace {
     // ── (E) ROLL-DEPENDENT fixture（定数生成器では再現不能）─────────────────────
 
     /// 既存 fixture は weaponHit=200・crit=0 で「常時命中・必殺なし」＝outcome が draw 値に依存せず、
-    /// **定数生成器でも素通り**する穴があった（issue: streams are random-independent）。これを塞ぐ。
+    /// **定数生成器でも検出をすり抜ける**穴があった（issue: streams are random-independent）。これを塞ぐ。
     /// weaponHit=33 ⇒ hitRate=30（accuracy 5 − avoid 8 = weaponHit−3）。seed 12345 の最初の draw は 13
     /// （13<30 ⇒ 命中→撃破）だが、定数生成器 50 は 50<30=false ⇒ 回避（applyMiss は Cmd を emit せず空 stream）。
     /// ⇒ SEEDED と CONSTANT-50 で cmd-stream が分岐＝golden が draw 列に依存することを固定する。
@@ -520,7 +520,7 @@ mod TestGoldenTrace {
         // 撃破せず（killed 戻り値が空）。
         Assert.assertEq(expected = true, List.isEmpty(killed));
         // 最終 World: 味方 hp=6・付与 status を FULL 射影（effect/magnitude/remaining）で凍結。
-        // 量や残ターンが違えば落ちる＝kind 一致だけでは素通りさせない。
+        // 量や残ターンが違えば落ちる＝kind 一致だけでは合格させない。
         let statusProj =
             World.statusEffectsOf(EntityRef.Player(0), w)
                 |> List.map(s -> (s#effect, s#magnitude, s#remaining));

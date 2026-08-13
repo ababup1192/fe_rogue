@@ -49,7 +49,7 @@ mod Gallery {
         })
 
     /// 1 種類ぶんの GIF ＋ コマ別 PNG を生成する（8 コマ）。
-    def bakeKind(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, kind: Transition.Kind, name: String): SnapshotSite.Filmstrip \ IO =
+    def bakeKind(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, kind: Transition.Kind, name: String): ReferenceSite.Filmstrip \ IO =
         let frames = timelineOf(ui, lightDoc, kind, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), name)
 
@@ -73,7 +73,7 @@ mod Gallery {
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
-    // ── Light: カンテラ探索デモ（放射グロー＋穴あき暗幕）──
+    // ── Light: カンテラ探索デモ（放射グロー＋穴あきの暗くするオーバーレイ）──
 
     /// haloTexture/maskTexture の実ファイルを assets/ に生成する。project.json の texturePath が
     /// 指すファイルはここでしか生成されないので、実行前に必ず bake を通す必要がある。
@@ -99,7 +99,7 @@ mod Gallery {
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
-    /// 「明（Bright。部屋+目印がフル輝度）」「暗闇のみ（Dark。光源なしの全面暗幕で
+    /// 「明（Bright。部屋+目印がフル輝度）」「暗闇のみ（Dark。光源なしの全面を暗くするオーバーレイで
     /// 目印がシルエット程度に残る）」「暗闇+カンテラ（DarkWithLight。穴あき+ハロ）」の3枚を生成する。
     def bakeLanternComparisonPngs(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): Unit \ IO =
         bakeLanternPng(atlas, ui, lightDoc, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright, walls = false }), "lantern_bright");
@@ -131,7 +131,7 @@ mod Gallery {
             GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()) }))
 
     /// カンテラが目印の間を歩き回る GIF（8 コマ）。
-    def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
+    def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): ReferenceSite.Filmstrip \ IO =
         let frames = patrolTimeline(ui, lightDoc, lanternPatrolPoints(), false, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "lantern_patrol")
 
@@ -185,7 +185,7 @@ mod Gallery {
     /// pass をコマごとに生成する bakeGifWithPasses の手本）。B は据え置き — 動く影（A 由来）と
     /// 動かない灯り（B）が同居して、影が光の位置から導かれていることが 1 本で読める。
     /// B が A の長影に沈むコマがあるのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）。
-    def bakeLightMapGif(atlas: FontAtlas, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
+    def bakeLightMapGif(atlas: FontAtlas, lightDoc: LightDoc.Spec): ReferenceSite.Filmstrip \ IO =
         let b = { x = 66.0, y = 178.0 };
         let frames = patrolPositions(shadowPatrolPoints(), 7);
         Bakery.bakeGifWithPasses(config(atlas), frames, 1, a -> {
@@ -201,7 +201,7 @@ mod Gallery {
         { x = 200.0, y = 178.0 } :: { x = 160.0, y = 120.0 } :: Nil
 
     /// 光が壁の周りを一周して影が回る GIF（8 コマ・walls=true）。
-    def bakeShadowGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
+    def bakeShadowGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): ReferenceSite.Filmstrip \ IO =
         let frames = patrolTimeline(ui, lightDoc, shadowPatrolPoints(), true, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "shadow_walk")
 
@@ -279,7 +279,7 @@ mod Gallery {
         SfxSynth.writeBytes("${outDir()}/audio_master_03.wav",
             SfxSynth.wavBytes(sfxCfg(), applyMaster(0.3, toneSamples())))
 
-    // ── AudioFade: 試聴ページ（SnapshotSite は画像専用なので、ここだけ小さな静的 HTML を直書き）──
+    // ── AudioFade: 試聴ページ（ReferenceSite は画像専用なので、ここだけ小さな静的 HTML を直書き）──
 
     def audioHtml(): String =
         "<!doctype html><meta charset=\"utf-8\"><title>feature_lab Audio</title>\n"
@@ -299,7 +299,7 @@ mod Gallery {
             with Fs.WriteFile.runWithFileWrite
             with Fs.FileWrite.runWithIO
 
-    /// index.html の末尾へ試聴ページへの入口を足す（SnapshotSite 本体は画像専用のまま触らない。
+    /// index.html の末尾へ試聴ページへの入口を足す（ReferenceSite 本体は画像専用のまま触らない。
     /// generate が index を毎回書き直すので、この追記は bake のたびに 1 回だけ効く）。
     def linkAudioFromIndex(): Unit \ IO =
         let path = "${outDir()}/index.html";
@@ -351,7 +351,7 @@ mod Gallery {
         bakeWavs();
 
         run {
-            SnapshotSite.generate(
+            ReferenceSite.generate(
                 { outDir = outDir(), title = "feature_lab Gallery", cssScale = 2 },
                 catalog({ fadeOut = fadeOutFilm, fadeIn = fadeInFilm,
                           wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm,
@@ -364,13 +364,13 @@ mod Gallery {
     // ── カタログ（ページとカードの宣言）──
 
     type alias Films = {
-        fadeOut = SnapshotSite.Filmstrip, fadeIn = SnapshotSite.Filmstrip,
-        wipeLeft = SnapshotSite.Filmstrip, wipeRight = SnapshotSite.Filmstrip,
-        lanternPatrol = SnapshotSite.Filmstrip, shadowWalk = SnapshotSite.Filmstrip,
-        lightMapOrbit = SnapshotSite.Filmstrip, texHaze = SnapshotSite.Filmstrip
+        fadeOut = ReferenceSite.Filmstrip, fadeIn = ReferenceSite.Filmstrip,
+        wipeLeft = ReferenceSite.Filmstrip, wipeRight = ReferenceSite.Filmstrip,
+        lanternPatrol = ReferenceSite.Filmstrip, shadowWalk = ReferenceSite.Filmstrip,
+        lightMapOrbit = ReferenceSite.Filmstrip, texHaze = ReferenceSite.Filmstrip
     }
 
-    def catalog(films: Films): List[SnapshotSite.Item] =
+    def catalog(films: Films): List[ReferenceSite.Item] =
         gif("fade_out", "だんだん黒く覆っていく（t=0 素通し → t=1 全面黒）", "Transition", films#fadeOut) ::
         gif("fade_in", "覆いがだんだん晴れる（t=0 全面黒 → t=1 素通し）", "Transition", films#fadeIn) ::
         gif("wipe_left", "黒い帯が右から左へ画面を覆っていく", "Transition", films#wipeLeft) ::
@@ -399,13 +399,13 @@ mod Gallery {
         png("audio_fade_out_curve", "フェードアウトの音量カーブ: volumeOf(1→0)", "AudioFade") ::
         png("audio_crossfade_curve", "クロスフェード: 消える側（赤）と現れる側（緑）。同じ t の 2 本で、和は常に 1", "AudioFade") :: Nil
 
-    def png(name: String, desc: String, scenario: String): SnapshotSite.Item =
+    def png(name: String, desc: String, scenario: String): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "png",
           pxWidth = pxWidth(), generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
+          lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip() }
 
-    def gif(name: String, desc: String, scenario: String, filmstrip: SnapshotSite.Filmstrip): SnapshotSite.Item =
+    def gif(name: String, desc: String, scenario: String, filmstrip: ReferenceSite.Filmstrip): ReferenceSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "gif",
           pxWidth = pxWidth(), generateHint = Some("run `make bake` to generate"),
-          lint = SnapshotSite.noLint(), filmstrip = Some(filmstrip) }
+          lint = ReferenceSite.noLint(), filmstrip = Some(filmstrip) }
 }

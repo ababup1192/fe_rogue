@@ -464,15 +464,15 @@
   `pub def sheetAt(field: String, itemAt: Json -> Result[JsonError, a], top: Map[String, Json]): Result[JsonError, Map[String, List[a]]]`
 - エラーにノードの名前パス（例: "gallery/row1/box"）を前置する。ドキュメント木のパーサが
   `pub def atNode(path: String, r: Result[JsonError, a]): Result[JsonError, a]`
-- エラーを編集者向けの一文にする。jsonError / atNode が詰めた文章は `TypeMismatch` の器を
+- エラーを編集者向けの一文にする。jsonError / atNode が詰めた文章は `TypeMismatch` のコンテナを
   `pub def describe(e: JsonError): String`
 
 ## DocTable — `engine_world/src/DocTable.flix`
-- 台帳の 1 行。docId は project.json の editor 宣言 id(ActiveDocs のキー)。
+- テーブルの 1 行。docId は project.json の editor 宣言 id(ActiveDocs のキー)。
   `pub type alias Entry[w] = { docId = Option[String], path = String, reload = w -> w \ {Fs.FileRead} }`
 - App.game の reloads(保存即反映の watchFile)へそのまま渡す形。
   `pub def reloads(rows: List[Entry[w]]): List[(String, w -> w \ {Fs.FileRead})]`
-- 台帳の並び順に全 Doc を読み直す(App.reloadOn の一括リロードへ渡す形)。
+- テーブルの並び順に全 Doc を読み直す(App.reloadOn の一括リロードへ渡す形)。
   `pub def reloadAll(rows: List[Entry[w]], world: w): w \ Fs.FileRead`
 - ActiveDocs.step へ渡す形(id → パスの列)。同じ id の行は、行が離れていても
   `pub def activeDocs(rows: List[Entry[w]]): List[(String, List[String])]`
@@ -830,11 +830,11 @@
   `pub def items(cfg: SceneLightConfig): List[Render.PlacedItem]`
 - singleLightItems の設定。maskSprite/haloSprite は RadialGlow で焼いたテクスチャ名、
   `pub type alias SingleLightConfig = { light = Light, viewport = Vec2.Vec2, maskSprite = String, maskSourceSize = Float64, maskHoleFrac = Float64, haloSprite = String, haloSourceSize = Float64, darkness = Float64, z = Int32 }`
-- 単一光源の真の穴あき描画。中心の穴あき暗幕（Multiply, maskSprite）を「穴の実寸半径が
+- 単一光源の真の穴あき描画。中心の穴あきオーバーレイ（Multiply, maskSprite）を「穴の実寸半径が
   `pub def singleLightItems(cfg: SingleLightConfig): List[Render.PlacedItem]`
-- multiLightItems の設定。darkness は全面暗幕の濃さ0..1（1で真っ黒）。
+- multiLightItems の設定。darkness は全面オーバーレイの濃さ0..1（1で真っ黒）。
   `pub type alias MultiLightConfig = { lights = List[Light], darkness = Float64, viewport = Vec2.Vec2, haloSprite = String, haloSourceSize = Float64, z = Int32 }`
-- 複数光源の近似。全面暗幕（Multiply, 一様darkness）+各光位置にAddハロ、という
+- 複数光源の近似。全面オーバーレイ（Multiply, 一様darkness）+各光位置にAddハロ、という
   `pub def multiLightItems(cfg: MultiLightConfig): List[Render.PlacedItem]`
 - 光マップ方式の設定。lightMapPass（App.withPasses へ）と lightMapOverlay（view の列へ）の
   `pub type alias LightMapConfig = { lights = List[Light], occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2, ambient = Color, shadowStrength = Float64, extrudeLength = Float64, passName = String, z = Int32 }`
@@ -1266,7 +1266,7 @@
   `pub def at(pos: Vec2.Vec2, item: Item): PlacedItem`
 - 飾り終えた「左上原点の item」（box / circle / text）を中心 center に置く
   `pub def atCenter(center: Vec2.Vec2, size: Vec2.Vec2, item: Item): PlacedItem`
-- item を rect（スクリーン空間・design px）で切り抜く。窓の外のピクセルは描かれない。
+- item を rect（スクリーン空間・design px）で切り抜く。clip 矩形の外のピクセルは描かれない。
   `pub def clipped(rect: Rect2.Rect2, item: Item): Item`
 - 置き場所つきの列をまとめて切り抜く近道（PiP・パネル内スクロールの出口で使う）。
   `pub def clippedAll(rect: Rect2.Rect2, items: List[PlacedItem]): List[PlacedItem]`
@@ -1643,13 +1643,13 @@
   `pub type alias Line = { speaker = String, body = List[RichText.Span] }`
 - 会話の進行状態。lines = 残りの行（先頭が表示中）、reveal = 表示中の行の文字送り。
   `pub type alias Dialog = { lines = List[Line], reveal = UiTypewriter.Reveal }`
-- 会話窓の投影先の名前パス束。root = 窓全体（開閉で可視切替）、speaker = 話者の text ノード。
+- 会話ダイアログの投影先の名前パス束。root = ダイアログ全体（開閉で可視切替）、speaker = 話者の text ノード。
   `pub type alias Paths = { root = String, speaker = String }`
-- 閉じた会話窓。
+- 閉じた会話ダイアログ。
   `pub def closed(): Dialog`
 - 行の列で会話を開く。先頭行の文字送りが 0 文字から始まる。空リストなら閉じたまま。
   `pub def openWith(lines: List[Line]): Dialog`
-- 窓が開いているか。開いている間はゲーム側で移動などの入力を止める判定に使う。
+- ダイアログが開いているか。開いている間はゲーム側で移動などの入力を止める判定に使う。
   `pub def isOpen(dialog: Dialog): Bool`
 - 表示中の行（閉じていれば None）。
   `pub def currentLine(dialog: Dialog): Option[Line]`
@@ -1661,7 +1661,7 @@
   `pub def step(cps: {cps = Float64}, dt: Float64, dialog: Dialog): Dialog`
 - 決定キー 1 回分の送り: 文字送り中なら全文へ飛ばし、見え終わっていれば次の行へ、
   `pub def advance(dialog: Dialog): Dialog`
-- 会話窓の枠を UiStore へ刻む: 開いていれば root を可視にして話者を流し込み、
+- 会話ダイアログの枠を UiStore へ刻む: 開いていれば root を可視にして話者を流し込み、
   `pub def apply(paths: Paths, dialog: Dialog, ui: UiStore.UiWorld): UiStore.UiWorld`
 
 ## UiDoc — `engine_world/src/UiDoc.flix`
@@ -1783,7 +1783,7 @@
   `pub def highlightPlacement(itemCount: Int32, sel: Int32, rowPitch: Float64, inset: Float64): Option[Vec2.Vec2]`
 - 選択 index を [0, count) へ収める純関数。項目 0 のときは 0。
   `pub def clampIndex(itemCount: Int32, sel: Int32): Int32`
-- 項目数が表示スロット数を超えるメニューで、選択 sel が見える窓の先頭 offset を決める純関数。
+- 項目数が表示スロット数を超えるメニューで、選択 sel が見える範囲の先頭 offset を決める純関数。
   `pub def windowOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32`
 - 選択カーソルを項目数 [0, count) の範囲へ収める（防御クランプ）。項目 0 のときは 0。
   `pub def clampSelection(listPath: String, ui: UiStore.UiWorld): UiStore.UiWorld`
@@ -1809,7 +1809,7 @@
   `pub def itemsWith(atlasOf: String -> FontAtlas \ ef, textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef, ui: UiStore.UiWorld, design: Vec2.Vec2): List[Render.PlacedItem] \ ef`
 
 ## UiScroll — `engine_world/src/UiScroll.flix`
-- 遡れる上限。内容が窓に収まるなら 0。
+- 遡れる上限。内容がビューポートに収まるなら 0。
   `pub def maxOffset(size: {content = Int32, viewport = Int32}): Int32`
 - delta ぶん遡る(正 = 過去へ、負 = 末尾へ)。両端で止まる。
   `pub def scrollBy(delta: Int32, size: {content = Int32, viewport = Int32}, offset: Int32): Int32`
@@ -1870,11 +1870,11 @@
   `pub def spawnRoot(spec: Spec, ui: UiStore.UiWorld): (EntityId, UiStore.UiWorld)`
 - spec 由来 store を root ごと捨ててから spawnRoot し直す。selection/focus は String キーゆえ生存する。
   `pub def respawn(spec: Spec, ui: UiStore.UiWorld): (EntityId, UiStore.UiWorld)`
-- ui.json を読み込んで spawnRoot し、root 名パス→アセットパスを sources 台帳へ登録する。
+- ui.json を読み込んで spawnRoot し、root 名パス→アセットパスを sources レジストリへ登録する。
   `pub def spawnAsset(path: String, ui: UiStore.UiWorld): Result[JsonError, (EntityId, UiStore.UiWorld)] \ Fs.FileRead`
 - `spawnAsset` の別名 root 版。同じアセットを複数の root として組みたいとき（味方カードと
   `pub def spawnAssetAs(path: String, rootName: String, ui: UiStore.UiWorld): Result[JsonError, (EntityId, UiStore.UiWorld)] \ Fs.FileRead`
-- sources 台帳の全 root を走査し、各アセットを読み直して respawn する（F1 ホットリロード）。
+- sources レジストリの全 root を走査し、各アセットを読み直して respawn する（F1 ホットリロード）。
   `pub def reloadAll(ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead`
 - reloadAll と同じリロードに加えて、失敗した root の (root 名, エラー文言) のリストを返す。
   `pub def reloadAllWithReport(ui: UiStore.UiWorld): (UiStore.UiWorld, List[(String, String)]) \ Fs.FileRead`
@@ -1938,7 +1938,7 @@
   `pub def setBoxBorderWidth(path: String, width: Float64, ui: UiWorld): UiWorld`
 - root 名パスに ui.json アセットパスを紐付ける（reloadAll の走査対象になる）。
   `pub def putSource(rootPath: String, assetPath: String, ui: UiWorld): UiWorld`
-- root 名パスを台帳から外す（恒久削除時に呼ぶ。以後 reloadAll の対象外）。
+- root 名パスをレジストリから外す（恒久削除時に呼ぶ。以後 reloadAll の対象外）。
   `pub def forgetSource(rootPath: String, ui: UiWorld): UiWorld`
 - root 配下の各ノードの「名前パス→設定可視（継承前の生値）」を集める。
   `pub def visibleByPath(rootPath: String, ui: UiWorld): Map[String, Bool]`

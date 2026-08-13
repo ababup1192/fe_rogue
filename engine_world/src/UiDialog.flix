@@ -1,4 +1,4 @@
-// UiDialog — 会話窓の中身（誰が・何を・どこまで見せたか）を持つ値と、その進め方。
+// UiDialog — 会話ダイアログの中身（誰が・何を・どこまで見せたか）を持つ値と、その進め方。
 // 「開く→文字送り→決定キーで送る→最後の行で閉じる」の定番の流れを、ゲーム側の分岐なしで共有できる。
 // 本文は RichText のスパン列なので、名前だけ色を変える・強調語だけ太くする、ができる。
 // 利用例: openWith(lines) を状態に持ち、毎フレーム step、決定キーで advance。
@@ -10,13 +10,13 @@ mod UiDialog {
     pub type alias Line = { speaker = String, body = List[RichText.Span] }
 
     /// 会話の進行状態。lines = 残りの行（先頭が表示中）、reveal = 表示中の行の文字送り。
-    /// lines が空 = 窓は閉じている。
+    /// lines が空 = ダイアログは閉じている。
     pub type alias Dialog = { lines = List[Line], reveal = UiTypewriter.Reveal }
 
-    /// 会話窓の投影先の名前パス束。root = 窓全体（開閉で可視切替）、speaker = 話者の text ノード。
+    /// 会話ダイアログの投影先の名前パス束。root = ダイアログ全体（開閉で可視切替）、speaker = 話者の text ノード。
     pub type alias Paths = { root = String, speaker = String }
 
-    /// 閉じた会話窓。
+    /// 閉じた会話ダイアログ。
     pub def closed(): Dialog =
         { lines = Nil, reveal = UiTypewriter.start("") }
 
@@ -27,7 +27,7 @@ mod UiDialog {
             case line :: _ => { lines = lines, reveal = UiTypewriter.start(RichText.plainText(line#body)) }
         }
 
-    /// 窓が開いているか。開いている間はゲーム側で移動などの入力を止める判定に使う。
+    /// ダイアログが開いているか。開いている間はゲーム側で移動などの入力を止める判定に使う。
     pub def isOpen(dialog: Dialog): Bool =
         not List.isEmpty(dialog#lines)
 
@@ -63,7 +63,7 @@ mod UiDialog {
         else
             openWith(List.drop(1, dialog#lines))
 
-    /// 会話窓の枠を UiStore へ刻む: 開いていれば root を可視にして話者を流し込み、
+    /// 会話ダイアログの枠を UiStore へ刻む: 開いていれば root を可視にして話者を流し込み、
     /// 閉じていれば root を隠すだけ。本文（スパン列）は visibleBody を視点側が描く。
     pub def apply(paths: Paths, dialog: Dialog, ui: UiStore.UiWorld): UiStore.UiWorld =
         match currentLine(dialog) {

@@ -118,7 +118,7 @@ mod MoveRange {
         MoveDraft.originOf(id, drafts) |> Option.getWithDefault(currentPos)
 
     /// 指定 id を起点に MoveRange を組み立てて resource に書く。
-    /// **通行不可**: 壁 / 敵駒。**味方駒は通過可能** (1 マスとしてカウント)。「味方は素通り、ただし停止はできない」
+    /// **通行不可**: 壁 / 敵駒。**味方駒は通過可能** (1 マスとしてカウント)。「味方は通り抜けられるが、停止はできない」
     /// 表現。`Board.reachableForUnit` で到達範囲を出し、`stoppableForUnit` で味方マス
     /// (自分 + 他味方) を除いたものを青マスとして描画する。AutoMove も同じプリミティブで
     /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。

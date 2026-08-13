@@ -96,18 +96,18 @@ def section_tests(out):
         out.append("  NG(bake): %s" % os.path.basename(p)[:-5])
 
 
-def snapshot_pairs():
-    """(名前, snapshot/SHA256SUMS.txt, gallery/) の組。ゲームリポは自分 1 組、engine リポは templates 全部。"""
-    if os.path.isfile(os.path.join("snapshot", "SHA256SUMS.txt")):
-        return [(".", os.path.join("snapshot", "SHA256SUMS.txt"), "gallery")]
+def reference_pairs():
+    """(名前, reference/SHA256SUMS.txt, gallery/) の組。ゲームリポは自分 1 組、engine リポは templates 全部。"""
+    if os.path.isfile(os.path.join("reference", "SHA256SUMS.txt")):
+        return [(".", os.path.join("reference", "SHA256SUMS.txt"), "gallery")]
     pairs = []
-    for sums in sorted(glob.glob(os.path.join("templates", "*", "snapshot", "SHA256SUMS.txt"))):
+    for sums in sorted(glob.glob(os.path.join("templates", "*", "reference", "SHA256SUMS.txt"))):
         base = os.path.dirname(os.path.dirname(sums))
         pairs.append((os.path.basename(base), sums, os.path.join(base, "gallery")))
     return pairs
 
 
-def check_snapshot(sums, gallery):
+def check_reference(sums, gallery):
     """一致した枚数と食い違い一覧を返す。shasum が無い Windows でも動くよう hashlib で比べる。"""
     expected = {}
     with open(sums, encoding="utf-8", errors="replace") as fh:
@@ -133,8 +133,8 @@ def check_snapshot(sums, gallery):
     return ok, sorted(set(bad))
 
 
-def section_snapshot(out):
-    pairs = snapshot_pairs()
+def section_reference(out):
+    pairs = reference_pairs()
     if not pairs:
         return
     oks = []
@@ -142,16 +142,16 @@ def section_snapshot(out):
         if not os.path.isdir(gallery):
             continue  # 未生成は「情報なし」。生成してから比べる
         try:
-            ok, bad = check_snapshot(sums, gallery)
+            ok, bad = check_reference(sums, gallery)
         except OSError:
             continue
         if bad:
-            out.append("snapshot NG %s: %s%s (意図した変更なら make snapshot-update で更新)" % (
+            out.append("reference NG %s: %s%s (意図した変更なら make reference-update で更新)" % (
                 name, " ".join(bad[:4]), " 他%d" % (len(bad) - 4) if len(bad) > 4 else ""))
         else:
             oks.append("%s(%d枚)" % (name, ok))
     if oks:
-        out.append("snapshot OK: " + " ".join(oks))
+        out.append("reference OK: " + " ".join(oks))
 
 
 def section_tickets(out):
@@ -169,7 +169,7 @@ def section_tickets(out):
 
 def section_style(out):
     # engine リポ自身にはルート AGENTS.local.md が無く、素朴に検査すると毎回誤発火する。
-    # templates/ の有無でリポ種別を見分ける（snapshot_pairs() と同じ手）
+    # templates/ の有無でリポ種別を見分ける（reference_pairs() と同じ手）
     if os.path.isdir("templates"):
         return
     hint = "[画風] AGENTS.local.md の「この画面の画風」が未定（無い/仮置きのまま） → 絵を描く前に /style-interview"
@@ -292,7 +292,7 @@ def section_notes(out):
 def main():
     here = os.path.basename(os.getcwd())
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
-    for section in (section_git, section_tests, section_snapshot, section_tickets,
+    for section in (section_git, section_tests, section_reference, section_tickets,
                     section_style, section_pack, section_engine_drift, section_notes):
         try:
             section(out)

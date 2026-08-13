@@ -95,7 +95,7 @@ mod CharGallery {
     /// charparade（GIF + コマ別 PNG）と charlineup（PNG 1 枚）を焼き、GIF の
     /// フィルムストリップ情報を返す。6 秒 × 64fps = 384 コマを 3 コマおきに 128 コマへ
     /// 間引く（コマ間 3/64 秒 ≈ 47ms・実時間再生 ≈ 21fps）。時刻を事前に間引くので stride=1。
-    pub def bake(atlas: FontAtlas): SnapshotSite.Filmstrip \ IO =
+    pub def bake(atlas: FontAtlas): ReferenceSite.Filmstrip \ IO =
         let dt = 1.0 / 64.0;
         let ts = List.range(0, 384)
             |> List.filter(i -> Int32.modulo(i, 3) == 0)

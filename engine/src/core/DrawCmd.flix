@@ -8,7 +8,7 @@ mod DrawCmd {
 
     /// ピクセルの重ね方（ブレンドモード）。
     /// Normal = ふつうの半透明合成。Add = 光が重なるように明るく足す（グロー・炎・魔法）。
-    /// Multiply = 下の色に掛けて暗く沈める（影・暗幕。2D 光源の土台）。
+    /// Multiply = 下の色に掛けて暗く沈める（影・暗くするオーバーレイ。2D 光源の土台）。
     /// バックエンド（GL / SoftRaster）は同じ式で合成する:
     ///   Add      : out = min(1, dst + src×srcAlpha)
     ///   Multiply : out = dst×(1 − srcAlpha×(1 − src))  （srcAlpha=1 で dst×src・白は素通し・黒は黒）
@@ -108,7 +108,7 @@ mod DrawCmd {
     /// タイルマップのインスタンス描画命令（1 draw call で全タイル）。
     /// `tileScale` はカメラの zoom を反映するスクリーン倍率で、zoom 未指定時は (1, 1)。
     /// `tileVaoId` は `initTileBuffer` が返したバックエンドのハンドル（中身はバックエンドだけが知る）。
-    /// blend は持たない = タイルは常に Normal（光り物・暗幕の実需要はエンティティ側。必要になったら拡張）。
+    /// blend は持たない = タイルは常に Normal（光り物・暗くするオーバーレイの実需要はエンティティ側。必要になったら拡張）。
     pub type alias TileMapRenderCmd = {
         textureName = String,
         tileSize    = Float64,

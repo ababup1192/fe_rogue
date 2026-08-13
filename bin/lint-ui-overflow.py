@@ -236,7 +236,7 @@ def _self_test():
 
 GAME_ROOTS = ("templates", "examples")
 SKIP_GAMES = {"examples/fe_rogue"}
-EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "gallery", "snapshot", "target"}
+EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "gallery", "reference", "target"}
 
 
 def discover(root):

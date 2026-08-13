@@ -36,7 +36,7 @@ mod ShaderEffect {
         /// codegen ミスで全体がクラッシュしないように。
         def buildProgram(spec: ShaderDoc.Spec): GpuHandle.ShaderProgram
         /// シェーダー面 1 枚を描く。骨格では「床タイルと壁の間の固定 z-index の範囲」へ寄せて
-        /// renderCommands の下に敷く（暗幕・ハロが上に正しく乗る）。
+        /// renderCommands の下に敷く（暗くするオーバーレイ・ハロが上に正しく乗る）。
         def drawSurface(cmd: ShaderRenderCmd): Unit
     }
 

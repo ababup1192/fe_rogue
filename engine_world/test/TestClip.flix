@@ -1,7 +1,7 @@
-// TestClip — clip(切り抜き窓)の勘定を具体値で固定する: Rect2.intersect の交差と空、
+// TestClip — clip(切り抜き矩形)の勘定を具体値で固定する: Rect2.intersect の交差と空、
 // clipPixels の floor 量子化(GL scissor と SoftRaster setClip が見る共通の画素集合)、
-// Render.draw が Clipped を剥がして Drawable / PolygonRenderCmd に窓を刻むこと、
-// 修飾(fade)が窓を素通りして中身に効くこと、Annotate の外形が窓と交差すること。
+// Render.draw が Clipped を剥がして Drawable / PolygonRenderCmd に clip 矩形を刻むこと、
+// 修飾(fade)が clip 矩形をスキップして中身に効くこと、Annotate の外形が clip 矩形と交差すること。
 mod TestClip {
 
     def rect(x: Float64, y: Float64, w: Float64, h: Float64): Rect2.Rect2 =
@@ -31,7 +31,7 @@ mod TestClip {
 
     @Test
     def testDrawStampsClipOnDrawables(): Unit \ Assert =
-        // clipped で包んだ Box は Drawable の clip に窓が刻まれ、包まない物は None のまま。
+        // clipped で包んだ Box は Drawable の clip に clip 矩形が刻まれ、包まない物は None のまま。
         let box = RawDraw.box({ x = 10.0, y = 10.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let items = ({ at = { x = 0.0, y = 0.0 }, item = Render.clipped(rect(1.0, 2.0, 3.0, 4.0), box) }: Render.PlacedItem)
                  :: ({ at = { x = 0.0, y = 0.0 }, item = box }: Render.PlacedItem)
@@ -43,7 +43,7 @@ mod TestClip {
 
     @Test
     def testNestedClipIntersects(): Unit \ Assert =
-        // 入れ子の Clipped は交差した窓 1 つに畳まれる。
+        // 入れ子の Clipped は交差した clip 矩形 1 つに畳まれる。
         let box = RawDraw.box({ x = 10.0, y = 10.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let nested = Render.clipped(rect(0.0, 0.0, 40.0, 30.0),
                         Render.clipped(rect(10.0, 20.0, 100.0, 100.0), box));
@@ -53,7 +53,7 @@ mod TestClip {
 
     @Test
     def testClippedPolyRoutesToPolygonWithClip(): Unit \ Assert =
-        // Clipped に包まれた Poly も polygon 側へ届き、窓が刻まれる(Drawable 側は空)。
+        // Clipped に包まれた Poly も polygon 側へ届き、clip 矩形が刻まれる(Drawable 側は空)。
         let tri = RawDraw.polygon({ x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 4.0 } :: Nil,
                                  { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let (ds, ps) = Render.draw(
@@ -64,7 +64,7 @@ mod TestClip {
 
     @Test
     def testModifierReachesLeafThroughClip(): Unit \ Assert =
-        // fade は窓を素通りして中身に効く(窓は変わらない)。
+        // fade は clip 矩形をスキップして中身に効く(clip 矩形は変わらない)。
         let box = RawDraw.box({ x = 10.0, y = 10.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let faded = Render.clipped(rect(1.0, 2.0, 3.0, 4.0), box) |> Render.fade(0.5);
         let (ds, _) = Render.draw(({ at = { x = 0.0, y = 0.0 }, item = faded }: Render.PlacedItem) :: Nil);
@@ -74,7 +74,7 @@ mod TestClip {
 
     @Test
     def testAnnotateAabbShrinksToWindow(): Unit \ Assert =
-        // F8 の外形は窓と交差した見えている範囲になる(完全に窓の外なら負サイズ = ヒットしない)。
+        // F8 の外形は clip 矩形と交差した見えている範囲になる(完全に clip 矩形の外なら負サイズ = ヒットしない)。
         let box = RawDraw.box({ x = 100.0, y = 100.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let placed: Render.PlacedItem =
             { at = { x = 0.0, y = 0.0 }, item = Render.clipped(rect(10.0, 10.0, 20.0, 20.0), box) };

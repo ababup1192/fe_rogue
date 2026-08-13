@@ -229,7 +229,7 @@ mod Controls {
     /// カンテラ実験の手本 system。他デモ（blend）と同じ Option パターン: 矢印キーを
     /// 押すまでは None（非表示。bake する他シーンに映り込まない）で、押した瞬間に
     /// 出現して以降は移動し続ける。移動は design 範囲の内側にクランプする
-    /// （範囲外へ出るとカンテラの穴あき暗幕が画面から外れて見えなくなるため）。
+    /// （範囲外へ出るとカンテラの穴あきの暗くするオーバーレイが画面から外れて見えなくなるため）。
     /// LeftShift は Bright ⇔ DarkWithLight をトグルする（Dark はゲーム内操作から経由しない）。
     pub def lanternStep(frame: App.Frame, world: World.World): World.World =
         let taps = InputMap.taps(lanternTable(), frame);

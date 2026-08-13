@@ -12,8 +12,8 @@
                          lint-palette を通す
   5. 文字のはみ出す形    ステージに *.ui.json があれば lint-ui-overflow を
                          そのファイルだけに通す (折り返し宣言漏れを止める)
-  6. 独自の比喩語        今回書き足したコメント・文章に、docs/glossary.md の
-                         「使わない語」が混ざっていたら止める。既存の行は見ない
+  6. 独自の比喩語        今回書き足したコメント・文章に、bin/lint-jargon.py の
+                         WORDS の語が混ざっていたら止める。既存の行は見ない
 
 使い方:
   通常は git が bin/githooks/pre-commit 経由で呼ぶ (配線は make hooks)

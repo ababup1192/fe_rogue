@@ -45,7 +45,7 @@ mod World {
     /// いま戦っている 1 回ぶん。主人公の体力は戦いをまたいで残るので World 側が持ち、
     /// ここには「この戦いの中だけの物」を置く。
     ///   step … いまどの段か。cursor … 選んでいるコマンド（0 = たたかう / 1 = にげる）。
-    ///   foeHp … 魔物の残り体力。lines … 下の窓に出す文（上から順）。
+    ///   foeHp … 魔物の残り体力。lines … 下のウィンドウに出す文（上から順）。
     ///   foeHurt … 魔物が殴られたコマを出すか。outcome … 決着（まだなら None）。
     pub type alias Battle = {
         step = BattleStep,

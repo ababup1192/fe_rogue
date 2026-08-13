@@ -1,6 +1,6 @@
 /// ItemMenuState — アイテム選択ウィンドウの選択状態を保持する effect
 ///
-/// `ItemMenuUi`（`ItemSelect` / `ItemActionSelect` フェーズのインベントリ窓）が持つ
+/// `ItemMenuUi`（`ItemSelect` / `ItemActionSelect` フェーズのインベントリウィンドウ）が持つ
 /// 「いま見ているカテゴリ index」と「一括操作の複数選択マーク」をまとめて持つ。
 /// 行カーソル（selectedIndex）はリスト UI 側が持つのでここには持たない。
 /// 見た目（行・アイコン・バッジ・ヒント）は `ItemMenuUi` の view が毎フレーム World の在庫から
@@ -12,7 +12,7 @@ mod ItemMenuState {
     /// 選択状態の実体。`category` はカテゴリ index（0=武器…）、`marks` は一括捨て等の複数選択印。
     pub type alias Data = {category = Int32, marks = Set[PlayerData.ItemKind]}
 
-    /// 初期値（武器カテゴリ・印なし）。窓を開くたび `ItemMenuUi` が明示的に put し直す。
+    /// 初期値（武器カテゴリ・印なし）。ウィンドウを開くたび `ItemMenuUi` が明示的に put し直す。
     pub def initial(): Data = {category = 0, marks = Set#{}}
 
     /// `withState` が提供する handler 1 つで読み書きする。

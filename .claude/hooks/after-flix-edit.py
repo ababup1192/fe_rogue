@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Flix ファイルを書いた直後に型検査する（Claude Code の PostToolUse hook）。
+"""bin/checkd（常駐）との話し方 — after-flix-work.py が使う共有ライブラリ。
 
-bin/checkd が温めている常駐へ CHECK を送るだけの薄い入口。常駐が温まって
-いなければ黙って降りる（保存のたびに数十秒のコンパイルを待たせない）。
-その代わり、裏で常駐の立ち上げだけ予約して、次の保存から効くようにする。
+以前はこのファイル自身が Claude Code の PostToolUse hook として、保存の
+たびに常駐へ CHECK を送っていた。サブエージェントを並列に走らせると保存が
+秒間何度も届いて常駐が増殖したため、引き金は .claude/hooks/after-flix-work.py
+（Stop / SubagentStop hook）へ移した。常駐との通信プロトコル（find_pkg /
+ask / state_dir / too_busy / reserve_daemon / first_error_block /
+load_prescriptions）は 1 か所にしか持たない方針で、ここへ残して import で
+使い回している。settings.json には直接は登録されていない。
+
+単体でも `python3 after-flix-edit.py < ペイロード` として、1 ファイル分の
+PostToolUse 形ペイロードを与えれば従来どおり動く（デバッグ・移行期の比較用）。
 
 exit 2 で stderr が Claude に返る（作業自体は止めない）。緑・冷・想定外の
 失敗はすべて無音の exit 0。フックの都合で作業を壊さないことを最優先する。
@@ -102,6 +109,48 @@ def find_checkd(pkg):
     return None
 
 
+def too_busy(pkg):
+    """起動予約を見送る条件。JVM 1 つで 1 コア食うので、無条件に増やすと機械が死ぬ。
+
+    サブエージェントを並列に走らせると、1 パッケージへ数十件の保存が数秒で届く。
+    予約は「次の保存から効けばよい」おまけなので、混んでいる間は諦める方が速い。
+    """
+    stamp = os.path.join(state_dir(pkg), "reserved")
+    try:
+        if time.time() - os.path.getmtime(stamp) < 90:
+            return True
+    except OSError:
+        pass
+    try:
+        if os.getloadavg()[0] > 2 * (os.cpu_count() or 4):
+            return True
+    except (OSError, AttributeError):
+        pass
+    # 常駐は JVM を抱えたまま眠り続ける (1 つで 0.5〜1GB)。パッケージの数だけ
+    # 増やすと機械のメモリが尽きるので、生きている数で上限を切る。
+    # 落ちた常駐も pid ファイルを残すので、生きているかを見てから数える。
+    root = os.path.expanduser("~/.cache/flix-checkd")
+    live = 0
+    try:
+        for name in os.listdir(root):
+            try:
+                with open(os.path.join(root, name, "pid"), encoding="utf-8") as f:
+                    os.kill(int(f.read().strip()), 0)
+                live += 1
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        live = 0
+    if live >= 3:
+        return True
+    try:
+        os.makedirs(os.path.dirname(stamp), exist_ok=True)
+        open(stamp, "w").close()
+    except OSError:
+        pass
+    return False
+
+
 def reserve_daemon(pkg):
     """裏で `checkd <pkg>` を完全に切り離して起動する。次の保存から温で効く。
 
@@ -109,7 +158,7 @@ def reserve_daemon(pkg):
     フック本体の責務ではない）。
     """
     checkd = find_checkd(pkg)
-    if not checkd:
+    if not checkd or too_busy(pkg):
         return
     kwargs = {}
     if os.name == "nt":

@@ -86,7 +86,7 @@ mod TestUnitCardUi {
              Option.isEmpty(UiStore.idOf("UnitCard", ui))));
         Assert.assertEq(expected = Some((true, true, true)), present)
 
-    /// sources 台帳は別名 root（EnemyCard）をキーにアセットパスを登録する。
+    /// sources レジストリは別名 root（EnemyCard）をキーにアセットパスを登録する。
     @Test
     def testSpawnAsRegistersSourceUnderRootName(): Unit \ {Assert, Fs.FileRead} =
         let src = spawnAsEnemy() |> Option.map(ui -> Map.get("EnemyCard", ui#sources));

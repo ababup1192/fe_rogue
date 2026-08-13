@@ -4,7 +4,7 @@
 ##   engine/       ─ 契約層 flix_engine_core（Game/Audio effect・共有描画型・土台型・描画語彙）
 ##   render_gl/    ─ engine（契約層）を実装する GL バックエンド
 ##   engine_world/ ─ App/World/UI ランタイム。examples が利用する
-##   engine_tools/ ─ ヘッドレス bake/snapshot 工具箱。examples が利用する
+##   engine_tools/ ─ ヘッドレス bake/reference 工具箱。examples が利用する
 ##   engine_full/  ─ 上4つのソースを1つに集めた自己完結の全部入り flix_game_engine（配布物）
 ##   editor_server/─ ui.json/hitbox.json エディタの常駐 HTTP バックエンド（make editor で起動）
 ##   examples/     ─ 各 example は `cd examples/<name> && flix ...` で直接
@@ -233,26 +233,26 @@ bake-par:
 	fi; \
 	echo "[bake-par] all done ($$ran examples)"
 
-# 直した絵の「前 (スナップショット)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
+# 直した絵の「前 (リファレンス画像)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
 # bench はバイトが違うことしか言わないので、どこがどう変わったかを目で追えるようにする物。
 # 焼くのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
 #
-# スナップショットの PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
-# 「前」が手元に無い。その時は一度 make bake && make snapshot-update で今の絵を基準に置く。
+# リファレンス画像の PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
+# 「前」が手元に無い。その時は一度 make bake && make reference-update で今の絵を基準に置く。
 diff:
 	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
-	@ls "$(DIR)"/snapshot/*.png > /dev/null 2>&1 || { \
-		echo "[diff] $(DIR)/snapshot に比べる前の絵がありません。"; \
-		echo "       スナップショットの PNG は git 管理外です。まず make -C $(DIR) bake && make -C $(DIR) snapshot-update で基準を置いてください。"; \
+	@ls "$(DIR)"/reference/*.png > /dev/null 2>&1 || { \
+		echo "[diff] $(DIR)/reference に比べる前の絵がありません。"; \
+		echo "       リファレンス画像の PNG は git 管理外です。まず make -C $(DIR) bake && make -C $(DIR) reference-update で基準を置いてください。"; \
 		exit 1; }
 	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
 		n=$$(basename "$$f"); \
-		if [ ! -f "snapshot/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
-		elif ! cmp -s "$$f" "snapshot/$$n"; then printf '%s,' "$$n"; fi; \
+		if [ ! -f "reference/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
+		elif ! cmp -s "$$f" "reference/$$n"; then printf '%s,' "$$n"; fi; \
 	done); \
 	if [ -z "$$names" ]; then echo "[diff] 変わった絵はありません"; else \
 		cd $(ENGINE_TOOLS_DIR) && DIFF_DIR="$(abspath $(DIR))" DIFF_NAMES="$$names" \
-			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint GoldenDiff.pairs; \
+			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint ReferenceDiff.pairs; \
 	fi
 
 # GL と SoftRaster の突き合わせ (bench/gl_parity)。隠し窓で GL を 1 コマずつ焼き、
@@ -507,7 +507,7 @@ sync-engine-tools:
 		fi \
 	done
 
-# agents-pack をゲームに配る。配布物一覧の正本は agents-pack/manifest.json で、
+# agents-pack をゲームに配る。配布物一覧の source of truth は agents-pack/manifest.json で、
 # Makefile はその解釈器 bin/sync-agents.py を呼ぶだけ (Studio の配布も同じ manifest を
 # 読むので、リストの二重管理で片方だけ腐ることが無い)。冪等。
 # バージョンはルート flix.toml でなく $(VERSION) (bump が進める実体) を刻む。ゲーム側の
@@ -727,7 +727,7 @@ new-game: engine-full-fresh
 	mkdir -p "$(GAME)"; \
 	cp -R "templates/$(NG_TEMPLATE)/." "$(GAME)/"; \
 	rm -rf "$(GAME)/lib"; \
-	mkdir -p "$(GAME)/gallery" "$(GAME)/snapshot" "$(GAME)/debug" "$(GAME)/atelier"; \
+	mkdir -p "$(GAME)/gallery" "$(GAME)/reference" "$(GAME)/debug" "$(GAME)/atelier"; \
 	for f in "$(GAME)"/assets/__NAME__.*; do \
 	  [ -e "$$f" ] || continue; \
 	  mv "$$f" "$(GAME)/assets/$(NAME).$${f##*/__NAME__.}"; \
@@ -758,7 +758,7 @@ new-game: engine-full-fresh
 	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
 	echo "  次にやること:"; \
 	echo "    cd $(GAME) && make run              … 窓を開いて遊ぶ（矢印キーで移動）"; \
-	echo "    make snapshot-update                 … いまの絵をスナップショット(基準)にする"; \
+	echo "    make reference-update                 … いまの絵をリファレンス画像(基準)にする"; \
 	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
 	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"
 
@@ -766,7 +766,7 @@ new-game: engine-full-fresh
 # ゲームの flix.toml が指す flix_game_engine のバージョンをこの engine の $(VERSION) へ上げ、
 # lib/ に対応する fpkg + toml を置き、agents-pack も配り直す。status.py の
 # 「engine バージョンズレ」を見た人が 1 手で追随する入口 (テンプレの make engine-upgrade が
-# ここへ委譲する)。自動では走らせない — バージョン上げは挙動・スナップショットまで変わりうる
+# ここへ委譲する)。自動では走らせない — バージョン上げは挙動・リファレンス画像まで変わりうる
 # 「人が選ぶ側」の変更。終わったら check だけ回して生存確認する。
 .PHONY: upgrade-game
 upgrade-game: engine-full-fresh
@@ -783,4 +783,4 @@ upgrade-game: engine-full-fresh
 	cp "$(ENGINE_FULL_TOML_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_TOML_NAME)"; \
 	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
 	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
-	echo "[upgrade-game] check OK。続きは自分の目で: make test と make snapshot-check (スナップショットのピクセル差の確認)"
+	echo "[upgrade-game] check OK。続きは自分の目で: make test と make reference-check (リファレンス画像とのピクセル差の確認)"

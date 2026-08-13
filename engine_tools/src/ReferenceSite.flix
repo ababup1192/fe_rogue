@@ -1,4 +1,4 @@
-// SnapshotSite — カタログ（エントリ列）を静的なマルチページ HTML サイトへ変換する汎用生成器。
+// ReferenceSite — カタログ（エントリ列）を静的なマルチページ HTML サイトへ変換する汎用生成器。
 //
 // この生成器はゲームの内容を一切知らない。入力は「名前・説明・シナリオ・タグ・画像拡張子・
 // 表示幅・（未生成時の案内）」だけを持つ構造的レコード（Item）で、それを次の 3 種類のページへ
@@ -15,7 +15,7 @@
 // 依存は Flix 標準ライブラリ + Fs 効果 + java.io.File のみ。ゲーム固有の型を import しないため、
 // そのまま engine 側の汎用パーツへ吸い出せる。品質要素（image-rendering: pixelated / Retina 前提の
 // CSS 幅 / ダーク配色）は生成 HTML に組み込む。
-mod SnapshotSite {
+mod ReferenceSite {
     import java.io.File
 
     /// サイト全体の設定。1 サイト 1 レコードで名前渡しする。
@@ -158,7 +158,7 @@ mod SnapshotSite {
             + styleBlock()
             + "<h1>${config#title}</h1>\n"
             + "<p class=\"hint\">One page per game feature. Open a card to browse its basic states, edge cases "
-            + "and flows. The yellow code tag on each page is the snapshot name (report bugs by it; click to copy).</p>\n"
+            + "and flows. The yellow code tag on each page is the entry name (report bugs by it; click to copy).</p>\n"
             + "<main class=\"hub\">\n${cards}\n</main>\n"
             + tagIndexHtml(tags)
 
@@ -204,7 +204,7 @@ mod SnapshotSite {
             + neighborLinks(scenario, scenarios)
             + "</nav>\n"
             + "<h1>${scenario}</h1>\n"
-            + "<p class=\"hint\">The yellow code tag is the snapshot name (report bugs by it); click to copy. "
+            + "<p class=\"hint\">The yellow code tag is the entry name (report bugs by it); click to copy. "
             + "Tags link to their cross-feature pages.</p>\n"
             + sections
             + scriptBlock()

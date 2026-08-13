@@ -9,14 +9,14 @@
 // turn-end-hold / item-pickup）。複数 HUD の組み合わせ（旧 hud-combos）や満載・境界（旧
 // edge-cases）は、それが最も体感される機能のページへ合流させ、タグで補足する。他機能をまたぐ
 // エントリ（例: コマンド→アイテムの遷移 GIF）は主機能側に置き、もう一方の機能名を tags に足して
-// タグページ経由で見えるようにする。エッジケースは tags に "edge-case" を必ず含める（SnapshotSite
+// タグページ経由で見えるようにする。エッジケースは tags に "edge-case" を必ず含める（ReferenceSite
 // がこのタグでページ内の節を振り分ける）。
 //
 // 拡張の仕方:
 //   - スナップショットを 1 枚足す = ここに 1 行足し（name/desc/kind/scenario/tags）、
 //     TestUiSnapshots に driveByName の腕と drive 関数を 1 個足す（GIF なら TestGifSnapshots に
 //     gen 関数を 1 個）。
-//   - ゲーム機能を 1 つ足す = 新しい scenario 文字列を書くだけ。SnapshotSite が自動でページを増やし、
+//   - ゲーム機能を 1 つ足す = 新しい scenario 文字列を書くだけ。ReferenceSite が自動でページを増やし、
 //     ハブのカードと前後導線に組み込む。
 // 表示順・ページ順・前後導線の順序は、この entries() の宣言順に一致する。
 mod SnapshotCatalog {
@@ -188,20 +188,20 @@ mod SnapshotCatalog {
     /// GIF エントリだけ（TestGifSnapshots が収録する対象）。
     pub def gifEntries(): List[Entry] = List.filter(entry -> entry#kind == Kind.Gif, entries())
 
-    /// 目録を SnapshotSite の表示用 Item 列へ変換する。ここが Kind → 拡張子/表示幅/未生成案内の
-    /// 対応表で、SnapshotSite にゲーム都合を持ち込ませないためのアダプタ。実ピクセル幅は撮影側の
+    /// 目録を ReferenceSite の表示用 Item 列へ変換する。ここが Kind → 拡張子/表示幅/未生成案内の
+    /// 対応表で、ReferenceSite にゲーム都合を持ち込ませないためのアダプタ。実ピクセル幅は撮影側の
     /// 定数（PNG/GIF で解像度が違う）なので引数で受ける。GIF エントリはストリップが生成済みであれば
     /// `filmstripByName` からコマ送りビューア情報を引く（無ければ従来の GIF カードに落ちる）。
     pub def toItems(widths: {pngPxWidth = Int32, gifPxWidth = Int32}, gifHint: String,
-                    filmstripByName: Map[String, SnapshotSite.Filmstrip]): List[SnapshotSite.Item] =
+                    filmstripByName: Map[String, ReferenceSite.Filmstrip]): List[ReferenceSite.Item] =
         List.map(entry -> match entry#kind {
             case Kind.Png =>
                 {name = entry#name, desc = entry#desc, scenario = entry#scenario, tags = entry#tags,
                  ext = "png", pxWidth = widths#pngPxWidth, generateHint = (None: Option[String]),
-                 lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip()}
+                 lint = ReferenceSite.noLint(), filmstrip = ReferenceSite.noFilmstrip()}
             case Kind.Gif =>
                 {name = entry#name, desc = entry#desc, scenario = entry#scenario, tags = entry#tags,
                  ext = "gif", pxWidth = widths#gifPxWidth, generateHint = Some(gifHint),
-                 lint = SnapshotSite.noLint(), filmstrip = Map.get(entry#name, filmstripByName)}
+                 lint = ReferenceSite.noLint(), filmstrip = Map.get(entry#name, filmstripByName)}
         }, entries())
 }

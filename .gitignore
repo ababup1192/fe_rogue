@@ -32,10 +32,10 @@ __pycache__/
 **/gallery/
 !docs/gallery/
 !docs/gallery/**
-# スナップショットは退行テスト(make snapshot-check)の基準画像だが、PNG 本体でなく SHA256SUMS.txt を追跡する。
+# リファレンス画像は退行テスト(make reference-check)の基準画像だが、PNG 本体でなく SHA256SUMS.txt を追跡する。
 # title.png だけは Studio のジャンルカードのサムネイルが実体を読むので例外。
-**/snapshot/*.png
-!**/snapshot/title.png
+**/reference/*.png
+!**/reference/title.png
 # 目視用の生成物（スナップショット比較はしていない）。
 examples/fe_rogue/test/snapshots/gifs/
 # 使い捨ての試作置き場。

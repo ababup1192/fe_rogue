@@ -2,7 +2,7 @@
 // 動的な行数のメニュー・一覧を、ページを組み直さず setText / setMeta / setVisible だけで作れる。
 // 利用例: ui.json に slot0..slotN（各スロットの子に label text）を宣言し、毎フレーム fill で流し込む。
 // 規約: 項目のあるスロットは可視 + meta 設定（UiMenu の選択列に載る）、余りは meta を外して不可視
-// （display:none で窓が縮む）。あふれた項目は黙って切り捨てるので、呼び側は overflows で検知して守る。
+// （display:none でパネルが縮む）。あふれた項目は黙って切り捨てるので、呼び側は overflows で検知して守る。
 mod UiSlots {
 
     /// スロット 1 個分の項目。text = 表示文字列（スロットの `label` 子へ）、
@@ -21,7 +21,7 @@ mod UiSlots {
             }, ui)
 
     /// スロットが足りないか。足りないまま fill すると末尾の項目が表示されないので、
-    /// 呼び側はこれで検知して bug! なりスクロール窓なりで守る。
+    /// 呼び側はこれで検知して bug! なりスクロール範囲なりで守る。
     pub def overflows(spec: SlotSpec, items: List[Entry]): Bool =
         List.length(items) > spec#maxSlots
 
@@ -35,7 +35,7 @@ mod UiSlots {
             |> UiStore.setText("${slotPath}/label", entry#text)
             |> UiStore.setVisible(slotPath, true)
 
-    /// 余ったスロット: meta を外して選択列から外し、不可視にして窓を縮める。
+    /// 余ったスロット: meta を外して選択列から外し、不可視にしてパネルを縮める。
     def hideOne(slotPath: String, ui: UiStore.UiWorld): UiStore.UiWorld =
         ui
             |> UiStore.clearMeta(slotPath)

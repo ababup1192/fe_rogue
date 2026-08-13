@@ -59,7 +59,7 @@ mod RenderStatic {
                 fresh
         }
 
-    /// 多角形列を z 昇順に並べ、blend / 切り抜き窓ごとにまとめて三角形化し、1 本の VBO へ
+    /// 多角形列を z 昇順に並べ、blend / 切り抜き clip 矩形ごとにまとめて三角形化し、1 本の VBO へ
     /// 連続配置する。レンジ目次（z / blend / clip ごとの開始頂点・頂点数）も同時に作る。
     /// 同 z 内は入力順を保つ（動的側の stableByZ と同じ安定性）。
     def bake(key: DrawCmd.StaticKey, polys: List[DrawCmd.PolygonRenderCmd]): Entry \ IO =
@@ -113,7 +113,7 @@ mod RenderStatic {
         let (vao, vbo) = RenderSprite.buildStaticPolyVBO(data, folded#total);
         { key = key, vao = GpuHandle.wrapStaticVao(vao, vbo), metas = metas }
 
-    /// 2 つの切り抜き窓が同じか（Rect2 に Eq が無いので座標 4 つを直接比べる）。
+    /// 2 つの切り抜き clip 矩形が同じか（Rect2 に Eq が無いので座標 4 つを直接比べる）。
     /// None どうしは同じ、片方だけ None は違う。
     def clipEq(a: Option[Rect2.Rect2], b: Option[Rect2.Rect2]): Bool =
         match (a, b) {

@@ -51,7 +51,7 @@ mod Bake {
         let talk = shoot(cfg, atlas, images, talkScene(playing), "talk");
         // 扉前: 閉じた木戸に向いて立つ。
         let door = shoot(cfg, atlas, images, doorScene(playing), "door");
-        // 戦い: 魔物と向き合い、1 回殴り合った直後（下の窓に打ち合いの結果が出ている）。
+        // 戦い: 魔物と向き合い、1 回殴り合った直後（下のウィンドウに打ち合いの結果が出ている）。
         let fight = shoot(cfg, atlas, images, battleScene(playing), "battle");
         // クリア: 薬草がそろい、灯りが全部ともった里。
         let clear = shoot(cfg, atlas, images, clearScene(playing), "clear");
@@ -264,7 +264,7 @@ mod Bake {
         discard shootAt(cfg, atlas, images, playing, { x = 264.25, y = 127.75 }, "seam_cross")
 
     /// 動的 PlacedItem の勘定（DQ6級チェックの性能欄）。タイル層は GPU 側の別チャンネルに
-    /// 焼き置きされるので数に入れない — 実機で毎フレーム組み直す動的な絵（world + hud）だけを
+    /// 事前生成されるので数に入れない — 実機で毎フレーム組み直す動的な絵（world + hud）だけを
     /// 実機と同じ合成（App.composeScene = 画面外 culling 込み）で数える。
     pub def count(): Unit \ IO =
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());

@@ -11,7 +11,7 @@
 参考実装: `ActionMenuUi.flix`（動的項目+幅フィット）/ `SuspendConfirmUi.flix`（固定2択の最小形）
 
 1. **ui.json を書く** — `assets/<Name>.ui.json`
-   - root に `"layer"` を必ず宣言（重なる窓は z-index の範囲を分ける。README「窓ごとの前後は z-index の範囲で分ける」）
+   - root に `"layer"` を必ず宣言（重なるウィンドウは z-index の範囲を分ける。README「ウィンドウごとの前後は z-index の範囲で分ける」）
    - パネル + ヘッダ + 最大項目数ぶんの行スロット。行テンプレは `"pad": [1.5, 0, 1.5, 0]`（ハイライト inset 0.5 + 余白 1px — 幾何規約）
    - 選択ハイライト箱（`#16314f` 塗り + `#2f6df0` 枠 0.5 + 角丸2）を menu 内の abs 子として宣言
 2. **`<Name>Ui.flix` を書く** — 定数（specPath/rootPath/menuPath/slotPath/maxSlots/行ピッチ）→

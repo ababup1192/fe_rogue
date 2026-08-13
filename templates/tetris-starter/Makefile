@@ -1,12 +1,12 @@
 # ゲーム開発の入口。
-#   make run    … ゲームを起動する（窓が開く）
+#   make run    … ゲームを起動する（ウィンドウが開く）
 #   make debug  … 保存即反映(watchFile)と F8 を有効にして起動
 #   make test   … テストを実行する（記録は .test-logs/）
 #   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
 #   make bake   … ギャラリー PNG を焼く（決定的）
-#   make snapshot-check  … 生成した絵をスナップショットとバイト比較する
-#   make snapshot-update … いまの gallery をスナップショットとして更新する
+#   make reference-check  … 生成した絵をリファレンス画像とバイト比較する
+#   make reference-update … いまの gallery をリファレンス画像として更新する
 #
 # Flix コンパイラの呼び方は OS で変える:
 #   - macOS/Linux … エンジンリポの bin/flix ラッパ（nix store の flix.jar 解決と JVM フラグ
@@ -36,7 +36,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check bake snapshot-check snapshot-update api hooks check-docs-sync
+.PHONY: status run debug test build check bake reference-check reference-update api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -87,11 +87,11 @@ api:
 bake:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
 
-snapshot-check: bake
-	"$(ENGINE)/bin/snapshot-check.sh"
+reference-check: bake
+	"$(ENGINE)/bin/reference-check.sh"
 
-snapshot-update:
-	"$(ENGINE)/bin/snapshot-update.sh"
+reference-update:
+	"$(ENGINE)/bin/reference-update.sh"
 
 # 現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない。
 # .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
@@ -109,7 +109,7 @@ status:
 engine-upgrade:
 	@$(MAKE) -C "$(ENGINE)" upgrade-game GAME="$(CURDIR)"
 
-# コミット時の関所 (焼いた絵の混入・矩形だけの View・規約の配線ずれを止める)。
+# コミット時のゲート (焼いた絵の混入・矩形だけの View・規約の配線ずれを止める)。
 # .git/hooks は git 管理外なので clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 hooks:
 	@git config core.hooksPath bin/githooks

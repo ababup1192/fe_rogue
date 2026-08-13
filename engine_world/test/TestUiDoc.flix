@@ -178,7 +178,7 @@ mod TestUiDoc {
 
     @Test
     def testErrorMessageHasNoDecoderNoise(): Unit \ Assert =
-        // describe を通した文言に器の定型句("type mismatch: expected")が残らない —
+        // describe を通した文言にコンテナの定型句("type mismatch: expected")が残らない —
         // 編集者は「どこで・何が要るか」だけを読む。
         let msg = errTextOf("{\"root\": {\"name\":\"g\",\"widget\":\"circle\",\"radius\":1.0}}");
         Assert.assertEq(
@@ -864,7 +864,7 @@ mod TestUiDoc {
 
     @Test
     def testBoxSkinFailOpen(): Unit \ Assert =
-        // skin 名のテクスチャが引けないときは従来の Box 1 枚に静かに倒す（窓は壊れない）。
+        // skin 名のテクスチャが引けないときは従来の Box 1 枚に静かに倒す（パネルは壊れない）。
         let got = skinBoxOf(skinDoc()) |> Option.flatMap(b ->
             match UiExtract.boxPlacedItems(b, { x = 100.0, y = 40.0 }, _ -> None) {
                 case placed :: Nil => match placed#item {

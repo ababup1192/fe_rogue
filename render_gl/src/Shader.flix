@@ -118,7 +118,7 @@ mod RenderShader {
         "        color = vec4(spriteColor, spriteAlpha);\n" +
         "    }\n" +
         // Multiply の合成は dst×(1−a×(1−src))。GL 側 (GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA) と
-        // 合わせるにはここで rgb×a（premultiply）が要る — 因子を変えるだけだと a=0 で暗幕が
+        // 合わせるにはここで rgb×a（premultiply）が要る — 因子を変えるだけだと a=0 でオーバーレイが
         // 消えるどころか明るくなる。
         "    if (multiplyBlend) { color.rgb *= color.a; }\n" +
         "}\n"
@@ -281,7 +281,7 @@ mod RenderShader {
         "}\n"
 
     /// 多角形バッチ用の頂点シェーダ。1 頂点 = 位置(vec2) + 色(vec4)。
-    /// 同じ blend / 切り抜き窓の多角形を三角形化して 1 本の頂点バッファに連結し、
+    /// 同じ blend / 切り抜き clip 矩形の多角形を三角形化して 1 本の頂点バッファに連結し、
     /// 1 回の draw call でまとめて塗る。色を uniform でなく頂点属性で持たせるのは、
     /// 多角形ごとに色が違っても run をまたいで 1 バッファに詰められるようにするため
     /// （洞窟の壁数千枚が 1 枚ずつ描かれる詰まりを解く）。

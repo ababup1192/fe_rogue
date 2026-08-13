@@ -30,7 +30,7 @@ entity として `UiStore` に登録する。見た目は `UiRender` が毎フ�
 | `name` | 文字列 | 必須 | 兄弟内で一意な識別名。名前パスの構成要素。**空文字・`/` 含みは不可**（名前パスを壊す）。 |
 | `widget` | 文字列 | `"none"` | 描画種別。`"box"` / `"text"` / `"sprite"` / `"poly"` / `"none"`（レイアウト専用コンテナ）。未知値は不可。 |
 | `use` | 文字列 | なし | 参照するテンプレート名。テンプレ値を既定にノード側フィールドで上書きする。未定義名は不可。 |
-| `visible` | 真偽 | `true` | 初期可視。祖先が不可視なら子も不可視（継承）。`false` のノードは**レイアウトからも除外**され、その部分木は場所を取らない（CSS の `display:none` 相当）。フロー内の兄弟は隙間を詰め、`abs` の子も配置されない。`height:auto` の親は可視な子だけで高さが決まるので、項目を隠すと窓が縮む。 |
+| `visible` | 真偽 | `true` | 初期可視。祖先が不可視なら子も不可視（継承）。`false` のノードは**レイアウトからも除外**され、その部分木は場所を取らない（CSS の `display:none` 相当）。フロー内の兄弟は隙間を詰め、`abs` の子も配置されない。`height:auto` の親は可視な子だけで高さが決まるので、項目を隠すとパネルが縮む。 |
 | `bind` | 文字列 | なし | text の流し込み先 bind key。実行時に `UiBinding.apply` が値を解決して text へ入れる。 |
 | `meta` | 文字列 | なし | メニュー項目等の識別 metadata。選択解決（`choiceOf` 等）が読む。 |
 | `layer` | 整数 | `0` | **root のみ有効**（非 root では無視）。`CanvasLayer.layerStride` 倍して zIndex に加算し、他 HUD と同じ z 序列へ合流する。 |
@@ -126,17 +126,17 @@ parse エラー。用途例: TopBar 中央の「集合中」ラベル左の再�
 背面→前面に並べる。同じ `zIndex` なら**宣言順（兄弟順）が効く**ので、単純な前後関係は
 `zIndex` を書かず宣言順で済ませられる。
 
-## 窓ごとの前後は z-index の範囲で分ける（同 layer に複数窓が重なるとき）
+## ウィンドウごとの前後は z-index の範囲で分ける（同 layer に複数ウィンドウが重なるとき）
 
-同じ `layer` に複数の root（窓）が同時に見え、かつ**重なって開く**とき（例: ActionMenu の右隣に
-WeaponSelect が被さる）は、後から手前に出す窓に **`zIndex` の帯を丸ごと上へ確保**する。extract は
-全 root の drawable を `zIndex` 単位でフラットに並べるため、窓どうしが同じ帯（panel/header/highlight/
-text が同じ値域）だと、後ろの窓の text が前の窓の panel の上へ載って交錯する（窓単位の前後にならない）。
+同じ `layer` に複数の root（ウィンドウ）が同時に見え、かつ**重なって開く**とき（例: ActionMenu の右隣に
+WeaponSelect が被さる）は、後から手前に出すウィンドウに **`zIndex` の帯を丸ごと上へ確保**する。extract は
+全 root の drawable を `zIndex` 単位でフラットに並べるため、ウィンドウどうしが同じ帯（panel/header/highlight/
+text が同じ値域）だと、後ろのウィンドウの text が前のウィンドウの panel の上へ載って交錯する（ウィンドウ単位の前後にならない）。
 
-- 帯は窓ごとに間隔を空けて割り当てる。例: ActionMenu = panel110 / header118 / highlight119 / text120-121、
+- 帯はウィンドウごとに間隔を空けて割り当てる。例: ActionMenu = panel110 / header118 / highlight119 / text120-121、
   その手前に出す WeaponSelect = panel130 / header138 / highlight139 / text·icon140-142。
-- 帯の中の相対序列（panel<header<highlight<text）は各窓で保つ。窓間の分離は帯の**下駄**（+20 等）で付ける。
-- 別 `layer` の窓（CanvasLayer が別）は `layer` 差で既に分離されるので、この帯調整は要らない。
+- 帯の中の相対序列（panel<header<highlight<text）は各ウィンドウで保つ。ウィンドウ間の分離は帯の**下駄**（+20 等）で付ける。
+- 別 `layer` のウィンドウ（CanvasLayer が別）は `layer` 差で既に分離されるので、この帯調整は要らない。
 
 ## 動的状態はリロードを生き延びる
 
@@ -158,7 +158,7 @@ color / text / tint など毎フレーム同期される見た目は、リロー
 2. 対応する UI モジュール（`<Name>Ui.flix`）に `pub def specPath()` を置き、`AssetPath.resolve`
    でそのファイルを指す。可視トグルや選択で触るノードの名前パスを `xxxPath()` 定数に切り出す。
 3. 起動時に一度 `UiSpec.spawnAsset(specPath(), ui)` で組み込む（`UiStore` へ spawn し、リロード
-   台帳 `sources` に登録する）。以後 F1 の `reloadAll` が `sources` を辿って自動でリロードする。
+   レジストリ `sources` に登録する）。以後 F1 の `reloadAll` が `sources` を辿って自動でリロードする。
 
 ## 1 アセットを複数 root で使う（別名 spawn）
 
@@ -176,9 +176,9 @@ color / text / tint など毎フレーム同期される見た目は、リロー
 縦並びの選択メニュー（ActionMenu / WeaponSelect / ItemMenu / GameOverMenu / SuspendConfirm）は、選択行を
 **塗り箱ハイライト**で示し、行は**固定ピッチ**で並べる。新しいメニューもこの構成に揃えること。
 
-- **項目数が窓（表示行数）を超えうるメニューはウィンドウ化する**（ItemMenu の在庫は個数上限なし・
-  重量制のみ）。表示行を固定数の窓にし、`windowOffset`（選択が窓に入るよう表示 offset をクランプする
-  純関数）で `items[offset..offset+行数)` を各行へ流し込む。ハイライトは窓内の相対行 `sel − offset` に置く。
+- **項目数が表示範囲（表示行数）を超えうるメニューはウィンドウ化する**（ItemMenu の在庫は個数上限なし・
+  重量制のみ）。表示行を固定数の表示範囲にし、`windowOffset`（選択が表示範囲に入るよう表示 offset をクランプする
+  純関数）で `items[offset..offset+行数)` を各行へ流し込む。ハイライトは表示範囲内の相対行 `sel − offset` に置く。
 
 - **項目行は固定高**にする。`menu` を `gap: 0.0` にし、各項目（またはそれを包む行コンテナ）へ
   `height: <行ピッチ>` を Px で与える。行ピッチが固定なので、後述の塗り箱を**レイアウト結果を
@@ -209,7 +209,7 @@ color / text / tint など毎フレーム同期される見た目は、リロー
 - **描画** — `ui.json`（`src/ui/assets/<Name>.ui.json`）でツリーを宣言し、起動時に `Game.start` が
   `spawnUiOrBug`（別名 2 枚立ては `spawnUiAsOrBug`）で 1 回だけ spawn する。毎フレーム `UiRender.renderUi`
   が box/text/sprite（drawable チャンネル）と poly（polygon チャンネル）へ射影し、`Game.renderFrame` が
-  盤面 drawable と合流させて 1 回で描く。F1 で `UiSpec.reloadAll` が `sources` 台帳ぶんをホットリロードする。
+  盤面 drawable と合流させて 1 回で描く。F1 で `UiSpec.reloadAll` が `sources` レジストリぶんをホットリロードする。
 
 - **状態** — 各 UI の動的状態は 2 系統。①`UiStore` 内の名前パスキー state（`selection` / `focus` / `visible`）
   ＝リロードを生き延びる。②UI ごとの `XxxState` resource（`TitleMenuState` / `ItemMenuState` / `TradeMenuState` /
@@ -229,6 +229,6 @@ color / text / tint など毎フレーム同期される見た目は、リロー
   `LevelUpPanelUi` / `UnitCardUi`（味方左 / 敵右の 2 root 共有）。
 
 - **残った `scene/`（Scene ノード）は盤面・シム系のみ** — Player / Enemy / Map / Camera / Cursor（入力）/
-  ArrowCursor / Fog / Minimap / RangeOverlays / Bgm / Entity。UI 窓の `NodeTag` は全滅し、残る `NodeTag` は
+  ArrowCursor / Fog / Minimap / RangeOverlays / Bgm / Entity。UI ウィンドウの `NodeTag` は全滅し、残る `NodeTag` は
   駒・overlay・driver だけ（`Player` / `Enemy` / `Map` / `*Range` / `Cursor` / `Stairs` / `Chest` /
   `EnemyTurnDriver` / `FogDriver` / `Camera` 等）。

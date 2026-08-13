@@ -1,4 +1,4 @@
-// ZBand — 重なり順（zIndex）を用途ごとの範囲に区切る取り決めの唯一の出どころ。
+// ZBand — 重なり順（zIndex）を用途ごとの範囲に区切る取り決めの source of truth。
 // world の絵がどれだけ大きい z を使っても HUD より手前には出ない、を数で保証する。
 // 利用例: composeScene が hud の z を HUD の範囲へ持ち上げる / 描画部が範囲ごとに並べ替える。
 // 範囲の地図（どの範囲が何用か）は docs/z-bands.md にある。

@@ -1,18 +1,18 @@
 {
-  "//": "project.json の形の宣言（Studio の sections 方言）。フォームから安全に触れる値だけを載せる — editor.resources（この一覧そのものの台帳）はわざと載せない。保存は触った値だけを書き換えるので、載せていないフィールドが消えることはない。",
+  "//": "project.json の形の宣言（Studio の sections 方言）。フォームから安全に触れる値だけを載せる — editor.resources（この一覧そのもののレジストリ）はわざと載せない。保存は触った値だけを書き換えるので、載せていないフィールドが消えることはない。",
   "version": 1,
   "sections": {
     "title": {
       "kind": "field",
       "type": "text",
-      "label": "ゲームの題（窓のタイトルに出る）",
+      "label": "ゲームの題（ウィンドウのタイトルに出る）",
       "order": 1,
       "required": true
     },
     "windowWidth": {
       "kind": "field",
       "type": "int",
-      "label": "窓の幅（px）",
+      "label": "ウィンドウの幅（px）",
       "order": 2,
       "min": 320,
       "max": 3840,
@@ -21,7 +21,7 @@
     "windowHeight": {
       "kind": "field",
       "type": "int",
-      "label": "窓の高さ（px）",
+      "label": "ウィンドウの高さ（px）",
       "order": 3,
       "min": 240,
       "max": 2160,
@@ -30,7 +30,7 @@
     "windowScale": {
       "kind": "field",
       "type": "int",
-      "label": "窓の拡大率（等倍 = 1）",
+      "label": "ウィンドウの拡大率（等倍 = 1）",
       "order": 4,
       "min": 1,
       "max": 8,

@@ -59,7 +59,7 @@ def onKeyPressed(key: GameEngine.Key):
                             Fs.FileRead, UiWorldState.State,
                             LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State, RangeOverlayState.State,
                             StairsExitDriver.State} =
-    // F1: World-entity UI の ui.json を sources 台帳ごとホットリロードする（デバッグ用・画面問わず）。
+    // F1: World-entity UI の ui.json を sources レジストリごとホットリロードする（デバッグ用・画面問わず）。
     if (key == GameEngine.Key.F1) UiWorldState.State.put(UiSpec.reloadAll(UiWorldState.State.get()))
     // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
     else match GamePhaseState.get() {
@@ -475,7 +475,7 @@ def tradeInventoryDirection(key: GameEngine.Key): Unit
         case _                    => ()
     }
 
-/// ItemSelect 中の方向キーを変換する。Up/Down/W/S → アイテムカーソル移動（窓スクロール）、
+/// ItemSelect 中の方向キーを変換する。Up/Down/W/S → アイテムカーソル移動（表示範囲のスクロール）、
 /// Left/A → 前カテゴリ、Right/D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
 /// カーソル移動もカテゴリ切替も World-entity UI で完結する。
 def itemSelectDirection(key: GameEngine.Key):
@@ -522,7 +522,7 @@ mod Game {
     pub def designHi(): Int32 = 128
 
     /// 起動時に World-entity UI の ui.json を spawnAsset で 1 回だけ組み込む。
-    /// spawnAsset は sources 台帳への登録まで済ませるので、以後は F1 の reloadAll が拾う。
+    /// spawnAsset は sources レジストリへの登録まで済ませるので、以後は F1 の reloadAll が拾う。
     /// 静的ツリーの読み込み失敗は設定ミスなので即 panic（fail-fast）。
     def spawnUiOrBug(path: String): Unit \ {Fs.FileRead, UiWorldState.State} =
         match UiSpec.spawnAsset(path, UiWorldState.State.get()) {
@@ -649,7 +649,7 @@ mod Game {
                 // LogUi.step が GameLogger を drain して 5 行に流し込み、空でないフレームだけ可視化）。
                 spawnUiOrBug(LogUi.specPath());
                 // 中央アイテム取得ポップアップの World-entity UI を 1 回だけ spawn する（初期は不可視。
-                // ItemPickupPopupUi.frameStep が段階演出のフェードを窓 alpha・文字色・可視へ反映する）。
+                // ItemPickupPopupUi.frameStep が段階演出のフェードをウィンドウ alpha・文字色・可視へ反映する）。
                 spawnUiOrBug(ItemPickupPopupUi.specPath());
                 // ターンスキップ長押しゲージの World-entity UI を 1 回だけ spawn する（初期は不可視。
                 // TurnEndHoldUi.frameStep が Shift 長押しを読み充填リングの頂点を毎フレーム塗り替える）。
@@ -879,8 +879,8 @@ mod Game {
               with FloorProgress.withState(worldRef)  // 現在フロア id World.floorId 単一権威
               with PartySelection.withState(worldRef)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）World.party 単一権威
               with CharacterSelectState.withWorld(worldRef) // 出撃メンバー選択画面の選択状態 World.characterSelect 単一権威
-              with ItemMenuState.withWorld(worldRef)  // アイテム窓の選択状態 World.itemMenu 単一権威
-              with TradeMenuState.withWorld(worldRef) // 物交換窓のセッション状態 World.tradeMenu 単一権威
+              with ItemMenuState.withWorld(worldRef)  // アイテムメニューの選択状態 World.itemMenu 単一権威
+              with TradeMenuState.withWorld(worldRef) // トレードメニューのセッション状態 World.tradeMenu 単一権威
               with UiWorldState.withWorld(worldRef)   // World-entity UI の状態 World.uiWorld 単一権威
               with MinimapState.withWorld(worldRef)   // ミニマップ表示トグル World.minimap 単一権威
         }
@@ -908,7 +908,7 @@ mod Game {
         GamePhaseState.get() != previousPhase
 }
 
-/// テスト専用の公開窓。本番の `renderFrame` をそのまま呼ぶ（複製しない＝本番と同一の描画合成）。
+/// テスト専用に公開した関数。本番の `renderFrame` をそのまま呼ぶ（複製しない＝本番と同一の描画合成）。
 /// 描画リストは呼び出し側が `GameEngine.Game.renderCommands` を記録する handler で捕まえる。
 /// production 経路（gameLoop）からは呼ばれない。
 pub def renderFrameForCapture(catalogs: GameLifecycle.Catalogs, world: World):

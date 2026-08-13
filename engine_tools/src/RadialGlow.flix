@@ -1,6 +1,6 @@
 // RadialGlow — 中心から縁へ薄れる小さな絵を画素単位の純関数として計算する。
 //
-// 光の「グロー」と「暗幕の穴」は Multiply/Add の合成式が正反対の性質を持つため、
+// 光の「グロー」と「暗くするオーバーレイの穴」は Multiply/Add の合成式が正反対の性質を持つため、
 // 同じ絵（白が中心・縁が透明）を両方に使い回すと片方が壊れる（DrawCmd.BlendMode の
 // doc の通り Multiply は「白は素通し」なので alpha だけの絵は掛けても何も変わらない）。
 // そのため rgb で暗さを表す版（maskPixel）と alpha で濃さを表す版（haloPixel）を
@@ -14,7 +14,7 @@ mod RadialGlow {
     pub def haloPixel(curve: Float64 -> Float64, t: Float64): Int32 =
         argb(toByte(curve(t)), 255, 255, 255)
 
-    /// Multiply穴あき暗幕用の1画素: alpha=255固定（不透明）、
+    /// Multiply穴あきオーバーレイ用の1画素: alpha=255固定（不透明）、
     /// rgb=中心で白(素通し=穴)→縁で黒(暗く沈める)。
     /// Addに使うと常に最大加算（白）になる — Multiply専用。
     pub def maskPixel(curve: Float64 -> Float64, t: Float64): Int32 =
@@ -34,7 +34,7 @@ mod RadialGlow {
     /// Light.singleLightItems のスケール計算がこの値を前提に「穴の実寸半径 = light#radius」
     /// を逆算するため、maskTexture を焼く側とスケールを計算する側が同じ値を見る必要がある。
     /// 0.5（黒到達点=2×radius）: holeFrac が小さいほど画像の外周に対する「黒までの距離」が
-    /// 相対的に伸び、暗幕の拡大時に黒到達点が radius から大きく離れる
+    /// 相対的に伸び、オーバーレイの拡大時に黒到達点が radius から大きく離れる
     /// （旧 0.15 では 6.67×radius まで伸びて隅の減衰がほぼ消えていた）。
     pub def defaultHoleFrac(): Float64 = 0.5
 

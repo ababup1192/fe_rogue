@@ -6,7 +6,7 @@
 //  - formatScene   : List[Drawable]+polygons を決定的なテキストへ（float は小数2桁）
 //  - snapshot      : golden と比較し、PNG を build/snapshots へ生成する（更新モード対応）
 //
-// カタログ→HTML サイトの生成は SnapshotCatalog（目録）+ SnapshotSite（汎用生成器）が担う。
+// カタログ→HTML サイトの生成は SnapshotCatalog（目録）+ ReferenceSite（汎用生成器）が担う。
 //
 // golden は test/snapshots/<name>.golden.txt（コミット対象）。PNG は build/snapshots/（.gitignore）。
 mod SnapshotSupport {
@@ -116,7 +116,7 @@ mod SnapshotSupport {
     // ════════════════════════════════════════════════════════
     //
     // GIF は PNG と違い毎回生成し直すには重いので、生成物を test/snapshots/gifs/（コミット対象）に
-    // 置く。SnapshotSite は build/snapshots/ 直下のファイル存在で表示可否を決めるので、サイト生成の
+    // 置く。ReferenceSite は build/snapshots/ 直下のファイル存在で表示可否を決めるので、サイト生成の
     // 直前に gifs/ から build/snapshots/ へコピーする（FE_ROGUE_SNAPSHOT_GIF=1 の新規生成後も、
     // 素の flix test で既存 GIF を表示するときも、このコピーだけを通る）。
 
@@ -124,12 +124,12 @@ mod SnapshotSupport {
     pub def gifSourceDir(): String = "test/snapshots/gifs"
 
     /// `names` の GIF を test/snapshots/gifs/ から build/snapshots/ へコピーする。
-    /// 出典が無い（未生成）名前は無視する（SnapshotSite が generateHint 案内を出す）。
+    /// 出典が無い（未生成）名前は無視する（ReferenceSite が generateHint 案内を出す）。
     pub def syncGifs(names: List[String]): Unit \ IO + Fs.FileWrite =
         List.forEach(copyGifIfPresent, names)
 
     /// 1 本の GIF を上書きコピーする。存在チェックと出力先ディレクトリ作成は java.io.File
-    /// （readDims / SnapshotSite.fileExists と同じ流儀）、コピー本体は Fs.CopyFile。
+    /// （readDims / ReferenceSite.fileExists と同じ流儀）、コピー本体は Fs.CopyFile。
     def copyGifIfPresent(name: String): Unit \ IO + Fs.FileWrite =
         let srcPath = "${gifSourceDir()}/${name}.gif";
         let src = new File(srcPath);
@@ -147,11 +147,11 @@ mod SnapshotSupport {
     // フィルムストリップ情報の読み取り（ストリップ PNG が生成済みであれば）
     // ════════════════════════════════════════════════════════
 
-    /// `stripPath` にストリップ PNG があれば、その実寸から SnapshotSite.Filmstrip を組む
+    /// `stripPath` にストリップ PNG があれば、その実寸から ReferenceSite.Filmstrip を組む
     /// （frameCount = 画像幅 ÷ frameW）。無ければ None（カードは従来の GIF 表示に落ちる）。
     /// `stripFile` は outDir 相対のファイル名（HTML の background-image が指すパス）。
     pub def readFilmstrip(stripPath: String, stripFile: String,
-                          frameW: Int32, frameH: Int32, fps: Int32): Option[SnapshotSite.Filmstrip] \ IO =
+                          frameW: Int32, frameH: Int32, fps: Int32): Option[ReferenceSite.Filmstrip] \ IO =
         match readDims(stripPath) {
             case None            => None
             case Some((wf, _hf)) =>

@@ -47,7 +47,7 @@ mod TestWeaponSelectUi {
     // weaponSubline / rangeText — 性能 2 行目
     // ════════════════════════════════════════════════════════
 
-    /// サブラインは威力・耐久・重さ（命中・射程は戦闘予報ミニ窓で見せるのでサブラインに出さない）。
+    /// サブラインは威力・耐久・重さ（命中・射程は戦闘予報ミニパネルで見せるのでサブラインに出さない）。
     @Test
     def testWeaponSublineSingleRange(): Unit \ Assert =
         // testWeapon: 攻2 耐久10 重さ1.9（命中・射程はサブラインに出さない）

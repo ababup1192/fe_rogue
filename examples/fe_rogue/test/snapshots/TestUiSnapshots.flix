@@ -42,7 +42,7 @@ mod TestUiSnapshots {
     /// 全 UI スナップショットを 1 度のアトラス生成で処理する。撮る対象は SnapshotCatalog の
     /// PNG エントリ、drive は名前で driveByName に分岐する。golden 不一致があればそのリストを
     /// assert で提示して落ちる（更新モードでは golden を書き直して pass）。撮り終えたら
-    /// SnapshotSite でカタログ全体（PNG+GIF）を回遊できる HTML サイトに生成し直す。
+    /// ReferenceSite でカタログ全体（PNG+GIF）を回遊できる HTML サイトに生成し直す。
     @Test
     def testUiSnapshots(): Unit \ {Assert, Fs.FileRead, Fs.FileWrite, IO} = region rc {
         let atlas = HeadlessFont.buildUiAtlas(ttfPath(), joyoPath());
@@ -64,7 +64,7 @@ mod TestUiSnapshots {
         // lint 結果を name→バッジにしてダッシュボード（カード）へ渡す。
         let lintByName = results
             |> List.foldLeft((m, r) -> {let (n, _gf, fs) = r; Map.insert(n, badgeOf(fs), m)}, Map.empty());
-        SnapshotSite.generate(siteConfig(), catalogItemsWithLint(lintByName));
+        ReferenceSite.generate(siteConfig(), catalogItemsWithLint(lintByName));
         // golden 相違・有効 lint 違反のどちらも 0 でなければ、全詳細を並べて落とす。
         Assert.assertEq(expected = (Nil: List[String]),
             List.append(goldenFailures, List.map(formatFinding, activeFindings)))
@@ -76,7 +76,7 @@ mod TestUiSnapshots {
             if (String.startsWith(prefix = "lint-allow:", t)) Some(String.drop(11, t)) else None)
 
     /// Finding 列を 1 枚のバッジ（有効/抑制の件数＋詳細）へ。
-    def badgeOf(findings: List[RenderLint.Finding]): SnapshotSite.LintBadge =
+    def badgeOf(findings: List[RenderLint.Finding]): ReferenceSite.LintBadge =
         let active = List.filter(f -> not f#suppressed, findings);
         let supp = List.filter(f -> f#suppressed, findings);
         {checked = true, findingCount = List.length(active), suppressedCount = List.length(supp),
@@ -91,18 +91,18 @@ mod TestUiSnapshots {
         "[${f#sceneName}] ${f#rule} ${f#severity}: ${f#detail}"
 
     /// カタログ Item に lint バッジを差し込む（GIF など未検査項目は既定 noLint のまま）。
-    pub def catalogItemsWithLint(lintByName: Map[String, SnapshotSite.LintBadge]): List[SnapshotSite.Item] \ IO =
+    pub def catalogItemsWithLint(lintByName: Map[String, ReferenceSite.LintBadge]): List[ReferenceSite.Item] \ IO =
         catalogItems() |> List.map(item ->
-            {lint = Option.getWithDefault(SnapshotSite.noLint(), Map.get(item#name, lintByName)) | item})
+            {lint = Option.getWithDefault(ReferenceSite.noLint(), Map.get(item#name, lintByName)) | item})
 
-    /// SnapshotSite の設定。出力先・見出し・Retina 前提の CSS 縮小率（実ピクセル ÷ 2）。
-    pub def siteConfig(): SnapshotSite.Config =
+    /// ReferenceSite の設定。出力先・見出し・Retina 前提の CSS 縮小率（実ピクセル ÷ 2）。
+    pub def siteConfig(): ReferenceSite.Config =
         {outDir = "build/snapshots", title = "fe_rogue UI snapshots", cssScale = 2i32}
 
-    /// カタログ全枚を SnapshotSite の表示用 Item 列へ。PNG/GIF で実ピクセル幅が違うので両方渡す
+    /// カタログ全枚を ReferenceSite の表示用 Item 列へ。PNG/GIF で実ピクセル幅が違うので両方渡す
     /// （GIF が未生成なら生成コマンドの案内をカードに出す）。ストリップが生成済みの GIF は
     /// コマ送りビューア情報（filmstripByName）を添えてインタラクティブなカードにする。
-    pub def catalogItems(): List[SnapshotSite.Item] \ IO =
+    pub def catalogItems(): List[ReferenceSite.Item] \ IO =
         SnapshotCatalog.toItems({pngPxWidth = outWidthPx(), gifPxWidth = TestGifSnapshots.gifWidthPx()},
             "未生成。<code>FE_ROGUE_SNAPSHOT_GIF=1 FE_ROGUE_SNAPSHOT_UPDATE=1 flix test</code> で生成できます。",
             TestGifSnapshots.filmstripByName())
@@ -348,7 +348,7 @@ mod TestUiSnapshots {
             case Err(_)       => bug!("snapshot: UI spec spawnAs failed: ${path}")
         }
 
-    /// 選択カーソル index を名前パスの list へ書き込む（窓スクロールの下端選択を作る用途）。
+    /// 選択カーソル index を名前パスの list へ書き込む（表示範囲スクロールの下端選択を作る用途）。
     def putSel(listPath: String, idx: Int32): Unit \ UiWorldState.State =
         UiWorldState.State.put(UiStore.putSelection(listPath, idx, UiWorldState.State.get()))
 
@@ -436,7 +436,7 @@ mod TestUiSnapshots {
         spawnUi(ItemMenuUi.specPath());
         SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt()))
 
-    /// 満載シーン: 武器 5 本を持たせ、窓（3 行）をスクロールさせる。`sel` は選択 index。
+    /// 満載シーン: 武器 5 本を持たせ、表示範囲（3 行）をスクロールさせる。`sel` は選択 index。
     def itemFullConfig(): SnapshotHarness.Config \ Fs.FileRead =
         let lord = mkPlayer({hp = 22,
                              weaponIds = "silver_sword" :: "killing_edge" :: "iron_sword"
@@ -449,7 +449,7 @@ mod TestUiSnapshots {
     def driveItemMenuFull(sel: Int32): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = itemFullConfig();
         spawnUi(ItemMenuUi.specPath());
-        // 選択 index を先に注入してから frameStep で窓 offset・ハイライトを実ロジックで決めさせる。
+        // 選択 index を先に注入してから frameStep で表示 offset・ハイライトを実ロジックで決めさせる。
         putSel("ItemMenu/panel/menu", sel);
         SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt()))
 
@@ -558,7 +558,7 @@ mod TestUiSnapshots {
         UiWorldState.State.put(TurnEndHoldUi.applyRing(0.5, true, UiWorldState.State.get()))
 
     /// 中央アイテム取得ポップアップ（表示中）: 実ロジック（ItemPickupPopupUi.applyAppearance）で
-    /// ratio=1.0・文言つきの見た目を UiWorld へ塗る。窓 + 中央の「○○を手に入れた」を撮る。
+    /// ratio=1.0・文言つきの見た目を UiWorld へ塗る。ポップアップ + 中央の「○○を手に入れた」を撮る。
     def driveItemPickupPopup(): Unit \ (Fs.FileRead + UiWorldState.State) =
         spawnUi(ItemPickupPopupUi.specPath());
         UiWorldState.State.put(

@@ -20,9 +20,9 @@ mod World {
         playing = Bool                     // playAudio を一度呼んだか（起動後の初回だけ鳴らし始める）
     }
 
-    /// カンテラ実験の暗闇モード。Bright=通常表示（暗幕なし）、Dark=暗闇のみ
-    /// （Light.multiLightItems を lights=Nil で呼ぶ全面暗幕、光源なし）、
-    /// DarkWithLight=穴あき暗幕+ハロ（Light.singleLightItems）。
+    /// カンテラ実験の暗闇モード。Bright=通常表示（オーバーレイなし）、Dark=暗闇のみ
+    /// （Light.multiLightItems を lights=Nil で呼ぶ全面を暗くするオーバーレイ、光源なし）、
+    /// DarkWithLight=穴あきの暗くするオーバーレイ+ハロ（Light.singleLightItems）。
     /// LeftShift は Bright ⇔ DarkWithLight をトグルする（Dark は比較用の対照カット専用で
     /// ゲーム内操作からは経由しない — bakeLanternComparisonPngs の3枚がそれぞれ1モードに対応する）。
     pub enum LanternMode with Eq {
@@ -68,7 +68,7 @@ mod World {
     /// フェードアウトして「消えた」ように見え、フルスクリーン等の起動確認ができないため。
     /// BGM は無音からのフェードインで始まり、マスターは全開。
     /// ui/lightDoc は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
-    /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
+    /// ウィンドウ表示は通常のウィンドウ（フルスクリーンではない）・カーソルは見える状態で始める。
     /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
     /// 映り込み、既存の gallery の絵が変わってしまう。
     pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, shaderDemo: Bool,

@@ -27,7 +27,7 @@ mod Bake {
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
         let ctx = App.viewCtxOf(atlas, design());
-        // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が snapshot/title.png を
+        // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が reference/title.png を
         // /genesis/title で読み、「パズル」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
         let t = shoot(cfg, ctx, stackScene(w0), "title");
         // s1: 初期盤（空）+ 涌いたばかりの current + NEXT + score 0。

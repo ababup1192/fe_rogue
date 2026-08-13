@@ -118,12 +118,12 @@ mod View {
 
     // ── カンテラ探索デモ（暗い部屋+目印図形+単一光源。矢印キーで移動・LeftShift で暗闇 on/off）──
 
-    /// 目印図形の zIndex。カンテラの穴あき暗幕（lanternZ）より必ず小さくする
+    /// 目印図形の zIndex。カンテラの穴あきの暗くするオーバーレイ（lanternZ）より必ず小さくする
     /// （Render.blended は自分より奥＝小さい zIndex にしか効かないため、逆にすると
     /// 穴を開けても景色が見えない事故になる）。
     def landmarkZ(): Int32 = 25
 
-    /// カンテラ本体（暗幕→ハロ）の zIndex 土台。
+    /// カンテラ本体（暗くするオーバーレイ→ハロ）の zIndex 土台。
     def lanternZ(): Int32 = 40
 
     def landmarkColors(): List[Color] =
@@ -161,13 +161,13 @@ mod View {
     /// 壁の色（目印のはっきりした色と紛れない石壁っぽい灰色）。
     def wallColor(): Color = { r = 0.48f32, g = 0.47f32, b = 0.44f32 }
 
-    /// 壁の zIndex。目印（landmarkZ=25）より手前・暗幕（lanternZ=40）より奥に置く
-    /// （暗幕より手前だと暗闇でも壁が煌々と見えてしまう）。
+    /// 壁の zIndex。目印（landmarkZ=25）より手前・暗くするオーバーレイ（lanternZ=40）より奥に置く
+    /// （オーバーレイより手前だと暗闇でも壁が煌々と見えてしまう）。
     def wallZ(): Int32 = 26
 
     /// L字の壁 2 枚（中心と大きさ）。見た目の box と遮蔽ポリゴンの両方をここから導く
     /// （二重定義にすると片方だけ動かして影が壁からずれる）。
-    /// 画面端に寄せると影の落ち先が「元々暗幕で真っ黒な領域」になり効果が写らないため、
+    /// 画面端に寄せると影の落ち先が「元々オーバーレイで真っ黒な領域」になり効果が写らないため、
     /// 壁も影の落ち先も光の届く範囲（穴 48px+落ち際）に収まる中央寄りに置く。
     def wallBoxes(): List[(Vec2.Vec2, Vec2.Vec2)] =
         ({ x = 200.0, y = 120.0 }, { x = 12.0, y = 70.0 }) ::
@@ -221,7 +221,7 @@ mod View {
     pub def maskHoleFrac(): Float64 = Light.defaultGlowAssets()#maskHoleFrac
 
     /// mode に応じて「暗闇の見せ方」を切り替える。Bright は何も足さず素の明るさのまま、
-    /// Dark は runtimeLights=Nil で全面暗幕のみ（API ドッグフーディング — 光源が無いときの
+    /// Dark は runtimeLights=Nil で全面を暗くするオーバーレイのみ（API ドッグフーディング — 光源が無いときの
     /// 見た目を単体光源と同じ入口で表す）、DarkWithLight は lightDoc の質感（darkness/rim/
     /// haloDiameterFactor/light）+ lantern#at（LightDoc.toConfigWithLights が「json は質感、
     /// 位置はゲーム」の分業を担う）で Light.items 一本に任せる（walls=on なら occluders も
@@ -264,7 +264,7 @@ mod View {
     def lightMapRoomColor(): Color = { r = 0.62f32, g = 0.58f32, b = 0.52f32 }
 
     /// 光マップデモの絵（明るい部屋 → 目印 → 白丸 → 壁 → 光マップの Multiply 覆い）。
-    /// 単一光源デモと違い暗幕を描かない — 暗さは光マップ（環境光+灯り）が丸ごと持つ。
+    /// 単一光源デモと違い暗くするオーバーレイを描かない — 暗さは光マップ（環境光+灯り）が丸ごと持つ。
     pub def lightMapDemoItems(cfg: Light.LightMapConfig): List[Render.PlacedItem] =
         let room = { at = Vec2.zero(), item = RawDraw.box(design(), lightMapRoomColor(), 0) };
         room :: List.flatten(

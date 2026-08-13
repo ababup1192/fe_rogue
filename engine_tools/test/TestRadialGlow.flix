@@ -1,6 +1,6 @@
 // RadialGlow の画素計算を具体値で固定する。
 //
-// haloPixel（Addハロ用: rgb白固定・alpha落ち）と maskPixel（Multiply暗幕用: alpha固定・rgb落ち）は
+// haloPixel（Addハロ用: rgb白固定・alpha落ち）と maskPixel（Multiply用の暗くするオーバーレイ: alpha固定・rgb落ち）は
 // 呼び違えると効果が出ない事故になる 2 つの別規約なので、両方を独立に pin する。
 // 契約テスト（末尾）は SoftRaster.blendPixel に通した結果まで確かめ、
 // 「maskPixel の中心は本当に素通し・縁は本当に真っ暗になる」ことをコンパイル後も機械的に守る。
@@ -73,7 +73,7 @@ mod TestRadialGlow {
         Assert.assertEq(expected = (true, 1.0), (center < 0.01, corner))
 
     // ── 契約テスト: maskPixel を SoftRaster.blendPixel(Multiply) に通した結果 ──
-    // 「穴あき暗幕」という設計の核心（中心は景色そのまま・縁は真っ暗）を、
+    // 「穴あきのオーバーレイ」という設計の核心（中心は景色そのまま・縁は真っ暗）を、
     // 実際に使われる合成式まで通して機械的に守る。
 
     def dstArgb(): Int32 =

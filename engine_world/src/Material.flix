@@ -401,7 +401,7 @@ mod Material {
                 }
             }))
 
-    /// 岸の側(隣が陸)へはみ出さないよう、粒の中心を液体の内側の窓へ収める。液体でない
+    /// 岸の側(隣が陸)へはみ出さないよう、粒の中心を液体の内側の範囲へ収める。液体でない
     /// 辺は縁から margin だけ内へ入った線で、液体の辺はセル一杯まで許す。
     def insetToLiquid(cell: (Int32, Int32), tile: Float64, edges: Edges, margin: Float64,
                       p: (Float64, Float64)): (Float64, Float64) =

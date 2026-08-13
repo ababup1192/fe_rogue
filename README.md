@@ -189,7 +189,7 @@ the dual-grid renderer (`Terrain` / `TerrainDoc`) auto-generates the corner shap
 engine/        contract layer (GL-free, no native deps): the GameEngine.Game/Audio effect contract, shared render types, foundational types (math, color, text layout, project loading), scene-graph draw vocabulary
 render_gl/     OpenGL/OpenAL backend implementing engine's contract: LWJGL window/input/audio, shaders, textures, SDF fonts (depends on engine)
 engine_world/  value-based game framework: Bevy-style App run-loop, ECS queries, physics, UI widgets, camera rig, Worldline undo/replay, and frontend services (asset loading, save data, JSON, logging) (depends on engine)
-engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF baking, snapshot viewer, render lint, SFX synth (depends on engine)
+engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF baking, reference viewer, render lint, SFX synth (depends on engine)
 examples/      individual games (depend on engine, render_gl, engine_world, engine_tools)
 bin/           the flix wrapper script (the compiler jar comes from devbox/nix)
 flix.toml

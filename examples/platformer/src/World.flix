@@ -136,7 +136,7 @@ mod Field {
     pub def enemyRadius(): Float64 = 10.0
 
     // ── 照会型の当たり（敵との接触・踏み）の形 ──
-    // 正本は hitbox.json（起動時ロード・F1 で読み直し）。地形の物理は従来どおり
+    // source of truth は hitbox.json（起動時ロード・F1 で読み直し）。地形の物理は従来どおり
     // playerShape / platformShape が Physics2D へ流す — そちらは宣言の対象外。
 
     /// 自機の照会用の形（宣言 sheet から）。

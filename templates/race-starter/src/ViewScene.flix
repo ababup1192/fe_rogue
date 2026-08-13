@@ -458,7 +458,7 @@ mod ViewScene {
     /// 升目 1 つ。升の乱数 r は Scatter.strip が配る（鍵 = 段 × 升の通し番号）ので、
     /// 乱数を保存せず周回して戻ると同じ景色になる。通し番号 seed をここでも組み直すのは、
     /// 群れ（grove）が 1 本ごとの乱数の鍵に seed を混ぜるため。
-    /// 道の近く（120px 以内）は空ける — そこは道ぎわのヤシ（palms）の持ち場。
+    /// 道の近く（120px 以内）は空ける — そこは道ぎわのヤシ（palms）の担当範囲。
     def outfieldAt(w: World.World, edge: Proj.Edge, ink: String -> Color,
                    n: Int32, uc: Float64, m: Int32,
                    r: Int32 -> Float64): List[Render.PlacedItem] =

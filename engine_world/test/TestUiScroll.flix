@@ -2,7 +2,7 @@
 // 表示範囲の先頭・「まだある」印の出し分け。単位は呼び側が決めるのでテストは行数のつもり。
 mod TestUiScroll {
 
-    /// 内容 30 行を 18 行の窓で見る（バックログの典型）。
+    /// 内容 30 行を 18 行のビューポートで見る（バックログの典型）。
     def size(): { content = Int32, viewport = Int32 } = { content = 30, viewport = 18 }
 
     @Test
@@ -36,7 +36,7 @@ mod TestUiScroll {
 
     @Test
     def testFittingContentNeverScrolls(): Unit \ Assert =
-        // 窓に収まる内容はどう操作しても 0 のままで、印も出ない。
+        // ビューポートに収まる内容はどう操作しても 0 のままで、印も出ない。
         let fits = { content = 5, viewport = 18 };
         Assert.assertEq(
             expected = (0, false, false),
@@ -52,7 +52,7 @@ mod TestUiScroll {
             (UiScroll.top(shrunk, 5), UiScroll.moreBelow(shrunk, 5)))
 
     // ========================================================================
-    // ピクセル版(行高 11px・30 行 = 330px を 198px の窓で見る = 上の行版と同じ形)
+    // ピクセル版(行高 11px・30 行 = 330px を 198px のビューポートで見る = 上の行版と同じ形)
     // ========================================================================
 
     def sizePx(): { contentPx = Float64, viewportPx = Float64 } =

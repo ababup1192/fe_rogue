@@ -1,7 +1,7 @@
 # z-index の範囲の地図（どの zIndex が何用か）
 
 重なり順（zIndex）は 1 本の数直線だが、用途ごとに範囲で仕切ってある。
-数の正本はコードの `ZBand`（engine/src/core/ZBand.flix）。この文書はその地図。
+数の source of truth はコードの `ZBand`（engine/src/core/ZBand.flix）。この文書はその地図。
 
 | 範囲の名前 | z の範囲 | 用途 | 決め方 |
 |---|---|---|---|

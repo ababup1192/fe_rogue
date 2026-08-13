@@ -171,7 +171,7 @@ mod TexDemo {
 
     /// 陽炎 GIF（10 コマで sin の位相がちょうど 1 周する完全ループ）。
     /// pass は静止画なので 1 回だけ生成し、コマごとは面の time だけ進める。
-    def bakeHazeGif(cfg: Bakery.BakeConfig): SnapshotSite.Filmstrip \ IO =
+    def bakeHazeGif(cfg: Bakery.BakeConfig): ReferenceSite.Filmstrip \ IO =
         let passImg = Bakery.bakePassImage(cfg, scenePass(), None);
         let frames = 10;
         let req: SoftRaster.RasterReq =
@@ -191,7 +191,7 @@ mod TexDemo {
 
     // ── ④ tex_shock: 衝撃波（中心から広がるリング状の歪み）──
 
-    /// リングの窓: 中心距離 r から「時刻とともに広がる半径 (0.12 + 0.25t)」を引き、
+    /// リングのマスク: 中心距離 r から「時刻とともに広がる半径 (0.12 + 0.25t)」を引き、
     /// 0 の近傍 ±0.06 だけ 1 になる山を作る。
     def shockRing(): ShaderDoc.Field =
         let d = sub(ShaderDoc.Field.Radial({ cx = 0.5, cy = 0.5 }),
@@ -236,7 +236,7 @@ mod TexDemo {
     // ── 入口（Gallery.bakeAll から呼ぶ）──
 
     /// tex 場デモ 5 枚を生成する。返り値は tex_haze のフィルムストリップ（カタログの GIF カード用）。
-    pub def bakeAll(cfg: Bakery.BakeConfig): SnapshotSite.Filmstrip \ IO =
+    pub def bakeAll(cfg: Bakery.BakeConfig): ReferenceSite.Filmstrip \ IO =
         bakeBlit(cfg);
         bakeBlur(cfg);
         bakeShock(cfg);

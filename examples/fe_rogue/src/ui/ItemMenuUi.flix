@@ -14,16 +14,16 @@
 // テキストのみの行。
 //
 // ウィンドウ（スクロール）: 旧 ItemList は maxVisibleRows=3 で、持ち物数（個数上限なし・重量制のみ）が
-// 3 を超えると縦スクロールした。ここも **3 行の窓** に固定し、選択が窓に入るよう表示 offset を
+// 3 を超えると縦スクロールした。ここも **3 行の表示範囲** に固定し、選択が表示範囲に入るよう表示 offset を
 // クランプする（`windowOffset`＝旧 `ItemList.scrollFirstVisible` と同式）。選択カーソルは在庫全体の
-// index を持ち、ハイライトは窓内の相対行 (sel − offset) に置く。
+// index を持ち、ハイライトは表示範囲内の相対行 (sel − offset) に置く。
 //
 // ノード構造（ItemMenu.ui.json / layer=8）:
 //   ItemMenu (none, 画面固定 HUD)
 //     └─ panel (box, パネル地・ActionMenu 右隣に abs 追従)
 //           ├─ header (box) 「重 X.X/Y.Y」（左・積載段階で色替え）＋「◀ カテゴリ ▶」（右）
 //           └─ menu (none, 縦並び・gap 0・行ピッチ 12px 固定)
-//                 ├─ highlight (box) 選択行の塗り箱（abs 子・行より背面 z・窓内相対行へ毎フレ移動）
+//                 ├─ highlight (box) 選択行の塗り箱（abs 子・行より背面 z・表示範囲内相対行へ毎フレ移動）
 //                 └─ row0..row2 (none, 固定高 12px) アイテム 1 個ぶんの行
 //                       （iconBg>icon, info>nameRow>name+badge(box カプセル), info>subline）
 mod ItemMenuUi {
@@ -32,7 +32,7 @@ mod ItemMenuUi {
     // spec 置き場 / 名前パス
     // ========================================================================
 
-    /// ui.json の置き場。起動時の spawnAsset・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAsset・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/ItemMenu.ui.json")
 
     /// root（可視トグルの対象）とパネル / リスト所有 entity の名前パス。
@@ -42,7 +42,7 @@ mod ItemMenuUi {
     def weightPath(): String = "ItemMenu/panel/header/weight"
     def hintPath(): String = "ItemMenu/panel/header/hint"
 
-    /// 表示窓の行数（ui.json の row0..row2 と一致させること）。旧 ItemList の maxVisibleRows=3。
+    /// 表示範囲の行数（ui.json の row0..row2 と一致させること）。旧 ItemList の maxVisibleRows=3。
     /// pub: 実 asset の row 宣言数と一致することをテストが pin するため。
     pub def maxSlots(): Int32 = 3
     def rowPath(i: Int32): String = "${menuPath()}/row${i}"
@@ -183,8 +183,8 @@ mod ItemMenuUi {
     // ウィンドウ（スクロール）: 表示 offset の純関数
     // ========================================================================
 
-    /// 表示窓の先頭 index（旧 `ItemList.scrollFirstVisible` と同式）。
-    /// `slots <= 0` または `count <= slots` のときはスクロール不要で 0。それ以外は選択行を窓の
+    /// 表示範囲の先頭 index（旧 `ItemList.scrollFirstVisible` と同式）。
+    /// `slots <= 0` または `count <= slots` のときはスクロール不要で 0。それ以外は選択行を表示範囲の
     /// 中央寄りに保ちつつ `[0, count - slots]` にクランプする（末尾で下停止・先頭で 0 停止＝wrap しない）。
     /// pub: 具体値をテストが pin するため（fillWindow / ハイライト位置の基準）。
     pub def windowOffset(sel: Int32, count: Int32, slots: Int32): Int32 =
@@ -361,7 +361,7 @@ mod ItemMenuUi {
         Option.getWithDefault(Nil, itemsOpt)
 
     // ========================================================================
-    // 毎フレーム同期（可視 + 窓流し込み + パネル追従 + 重量/カテゴリヘッダ + 選択ハイライト）
+    // 毎フレーム同期（可視 + 表示範囲流し込み + パネル追従 + 重量/カテゴリヘッダ + 選択ハイライト）
     // ========================================================================
 
     /// gameLoop が 1 回呼ぶ frame-paced System（旧 refreshItems + applyVisibility の置換）。
@@ -385,7 +385,7 @@ mod ItemMenuUi {
                 |> UiStore.putSelection(menuPath(), 0))
         }
 
-    /// ItemSelect: 現在カテゴリの在庫を窓へ流し込む。
+    /// ItemSelect: 現在カテゴリの在庫を表示範囲へ流し込む。
     def syncItemSelect(): Unit
             \ {SelectedPlayer.State, PlayerData.PartyQuery, ItemMenuState.State, UiWorldState.State} =
         match resolveCategoryView() {
@@ -412,7 +412,7 @@ mod ItemMenuUi {
                     |> applyWindowHighlight(sel, offset))
         }
 
-    /// ItemActionSelect: サブメニュー（テキストのみ）を窓へ流し込む。
+    /// ItemActionSelect: サブメニュー（テキストのみ）を表示範囲へ流し込む。
     def syncActionSelect(): Unit
             \ {SelectedPlayer.State, PlayerData.PartyQuery, ItemMenuState.State, UiWorldState.State} =
         let playerOpt = forM (
@@ -448,7 +448,7 @@ mod ItemMenuUi {
                     |> applyWindowHighlight(sel, offset))
         }
 
-    /// アイテム窓を ActionMenu（コマンドメニュー）の右端基準で配置する。武器メニューと同じ量だけ重ねる。
+    /// アイテムメニューを ActionMenu（コマンドメニュー）の右端基準で配置する。武器メニューと同じ量だけ重ねる。
     def applyPanelPosition(ui: UiStore.UiWorld): UiStore.UiWorld \ UiWorldState.State =
         let newX = ActionMenuUi.panelDesignRight() - panelOverlapPx();
         UiStore.setAbs(panelPath(), {x = newX, y = panelY()}, ui)
@@ -468,12 +468,12 @@ mod ItemMenuUi {
         UiStore.setText(hintPath(), txt, ui)
 
     /// `fillWindow` の引数束。
-    /// `items`: 表示窓へ流し込む項目列（在庫全体の順序）。
+    /// `items`: 表示範囲へ流し込む項目列（在庫全体の順序）。
     /// `sublines`: 行 index → 2 行目文字列（showChrome=false のときは無視）。
     /// `badges`: 行 index → バッジ文字列（装備先頭だけキーを持つ。showChrome=false のときは無視）。
     /// `sprites`: items と同順のアイコン sprite 列（showChrome=false のときは無視）。
     /// `marks`: 複数選択マーク集合（強調色の判定に使う）。
-    /// `offset`: 表示窓の先頭 index。
+    /// `offset`: 表示範囲の先頭 index。
     /// `showChrome`: true ならアイコン/サブライン/装備バッジを出す（ItemSelect）、
     /// false ならテキストのみ（ItemActionSelect）。
     type alias WindowFill = {
@@ -486,11 +486,11 @@ mod ItemMenuUi {
         showChrome = Bool
     }
 
-    /// 行スロットの配置規約（UiRowFill へ渡す窓・行パス）。
+    /// 行スロットの配置規約（UiRowFill へ渡す表示範囲・行パス）。
     def rowSpec(offset: Int32): UiRowFill.Spec =
         {rowPath = i -> rowPath(i), maxSlots = maxSlots(), offset = offset}
 
-    /// items[offset..offset+slots) を行 0..slots-1 へ流し込む（窓外の行の扱いは UiRowFill 共通規約）。
+    /// items[offset..offset+slots) を行 0..slots-1 へ流し込む（表示範囲外の行の扱いは UiRowFill 共通規約）。
     /// `showChrome` が true（ItemSelect）ならアイコン/サブライン/装備バッジ/マーク色を出す。
     /// false（ItemActionSelect）ならテキストのみ（アイコン/サブライン/バッジは隠す・マークなし）。
     def fillWindow(fill: WindowFill, ui: UiStore.UiWorld): UiStore.UiWorld =
@@ -536,7 +536,7 @@ mod ItemMenuUi {
             |> Option.map(k -> Set.memberOf(k, marks))
             |> Option.getWithDefault(false)
 
-    /// 選択行の塗り箱を窓内の相対行（sel − offset）へ動かす。
+    /// 選択行の塗り箱を表示範囲内の相対行（sel − offset）へ動かす。
     def applyWindowHighlight(sel: Int32, offset: Int32, ui: UiStore.UiWorld): UiStore.UiWorld =
         UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
                                sel = sel - offset, rowPitch = rowPitch(), inset = highlightInset()}, ui)

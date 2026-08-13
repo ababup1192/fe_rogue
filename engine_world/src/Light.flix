@@ -1,5 +1,5 @@
 // Light — 簡易2D光源から見せる絵の列を導く純関数。光は状態を持たない値（位置・半径・色・ハロの強さ）。
-// maskSprite（Multiply専用の暗幕）と haloSprite（Add専用の暖色グロー）は RadialGlow が焼いた
+// maskSprite（Multiply専用の暗くするオーバーレイ）と haloSprite（Add専用の暖色グロー）は RadialGlow が焼いた
 // 別規約のテクスチャで、Light はその2枚をどこに・どれだけ拡大して置くかだけを決める。
 mod Light {
 
@@ -26,7 +26,7 @@ mod Light {
 
     /// シーン全体の光源設定（items の唯一の入口）。lights は 0〜N 個、occluders は
     /// 遮蔽ポリゴンの列（Shadow.occluderOf 系で作る絶対座標の頂点列）。
-    /// darkness/z は暗幕・影・ハロの土台を貫く共通値（暗幕の縁と影の濃さを合わせて
+    /// darkness/z は暗くするオーバーレイ・影・ハロの土台を貫く共通値（オーバーレイの縁と影の濃さを合わせて
     /// 「同じ暗闇の一部」に見せるため、光源ごとにばらけさせない）。
     /// rimWidth/rimStrength は Shadow.itemsFor に渡す照り返しフチのノブ、
     /// haloDiameterFactor はハロの見た目直径を「2×radius（穴の直径）」からさらに
@@ -45,11 +45,11 @@ mod Light {
     pub def defaultHaloDiameterFactor(): Float64 = 1.25
 
     /// シーンの光源一式を絵にする唯一の入口。lights が
-    ///   - 0 個なら全面暗幕のみ（multiLightItems を lights=Nil で呼ぶのと同じ）
-    ///   - 1 個なら真の穴あき暗幕+ハロ（singleLightItems）に、occluders があれば
+    ///   - 0 個なら全面オーバーレイのみ（multiLightItems を lights=Nil で呼ぶのと同じ）
+    ///   - 1 個なら真の穴あきオーバーレイ+ハロ（singleLightItems）に、occluders があれば
     ///     Shadow.itemsFor の影・フチを合成する（呼び側の手動 append が不要になる）
-    ///   - 2 個以上なら全面暗幕+各光のハロ（multiLightItems）の近似に振り分ける
-    /// **複数光源では影が出ない**（items 自身は今も全面暗幕+ハロの近似のまま。occluders を
+    ///   - 2 個以上なら全面オーバーレイ+各光のハロ（multiLightItems）の近似に振り分ける
+    /// **複数光源では影が出ない**（items 自身は今も全面オーバーレイ+ハロの近似のまま。occluders を
     /// 渡しても黙って無視される — 松明集団シーンのような「影は要らないが灯りだけ複数欲しい」
     /// 用途向けの割り切り。複数光源で影まで欲しいときは光マップ方式
     /// （`lightMapPass` / `lightMapOverlay`）を使う）。
@@ -85,7 +85,7 @@ mod Light {
                       rimWidth = cfg#rimWidth, rimStrength = cfg#rimStrength });
         List.append(lightItems, shadows)
 
-    /// singleLightItems が返す列の末尾（ハロ）だけを factor 倍する（先頭の暗幕・周囲黒帯は
+    /// singleLightItems が返す列の末尾（ハロ）だけを factor 倍する（先頭のオーバーレイ・周囲黒帯は
     /// そのまま）。末尾がハロであることは singleLightItems の実装順序に依存するので、
     /// この関数を単独で公開はせず items の内部でだけ使う。
     def growHalo(factor: Float64, items: List[Render.PlacedItem]): List[Render.PlacedItem] =
@@ -97,7 +97,7 @@ mod Light {
         }
 
     // ── 低レベル口（通常は items を使う。影や haloDiameterFactor が要らず、
-    //    穴あき暗幕+ハロだけをピンポイントに組みたいときに使う） ──
+    //    穴あきオーバーレイ+ハロだけをピンポイントに組みたいときに使う） ──
 
     /// singleLightItems の設定。maskSprite/haloSprite は RadialGlow で焼いたテクスチャ名、
     /// maskSourceSize/haloSourceSize はそれぞれの元 px サイズ（正方形前提）。
@@ -106,7 +106,7 @@ mod Light {
     /// 逆算するのに使うため、焼く側と読む側で値が揃っていないと穴のサイズがずれる。
     /// darkness は mask 全体の暗さ0..1（1で穴の外が完全な黒。既定0.95）— 周囲4枚の黒帯と
     /// 同じ値を使うことで、mask の縁（完全減衰）と黒帯の濃度が連続する。
-    /// z は暗幕→ハロの土台（cfg#z が暗幕、cfg#z + 1 がハロ）。
+    /// z はオーバーレイ→ハロの土台（cfg#z がオーバーレイ、cfg#z + 1 がハロ）。
     /// 背景・目印など「穴の中に見せたい景色」は cfg#z 未満の zIndex に置くこと
     /// （Render.blended は自分より奥＝小さい zIndex にしか効かない）。
     pub type alias SingleLightConfig = {
@@ -117,7 +117,7 @@ mod Light {
         z = Int32
     }
 
-    /// 単一光源の真の穴あき描画。中心の穴あき暗幕（Multiply, maskSprite）を「穴の実寸半径が
+    /// 単一光源の真の穴あき描画。中心の穴あきオーバーレイ（Multiply, maskSprite）を「穴の実寸半径が
     /// light#radius になる」倍率へ引き伸ばして光の位置に1枚 → 四辺を敷き詰める黒帯4枚
     /// （mask 正方形の外側を隙間なく覆う。mask の縁と同じ darkness で連続に見える）→
     /// 色付きAddハロ（haloSprite, tint=light#color, alpha=light#halo）を光の半径ぶんに
@@ -138,7 +138,7 @@ mod Light {
                           |> Render.blended(DrawCmd.BlendMode.Add) };
         mask :: List.append(surround, halo :: Nil)
 
-    /// 暗幕の拡大倍率。「穴の実寸半径 = light#radius」になる倍率のみ
+    /// オーバーレイの拡大倍率。「穴の実寸半径 = light#radius」になる倍率のみ
     /// （maskCurveWithHole の平坦部 holeFrac が画像半径に占める割合なので、
     /// holeFrac × 画像半径 × scale = radius から逆算する）。画面対角線カバレッジの
     /// 下限は持たない — mask 正方形の外側は surroundBoxes が敷く黒帯が担うため、
@@ -183,13 +183,13 @@ mod Light {
     // ── 低レベル口（通常は items を使う。多灯シーンで occluders 判定を挟まず
     //    直接呼びたいときに使う） ──
 
-    /// multiLightItems の設定。darkness は全面暗幕の濃さ0..1（1で真っ黒）。
+    /// multiLightItems の設定。darkness は全面オーバーレイの濃さ0..1（1で真っ黒）。
     pub type alias MultiLightConfig = {
         lights = List[Light], darkness = Float64, viewport = Vec2.Vec2,
         haloSprite = String, haloSourceSize = Float64, z = Int32
     }
 
-    /// 複数光源の近似。全面暗幕（Multiply, 一様darkness）+各光位置にAddハロ、という
+    /// 複数光源の近似。全面オーバーレイ（Multiply, 一様darkness）+各光位置にAddハロ、という
     /// 「暗闇の上に光が乗る」近似のまま（Pass を使えば真の穴あきも組めるが、ここは呼ばない）。
     /// 床は暗いまま見えない（真の穴あきが要らない松明集団シーン等向け）。
     /// ハロは全て同じ z+1（Add は加算合成のため奥行き順に依らず重なりは自然に足し合わさる）。
@@ -209,15 +209,15 @@ mod Light {
 
     // ── 光マップ方式（複数光源＋影つき。Pass に灯りを集め、Multiply で本編に掛ける）──
     //
-    // 暗幕方式（items）と絵の性格が違う別の道具として併存する:
-    //   - 暗幕方式 = 穴の外は一様な闇。pass を 1 本も使わない軽さと rim・haloDiameterFactor の
+    // オーバーレイ方式（items）と絵の性格が違う別の道具として併存する:
+    //   - オーバーレイ方式 = 穴の外は一様な闇。pass を 1 本も使わない軽さと rim・haloDiameterFactor の
     //     質感を持つが、穴（影の抜け）は 1 枚絵なので複数同時には開けられない
     //   - 光マップ方式 = 環境光のある夜。光源が何個でも、光ごとに向きの違う影が落ちる。
     //     放射は組み込みテクスチャ（Render.lightAt）なので GlowAssets の焼き・転記が要らない
 
     /// 光マップ方式の設定。lightMapPass（App.withPasses へ）と lightMapOverlay（view の列へ）の
     /// **両方に同じ値を渡す** — 2 か所で別々に組むと passName / z が食い違う。
-    /// lights / occluders は暗幕方式（SceneLightConfig）と同じ形をそのまま使う。
+    /// lights / occluders はオーバーレイ方式（SceneLightConfig）と同じ形をそのまま使う。
     /// ambient = 影の底の色（環境光。真っ黒にしない — 影は「この色へ戻る」）。
     /// shadowStrength = 影の濃さ 0..1（1 で環境光まで完全に戻す）。
     /// extrudeLength = 影を伸ばす長さ（目安は Shadow.infiniteExtrude()）。

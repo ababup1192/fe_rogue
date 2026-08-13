@@ -26,7 +26,7 @@ pub type alias MapSnapshot = {
 mod MapSnapshot {
 
     /// マップのセル幅（ピクセル）。使用タイルセットのグリッド解像度に固定された定数で、
-    /// グリッド ⇄ ピクセル変換が必要な全モジュールが参照する唯一の情報源。
+    /// グリッド ⇄ ピクセル変換が必要な全モジュールが参照する source of truth。
     pub def tileSize(): Float64 = 26.0
 
     /// グリッド座標 → セル中心ピクセル座標。MapSnapshot を持たない呼び出し側が

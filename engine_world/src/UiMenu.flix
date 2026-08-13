@@ -5,7 +5,7 @@
 // 規約: リスト所有 entity（listPath）直下の子のうち **metas を持つもの** を order 昇順に
 // 並べた列が「選択カーソルの項目列」（見出し・区切り等 meta 無しの子は数えない）。
 // 動的メニュー（ActionMenu）は空きスロットの meta を `UiStore.clearMeta` で外し、項目数を
-// 可視項目へ追随させる（display:none レイアウトと組で窓が縮む）。
+// 可視項目へ追随させる（display:none レイアウトと組でパネルが縮む）。
 
 mod UiMenu {
 
@@ -117,9 +117,9 @@ mod UiMenu {
     pub def clampIndex(itemCount: Int32, sel: Int32): Int32 =
         if (itemCount <= 0) 0 else Int32.max(0, Int32.min(itemCount - 1, sel))
 
-    /// 項目数が表示スロット数を超えるメニューで、選択 sel が見える窓の先頭 offset を決める純関数。
-    /// 選択行を窓の中央寄りに保ちつつ [0, count - slots] にクランプする（先頭で 0 停止・末尾で下停止）。
-    /// slots に収まるときは常に 0。fe_rogue ItemMenu のスクロール窓と同式。
+    /// 項目数が表示スロット数を超えるメニューで、選択 sel が見える範囲の先頭 offset を決める純関数。
+    /// 選択行を範囲の中央寄りに保ちつつ [0, count - slots] にクランプする（先頭で 0 停止・末尾で下停止）。
+    /// slots に収まるときは常に 0。fe_rogue ItemMenu のスクロール範囲と同式。
     pub def windowOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32 =
         if (slots#slots <= 0 or count#count <= slots#slots) 0
         else {

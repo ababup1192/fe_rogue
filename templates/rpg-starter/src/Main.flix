@@ -47,7 +47,7 @@ def main(): Unit \ IO =
                 // エンジンが毎フレーム評価して全盤走査が 1 フレーム予算を食い潰す。
                 |> App.withTileLayers(w -> w#tileSpec :: Nil)
                 // camera: 主人公を追い、盤の外の虚空は映さない。ドット絵なので 1px に吸着。
-                // 画面固定の UI（空・霧・幕・戦いの窓）は hudView 側 — camera が掛からない。
+                // 画面固定の UI（空・霧・幕・戦いのウィンドウ）は hudView 側 — camera が掛からない。
                 |> App.withCamera(w -> checked_ecast(World.cameraCenter(w)))
                 |> App.withCameraBounds(w -> checked_ecast(World.boardRect(w)))
                 |> App.withPixelSnap(_ -> 1.0)

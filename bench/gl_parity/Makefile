@@ -1,5 +1,5 @@
 # gl_parity — GL 描画と SoftRaster 描画の突き合わせ harness の入口。
-#   make run   … 隠し窓で GL を焼き、SoftRaster と画素比較する（不一致で exit 1）
+#   make run   … 隠しウィンドウで GL を焼き、SoftRaster と画素比較する（不一致で exit 1）
 #   make check … 型検査だけ走らせる
 #
 # debug/ を毎回消すのは、前回の frame-*.png が残ると通し番号の対応がずれて

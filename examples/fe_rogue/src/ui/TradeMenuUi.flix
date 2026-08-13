@@ -22,9 +22,9 @@
 //   5. pick=None で X → origin に応じてメニューを閉じる（FromTurn / FromGather → ActionSelect）。
 //   6. Shift で focus ペインのアイテムに印を付け、別ペインで Z → 印の付いた分をまとめて渡す。
 //
-// ウィンドウ（スクロール）: 各ペインは `maxSlots()` 行の窓に固定し、在庫数が窓を超えると
-// `windowOffset`（選択が窓に入るよう表示 offset をクランプする純関数）で縦スクロールする。
-// 選択カーソルは在庫全体の index を持ち、ハイライトは窓内の相対行 (sel − offset) に置く。
+// ウィンドウ（スクロール）: 各ペインは `maxSlots()` 行の表示範囲に固定し、在庫数が表示範囲を超えると
+// `windowOffset`（選択が表示範囲に入るよう表示 offset をクランプする純関数）で縦スクロールする。
+// 選択カーソルは在庫全体の index を持ち、ハイライトは表示範囲内の相対行 (sel − offset) に置く。
 // ペインごとに **selection は名前パスキーで独立**（"TradeMenu/panel/panesRow/pane0/menu" 等）で、
 // ↑↓ は focus ペインの selection だけを動かす。
 //
@@ -119,7 +119,7 @@ mod TradeMenuUi {
     // spec 置き場 / 名前パス / 表示定数
     // ========================================================================
 
-    /// ui.json の置き場。起動時の spawnAsset・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAsset・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/TradeMenu.ui.json")
 
     /// root（可視トグルの対象）と主要ノードの名前パス。
@@ -143,7 +143,7 @@ mod TradeMenuUi {
     /// 最大 3 人 = 計 4 まで。物理ノード（pane0..3）もこの数だけ用意する。
     pub def maxPanes(): Int32 = 4
 
-    /// 1 ペインの表示窓の行数（ui.json の row0..row5 と一致させること）。
+    /// 1 ペインの表示範囲の行数（ui.json の row0..row5 と一致させること）。
     /// pub: 実 asset の row 宣言数と一致することをテストが pin するため。
     pub def maxSlots(): Int32 = 6
 
@@ -335,11 +335,11 @@ mod TradeMenuUi {
         }
 
     // ========================================================================
-    // 毎フレーム同期（可視 + 中央寄せ + 各ペインの窓流し込み + フォーカス表現）
+    // 毎フレーム同期（可視 + 中央寄せ + 各ペインの表示範囲流し込み + フォーカス表現）
     // ========================================================================
 
     /// gameLoop が 1 回呼ぶ frame-paced System。TradeInventory の間だけ root を可視化し、
-    /// paneCount 個のペインへ対応 player の在庫を窓へ流し込み、focus ペインだけ選択ハイライト箱を
+    /// paneCount 個のペインへ対応 player の在庫を表示範囲へ流し込み、focus ペインだけ選択ハイライト箱を
     /// 出す（非 focus ペインは箱を隠す）。それ以外のフェーズでは全て隠し、各ペインのカーソルを先頭へ戻す。
     pub def frameStep(_dt: Duration.Duration): Unit
             \ {TurnPhase.State, TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
@@ -370,7 +370,7 @@ mod TradeMenuUi {
              + Int32.toFloat64(count) * paneWidth()
              + Int32.toFloat64(count - 1) * paneGap()
 
-    /// ペイン i を同期する。i >= count は隠す。それ以外は在庫を窓へ流し込み、見出し・ハイライトを更新する。
+    /// ペイン i を同期する。i >= count は隠す。それ以外は在庫を表示範囲へ流し込み、見出し・ハイライトを更新する。
     def syncPane(i: Int32, data: PanelData, count: Int32,
                  ui: UiStore.UiWorld): UiStore.UiWorld \ PlayerData.PartyQuery =
         if (i >= count) UiStore.setVisible(panePath(i), false, ui)
@@ -402,8 +402,8 @@ mod TradeMenuUi {
 
     /// `fillPaneRows` の引数束。
     /// `i`: ペイン index。`data`: セッション状態（pick / 印の強調色判定に使う）。
-    /// `entries`: ペインの在庫全体（窓オフセット適用前）。`sublines`/`sprites`: 表示行 index →
-    /// 2 行目文字列 / アイコン sprite。`offset`: 表示窓の先頭 index。
+    /// `entries`: ペインの在庫全体（表示範囲のオフセット適用前）。`sublines`/`sprites`: 表示行 index →
+    /// 2 行目文字列 / アイコン sprite。`offset`: 表示範囲の先頭 index。
     type alias PaneRowsInput = {
         i        = Int32,
         data     = PanelData,
@@ -413,13 +413,13 @@ mod TradeMenuUi {
         offset   = Int32
     }
 
-    /// entries[offset..offset+slots) を行 0..slots-1 へ流し込む（窓外の行の扱いは UiRowFill 共通規約）。
+    /// entries[offset..offset+slots) を行 0..slots-1 へ流し込む（表示範囲外の行の扱いは UiRowFill 共通規約）。
     /// 実体アイテムはアイコンチップ + 名前 + サブライン。空スロットはチップの代わりに不可視スペーサで
     /// icon 列（幅 7）を占位し、サブラインを畳んで名前 1 行を行内で縦中央に置く（旧 ItemList 準拠：
     /// アイコン列を予約したまま名前をアイテム行と同じ x へ揃え、縦中央に描く）。
     /// pick / 印の付いた行は名前を強調色（黄）で描く。
     def fillPaneRows(input: PaneRowsInput, ui: UiStore.UiWorld): UiStore.UiWorld =
-        // 在庫が窓（maxSlots）を超えるのは windowOffset のスクロールで正常なので上限チェックはしない。
+        // 在庫が表示範囲（maxSlots）を超えるのは windowOffset のスクロールで正常なので上限チェックはしない。
         UiRowFill.fill({rowPath = r -> rowPath(input#i, r), maxSlots = maxSlots(), offset = input#offset},
             input#entries, (r, entry, acc) -> {
                 let idx = input#offset + r;
@@ -483,7 +483,7 @@ mod TradeMenuUi {
             case None    => ("", UITheme.headerText())
         }
 
-    /// 表示窓の先頭 index。窓（maxSlots）を選択が超えないよう `ItemMenuUi.windowOffset` を再利用する。
+    /// 表示範囲の先頭 index。表示範囲（maxSlots）を選択が超えないよう `ItemMenuUi.windowOffset` を再利用する。
     def windowOffsetLocal(sel: Int32, count: Int32): Int32 =
         ItemMenuUi.windowOffset(sel, count, maxSlots())
 

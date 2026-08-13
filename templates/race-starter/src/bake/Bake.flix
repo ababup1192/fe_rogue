@@ -36,7 +36,7 @@ mod Bake {
                     | cfgOf("gallery", atlas, w0#theme#grass) };
         let texInfo = Bakery.imageTextureInfo(images);
         let ctx = App.viewCtxOf(atlas, design());
-        // title: ジャンルカードの顔（Title 画面）。Studio が snapshot/title.png を /genesis/title で
+        // title: ジャンルカードの顔（Title 画面）。Studio が reference/title.png を /genesis/title で
         // 読み、「レース」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
         let t = shoot(cfg, texInfo, ctx, { t = 2.2 | w0 }, "title");
         // s1: S 字をドリフト中（タイヤ痕・白煙・ゲージ半分）。この絵が遊びの顔。

@@ -7,7 +7,7 @@ user-invocable: true
 # Doc 設計 — 何を外に出し、どう分け、どう見せるか
 
 外形の規約（`version` / スキーマ / fail-open / `note` / `project.json` の登録 / 保存即反映）は
-[docs/doc-conventions.md](../../../docs/doc-conventions.md) が持ち場。ここは**設計の判断**を扱う。
+[docs/doc-conventions.md](../../../docs/doc-conventions.md) が担当範囲。ここは**設計の判断**を扱う。
 
 ## 1. 外に出すか、コードに置くか
 

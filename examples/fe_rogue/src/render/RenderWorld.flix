@@ -188,9 +188,9 @@ mod RenderWorld {
                     }: GameEngine.TileMapRenderCmd))
         }
 
-    /// fog の暗幕（haze）を World render System で描く。frame 共有の「明るい穴」`holesOpt`
+    /// fog の暗くするオーバーレイ（haze）を World render System で描く。frame 共有の「明るい穴」`holesOpt`
     /// （`Fog.holesNow`）から補集合の矩形（mapRegion/bandDecompose）を組み、box の
-    /// Drawable にする。この直描きが唯一の暗幕経路。穴 None（盤面レス画面）は暗幕なし。
+    /// Drawable にする。この直描きが唯一の暗くするオーバーレイの経路。穴 None（盤面レス画面）はオーバーレイなし。
     pub def renderFog(holesOpt: Option[List[GridRect]],
                        transform: Projection.ViewTransform): List[GameEngine.Drawable] \ World.WorldQuery =
         match holesOpt {
@@ -407,7 +407,7 @@ mod RenderWorld {
             standaloneSprite(sprite, MapSnapshot.cellCenter(data#gridPos), ArrowCursorDriver.spriteZIndex(), transform)
         }
 
-    /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
+    /// 1 つの暗くするオーバーレイのグリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
     /// box は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
     /// zoom 倍する（unitDraw のスケール処理と対称）。
     def fogRectDrawables(r: GridRect, transform: Projection.ViewTransform): List[GameEngine.Drawable] =

@@ -1,5 +1,5 @@
 // App — ゲームを「宣言」で組み立てて走らせるランナー。ゲーム側は初期 World にシステムと
-// 絵と音を繋いで launch を呼ぶだけで、窓・時計・入力・描画・ループはすべてここが引き受ける。
+// 絵と音を繋いで launch を呼ぶだけで、ウィンドウ・時計・入力・描画・ループはすべてここが引き受ける。
 // 外の世界に触れる処理（effect）をこのモジュールが独占するので、ゲームのシステムは
 // (Frame, w) -> w の純粋関数として書ける（毎フレームの入力と dt は Frame に焼いて渡す）。
 //
@@ -19,7 +19,7 @@ mod App {
         dt = Float64,                      // 前フレームからの経過秒（エンジンがクランプ済み。
                                            // withFixedStep 使用時はサブステップ中ずっと固定値）
         viewport = Vec2.Vec2,              // design 解像度の幅・高さ（project.json の designWidth/Height）
-        cursor = Vec2.Vec2,                // マウス位置（design 座標。バックエンドが窓→design に変換済み）
+        cursor = Vec2.Vec2,                // マウス位置（design 座標。バックエンドがウィンドウ座標→design に変換済み）
         mouseDown = Bool,                  // 左ボタンがいま押されているか
         mouseClicked = Bool,               // 左ボタンがこのフレームで新しく押されたか（エッジ）
         mouseMoved = Bool,                 // このフレームでマウスが動いたか（前フレームとの座標比較）
@@ -1146,7 +1146,7 @@ mod App {
         { entries = Map.insert(slot, (cache#gen, key, vao, count), cache#entries) | cache }
 
     /// 宣言されたタイル層を描画コマンドにする。スロット（宣言リストの並び順）に同じ世代・
-    /// 同じ key で焼き置きされていれば使い回し、key か世代が変われば同じ VAO へ中身を
+    /// 同じ key でキャッシュ済みなら使い回し、key か世代が変われば同じ VAO へ中身を
     /// 入れ直す（updateTileBuffer）。新しいスロットだけ initTileBuffer で VAO を作る —
     /// key が毎バケツ転がる層でも GPU バッファは 1 層 1 本のまま。
     /// 位置と倍率は動的な絵と同じ camera 値（resolvedCamera）から出すので視点はずれない。

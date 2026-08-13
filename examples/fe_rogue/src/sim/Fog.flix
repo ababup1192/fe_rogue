@@ -6,7 +6,7 @@
 ///   - 通路(corridor): 常に味方キャラの周囲1マス(松明)だけを点灯する（部屋とは別仕様）。
 /// 敵・アイテム・階段は明るい所以外では非表示。
 ///
-/// scene ノードは持たない。暗幕は `RenderWorld.renderFog` が補集合の矩形
+/// scene ノードは持たない。暗くするオーバーレイは `RenderWorld.renderFog` が補集合の矩形
 /// （バンド分割 `bandDecompose`）を毎フレーム直描きし、敵/アイテム/階段の可視は
 /// 「明るい穴 `holesNow` にセルが入っているか」を読者が描画/判定時に導出する
 /// （marker の visible フラグへの書き込みは持たない）。
@@ -129,7 +129,7 @@ mod Fog {
                             |> List.map(moduleRect);
         List.append(litExpanded, visitedRects)
 
-    // 暗幕は `RenderWorld.renderFog` が bandDecompose の矩形を box で直描きする唯一の経路。
+    // 暗くするオーバーレイは `RenderWorld.renderFog` が bandDecompose の矩形を box で直描きする唯一の経路。
 
     /// module の floorBounds(±edgePad で壁リングまで拡張) を world grid 矩形にする。
     pub def moduleRect(p: DungeonComposer.ModulePlacement): GridRect =

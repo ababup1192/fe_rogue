@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """agents-pack をゲームに配る (make sync-agents の本体)。
 
-配布物一覧の正本は agents-pack/manifest.json。この解釈器と Studio (NewGame.flix) の
+配布物一覧の source of truth は agents-pack/manifest.json。この解釈器と Studio (NewGame.flix) の
 解釈器は manifest を読むだけで、リストを二重に持たない。AGENTS.md は
 共通指針 AGENTS.core.md + スキル一覧 (frontmatter から自動生成。Claude 以外の
 エージェントも AGENTS.md だけで skills に気づけるように) + ゲームの AGENTS.local.md を

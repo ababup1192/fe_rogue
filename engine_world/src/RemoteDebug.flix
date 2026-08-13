@@ -512,7 +512,7 @@ mod RemoteDebug {
             case Some(bake) =>
                 // 焼き（SoftRaster / HeadlessFont）は Java2D = AWT を使う。macOS の実機起動は
                 // -XstartOnFirstThread で GLFW が主スレッドを占有しており、ここで AWT が
-                // AppKit を起こそうとすると永久ハングし得る。このプロセスは AWT の窓を
+                // AppKit を起こそうとすると永久ハングし得る。このプロセスは AWT のウィンドウを
                 // 開かないので、初回の AWT 初期化前に headless を明示しておく
                 // （bin/flix が test / Bake 実行に付けるのと同じ理由）。
                 discard System.setProperty("java.awt.headless", "true");
@@ -661,7 +661,7 @@ mod RemoteDebug {
                         Ref.put(frameKeys, keysRef);
                         let frameNo = Ref.get(frameNoRef) + 1i64;
                         Ref.put(frameNo, frameNoRef);
-                        // 実ハンドラへ素通し = glfwPollEvents が回り、窓が固まらない・閉じられる
+                        // 実ハンドラへ素通し = glfwPollEvents が回り、ウィンドウが固まらない・閉じられる
                         let closing = GameEngine.Game.shouldClose();
                         // /step の台本はキーのみ（マウスは台本に無いので常に「押されず・動かず・回さず」）。
                         let frame = App.frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds,

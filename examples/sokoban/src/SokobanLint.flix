@@ -51,8 +51,8 @@ mod SokobanLint {
 
     // ── Finding をテスト・バッジで扱いやすい形へ ──
 
-    /// Finding 列を SnapshotSite のバッジ（有効/抑制の件数 + 詳細）へ畳む。
-    pub def badgeOf(findings: List[RenderLint.Finding]): SnapshotSite.LintBadge =
+    /// Finding 列を ReferenceSite のバッジ（有効/抑制の件数 + 詳細）へ畳む。
+    pub def badgeOf(findings: List[RenderLint.Finding]): ReferenceSite.LintBadge =
         let active = List.filter(f -> not f#suppressed, findings);
         let suppressed = List.filter(f -> f#suppressed, findings);
         { checked = true,

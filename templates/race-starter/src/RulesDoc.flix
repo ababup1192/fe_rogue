@@ -8,7 +8,7 @@
 mod RulesDoc {
     use Util.Json.Json
 
-    /// 手触りと収支の数値。いじると何が変わるかは assets/rules.schema.json の label が正本。
+    /// 手触りと収支の数値。いじると何が変わるかは assets/rules.schema.json の label が source of truth。
     pub type alias Doc = {
         version = Int32,
         // ── 走り ──

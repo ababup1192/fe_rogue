@@ -13,7 +13,7 @@ mod TestControls {
     /// walls=off なら壁形状を無視して delta をそのまま足す（既存の自由移動と同じ挙動）。
     @Test
     def testWallsOffMovesFreelyThroughWallArea(): Unit \ Assert =
-        // wallPillarCenter=(110,90) の真上から柱へ向かって進む delta。walls=off なので素通り。
+        // wallPillarCenter=(110,90) の真上から柱へ向かって進む delta。walls=off なので何もせず通す。
         let moved = Controls.moveLantern(at(110.0, 70.0), at(0.0, 20.0), false);
         Assert.assertEq(expected = true, vecNear(at(110.0, 90.0), moved))
 

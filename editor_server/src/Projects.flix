@@ -15,7 +15,7 @@ mod Projects {
     // 可変の入れ物にならないので、Caches と同じく Java の Map を器として借りる。
     pub type alias Selection = JMap[String, String]
 
-    /// 器を作る。initial (起動時の EDITOR_DIR) があれば選択済みで始める。
+    /// コンテナを作る。initial (起動時の EDITOR_DIR) があれば選択済みで始める。
     pub def makeSelection(initial: Option[String]): Selection \ IO =
         let selection: Selection = new JMap();
         match initial {

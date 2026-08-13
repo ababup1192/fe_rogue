@@ -43,7 +43,7 @@ mod Fx {
 
     /// 進行中の効果 1 つ。「どの spec を・どの種で・どこで」に加え、誕生時刻＋寿命を Lifetime で持つ。
     /// 粒の状態は持たない — 絵は drawAll が (spec, seed, 経過秒) から毎回計算する。
-    /// spec は名前や参照でなく値で持つ: 複数の fx.json が混ざっても寿命の正本が burst 自身に宿り、
+    /// spec は名前や参照でなく値で持つ: 複数の fx.json が混ざっても寿命の source of truth が burst 自身に宿り、
     /// どの spec の効果かを引く対応表が要らない。時刻管理は Lifetime に委ねる（得点ポップ等と同じ一族）。
     pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, life = Lifetime.Lifetime }
 

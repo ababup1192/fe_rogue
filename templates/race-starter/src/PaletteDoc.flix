@@ -21,7 +21,7 @@ mod PaletteDoc {
     pub def defaults(): Doc =
         defaultRows() |> List.map(row -> { let (name, code) = row; (name, hex(code)) }) |> List.toMap
 
-    /// 既定の (キー, 色) の一覧。assets 側の JSON を書き出すときの正本もこの並び。
+    /// 既定の (キー, 色) の一覧。assets 側の JSON を書き出すときの source of truth もこの並び。
     pub def defaultRows(): List[(String, String)] =
            ("ink",         "#20242e")   // 輪郭
         :: ("body",        "#e63946")   // 車体（描くときテーマ色で塗り替え）

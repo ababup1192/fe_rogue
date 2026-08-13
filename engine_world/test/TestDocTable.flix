@@ -1,4 +1,4 @@
-// DocTable のテスト。テストするのは「台帳 1 枚から 3 つの形が正しく導出されるか」だけ —
+// DocTable のテスト。テストするのは「テーブル 1 枚から 3 つの形が正しく導出されるか」だけ —
 // リロード関数の中身(ファイル読み)は各 Doc 側の橋渡しテストの仕事。
 mod TestDocTable {
 
@@ -8,7 +8,7 @@ mod TestDocTable {
         { docId = None, path = "mob.sprite.json", reload = w -> checked_ecast(w + 10) } ::
         { docId = Some("sprite"), path = "t.sprite.json", reload = w -> checked_ecast(w) } :: Nil
 
-    /// watchFile へ渡す形は台帳の全行(id が None でも監視する)を並び順のまま持つ。
+    /// watchFile へ渡す形はテーブルの全行(id が None でも監視する)を並び順のまま持つ。
     @Test
     def testReloadsKeepsEveryRowInOrder(): Unit \ Assert =
         Assert.assertEq(
@@ -16,7 +16,7 @@ mod TestDocTable {
                 :: "t.sprite.json" :: Nil,
             DocTable.reloads(rows()) |> List.map(fst))
 
-    /// 一括リロードは台帳の並び順に適用する — 「導出 Doc は依存先より後ろの行に」の
+    /// 一括リロードはテーブルの並び順に適用する — 「導出 Doc は依存先より後ろの行に」の
     /// 約束はこの順序が支える。rows の関数は非可換(逆順なら 21)なので順序が固定される。
     @Test
     def testReloadAllAppliesRowsInOrder(): Unit \ {Assert, IO} =

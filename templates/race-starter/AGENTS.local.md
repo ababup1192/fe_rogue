@@ -85,7 +85,7 @@
   見せる。層は `src/View.flix` の頭に並べてある。各層が「絵の下限」の 4 性質のどれを受け持つかも
   同じ場所に書いてある。
 - マシンは矩形 1 枚でなくドット絵（`assets/race.sprite.json`・17×27）。車体 3 色だけテーマの
-  player / rivalA..C で塗り替え、細部の色は `race.palette.json` が正本（`bin/lint-palette.py` が「legend の意味色キーが色票から解けるか」を見張る）。
+  player / rivalA..C で塗り替え、細部の色は `race.palette.json` が source of truth（`bin/lint-palette.py` が「legend の意味色キーが色票から解けるか」を見張る）。
 - **これは数ある画風の 1 つでしかない。** このテンプレから作るゲームは、画風を自分で決めて
   ここに書き直し、View の層構成ごと作り替えてよい（決め方は `.claude/skills/visual-dict`）。
   真似してほしいのは色や効果ではなく「層に分けて、各層に役割を持たせる」組み方の方。

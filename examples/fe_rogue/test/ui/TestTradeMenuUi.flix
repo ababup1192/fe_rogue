@@ -505,7 +505,7 @@ mod TestTradeMenuUi {
         }
 
     // ════════════════════════════════════════════════════════
-    // 実 asset の窓行数 ⇔ maxSlots() の一致 / チップがハイライトに収まる（幾何・ItemMenu と同型）
+    // 実 asset の表示範囲の行数 ⇔ maxSlots() の一致 / チップがハイライトに収まる（幾何・ItemMenu と同型）
     // ════════════════════════════════════════════════════════
 
     /// 実 asset（TradeMenu.ui.json）を parse し、1 ペインの menu 直下の "row" 名の子の数を数える。
@@ -516,7 +516,7 @@ mod TestTradeMenuUi {
             case Err(_)   => bug!("TradeMenu.ui.json load failed")
         }
 
-    /// 実 asset の row 宣言数が `TradeMenuUi.maxSlots()` と一致する（窓の行数の宣言過不足を弾く）。
+    /// 実 asset の row 宣言数が `TradeMenuUi.maxSlots()` と一致する（表示範囲の行数の宣言過不足を弾く）。
     @Test
     def testRowDeclarationCountMatchesMaxSlots(): Unit \ {Assert, Fs.FileRead} =
         Assert.assertEq(expected = TradeMenuUi.maxSlots(), tradeMenuRowCount())

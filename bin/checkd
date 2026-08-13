@@ -30,7 +30,18 @@ import sys
 import threading
 import time
 
-IDLE_SEC = 30 * 60        # この時間、誰も check しなければ常駐は自分で消える
+def _idle_sec():
+    # 既定 10 分。CHECKD_IDLE_SEC で変えられる (単位は秒)。
+    # 型検査の引き金が Stop/SubagentStop hook (作業の区切り) に移ったので、
+    # 保存のたび起動していた頃より次の要求までの間隔が空きやすい —
+    # 温め直しの数秒より、抱え続ける JVM のメモリを優先して短くした。
+    try:
+        return int(os.environ.get("CHECKD_IDLE_SEC", "600"))
+    except ValueError:
+        return 600
+
+
+IDLE_SEC = _idle_sec()    # この時間、誰も check しなければ常駐は自分で消える
 RSS_LIMIT_MB = 4096       # repl のメモリがこれを超えたら使い捨てて立て直す
 MAX_CHECKS = 200          # メモリは check のたびに少しずつ漏れるので回数でも立て直す
 SETTLE_SEC = 1.0          # 保存直後の check はソースを読み損ねる窓があるので少し待つ

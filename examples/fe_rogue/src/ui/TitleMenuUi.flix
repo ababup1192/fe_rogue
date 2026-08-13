@@ -28,7 +28,7 @@ mod TitleMenuUi {
     // spec 置き場 / 名前パス / 定数
     // ========================================================================
 
-    /// ui.json の置き場。起動時の spawnAsset・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAsset・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/TitleMenu.ui.json")
 
     /// root（可視トグルの対象）とリスト所有 entity（項目列の起点）の名前パス。

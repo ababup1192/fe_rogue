@@ -537,7 +537,7 @@ mod TestEnemyAI {
 
     /// 攻撃優先: 射程内に相手が居れば、遠くの弱い相手を追わず「今攻撃できる相手」を攻撃する。
     /// 配置: 弓敵 (5,5)・射程内 p0(7,5) 距離2・HP10 / 遠くの瀕死 p1(5,10) 距離5・HP1（射程外）。
-    /// 期待: 遠くの低HP p1 を追いかけず、射程内の p0(id0) を Attack（待機・素通りしない）。
+    /// 期待: 遠くの低HP p1 を追いかけず、射程内の p0(id0) を Attack（待機せず、対象をスキップしない）。
     @Test
     def testRangedAttacksInRangeRatherThanChasingFarWeaker(): Unit \ Assert =
         let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};

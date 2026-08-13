@@ -10,8 +10,8 @@ make gl-parity            # リポジトリのルートから
 make -C bench/gl_parity run   # ここから直接でも同じ
 ```
 
-- 隠し窓（`FLIX_GE_HIDDEN=1`）で GL を焼くので画面には何も出ない。
-  窓を見たいときは `FLIX_GE_HIDDEN` を立てずに `../../bin/flix run`。
+- 隠しウィンドウ（`FLIX_GE_HIDDEN=1`）で GL を焼くので画面には何も出ない。
+  ウィンドウを見たいときは `FLIX_GE_HIDDEN` を立てずに `../../bin/flix run`。
 - 結果は 1 行 1 scene の表（`[parity] <scene> <段> <一致 or 差>`）。
   A 段（バイト一致を保証する層）に不一致があると exit 1。
 - 不一致の絵は `debug/diff/` に「GL | Soft | 違いヒート」で並ぶ。

@@ -36,14 +36,14 @@ mod TestSoftRaster {
             argb(255, 255, 255, 255), argb(255, 12, 34, 56));
         Assert.assertEq(expected = (255, 12, 34, 56), channels(out))
 
-    // 黒は全部を吸収する — 不透明な黒の暗幕は下の絵を真っ黒にする。
+    // 黒は全部を吸収する — 不透明な黒のオーバーレイは下の絵を真っ黒にする。
     @Test
     def testMultiplyBlackAbsorbs(): Unit \ Assert =
         let out = SoftRaster.blendPixel(DrawCmd.BlendMode.Multiply,
             argb(255, 0, 0, 0), argb(255, 200, 100, 50));
         Assert.assertEq(expected = (255, 0, 0, 0), channels(out))
 
-    // alpha 0 は恒等 — 完全にフェードアウトした暗幕は絵を明るくも暗くもしない
+    // alpha 0 は恒等 — 完全にフェードアウトしたオーバーレイは絵を明るくも暗くもしない
     // （glBlendFunc の因子切替だけで作ると a=0 で逆に明るくなる。この pin がその再発防止）。
     @Test
     def testMultiplyZeroAlphaIsIdentity(): Unit \ Assert =

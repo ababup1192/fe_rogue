@@ -35,8 +35,8 @@ mod Render {
         case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
                     blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] })
         /// rect（スクリーン空間・design px）で inner を切り抜く。入れ子は交差。
-        /// App + withCamera 経路では中身にはカメラが掛かるが、窓は常にスクリーン固定 —
-        /// PiP やパネル内スクロール用（world に追従する窓は v1 対象外）。
+        /// App + withCamera 経路では中身にはカメラが掛かるが、clip 矩形は常にスクリーン固定 —
+        /// PiP やパネル内スクロール用（world に追従する clip 矩形は v1 対象外）。
         case Clipped({ rect = Rect2.Rect2, inner = Item })
         /// 宣言シェーダーで矩形 rect を塗る面（水面など）。GL 経路では eff Shader が本物の
         /// シェーダーで描き、GL の無い経路（SoftRaster / F8 注釈）では代表色のベタ塗りに落ちる。
@@ -250,7 +250,7 @@ mod Render {
     /// （size はその item の見た目の大きさ。中心→左上の換算をここが済ませる）。
     /// Poly は受け付けず loud に落とす — 頂点が原点中心なので `{ at = center, item = … }` が
     /// そのまま中心置きであり、ここを通すと黙って半サイズずれる事故になるため。
-    /// ガードは Clipped を剥がした葉で判定する（窓に包んでもすり抜けさせない）。
+    /// ガードは Clipped を剥がした葉で判定する（clip 矩形に包んでもすり抜けさせない）。
     pub def atCenter(center: Vec2.Vec2, size: Vec2.Vec2, item: Item): PlacedItem =
         match leafOf(item) {
             case Item.Poly(_) =>
@@ -259,7 +259,7 @@ mod Render {
                 { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 }, item = item }
         }
 
-    /// Clipped を剥がした芯の item（ガード判定用 — 窓は見ない）。
+    /// Clipped を剥がした芯の item（ガード判定用 — clip 矩形は見ない）。
     def leafOf(item: Item): Item =
         match item {
             case Item.Clipped(c) => leafOf(c#inner)
@@ -269,10 +269,10 @@ mod Render {
     def solidStyle(): GameEngine.BoxStyle =
         DrawCmd.defaultStyle(white())
 
-    // ── clip（スクリーン空間の切り抜き窓）──
+    // ── clip（スクリーン空間の切り抜き矩形）──
 
-    /// item を rect（スクリーン空間・design px）で切り抜く。窓の外のピクセルは描かれない。
-    /// 入れ子は交差。修飾（fade / scaled 等）は窓を素通りして中身に効く。
+    /// item を rect（スクリーン空間・design px）で切り抜く。clip 矩形の外のピクセルは描かれない。
+    /// 入れ子は交差。修飾（fade / scaled 等）は clip 矩形をスキップして中身に効く。
     /// 端のちらつきを避けるため rect は整数 design px で作ること。
     pub def clipped(rect: Rect2.Rect2, item: Item): Item =
         Item.Clipped({ rect = rect, inner = item })
@@ -283,7 +283,7 @@ mod Render {
 
     // ── 修飾（稀な属性はパイプで重ねる。効かない種類の item は素通し）──
 
-    /// 修飾を Clipped の窓越しに葉へ届ける。窓（rect）には触れない —
+    /// 修飾を Clipped の clip 矩形越しに葉へ届ける。clip 矩形（rect）には触れない —
     /// 「clip は最後の見た目、修飾は中身」という一方向の重なりを保つ。
     def onLeaf(f: Item -> Item, item: Item): Item =
         match item {
@@ -322,9 +322,9 @@ mod Render {
         items |> List.map(placed -> overItem(fade(alpha), placed))
 
     /// ピクセルの重ね方を変える（Sprite / Box / Poly に効く。Text は文字の可読性が第一で対象外）。
-    /// Add = 明るく足す（グロー・炎・魔法）、Multiply = 暗く沈める（影・暗幕）。
-    /// どちらも「自分より奥（小さい zIndex）に描かれた物」に効く — 暗幕で暗くしたい物は
-    /// 暗幕より小さい z に置くこと。同じ zIndex 同士では draw の並べ順が奥/手前を決める
+    /// Add = 明るく足す（グロー・炎・魔法）、Multiply = 暗く沈める（影・暗くするオーバーレイ）。
+    /// どちらも「自分より奥（小さい zIndex）に描かれた物」に効く — オーバーレイで暗くしたい物は
+    /// オーバーレイより小さい z に置くこと。同じ zIndex 同士では draw の並べ順が奥/手前を決める
     /// （安定ソートは同順位を入力順のまま保つため、先に並べた物ほど奥＝ blend が効く側になる）。
     pub def blended(mode: DrawCmd.BlendMode, item: Item): Item =
         onLeaf(leaf -> match leaf {
@@ -360,9 +360,9 @@ mod Render {
     /// 組み上がった列を丸ごと d だけ動かす（zShiftedAll の位置版）。
     /// 部品を 0 起点で組んでから最後に置き場所を与える書き方（盤の原点へ寄せる・
     /// UI の枠の中へ入れる・粒を発生源へ運ぶ）がこれで 1 行になる。
-    /// 中身（大きさ・頂点・z）には触らない — 動かすのは置き場所と、Clipped の窓 rect。
-    /// 窓の規約: 平行移動と一様 scale は窓も追随・回転だけ据え置き（窓 = 画面平行の不変条件）。
-    /// 窓を置き去りにすると「中身だけ窓の外へ歩いて消える」— 窓ごと動くのが組の意図。
+    /// 中身（大きさ・頂点・z）には触らない — 動かすのは置き場所と、Clipped の clip 矩形。
+    /// clip 矩形の規約: 平行移動と一様 scale は clip 矩形も追随・回転だけ据え置き（clip 矩形 = 画面平行の不変条件）。
+    /// clip 矩形を置き去りにすると「中身だけ clip 矩形の外へ歩いて消える」— clip 矩形ごと動くのが組の意図。
     pub def movedAll(d: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed ->
             { at = Vec2.add(d, placed#at),
@@ -372,7 +372,7 @@ mod Render {
     /// 組み上がった列を、pivot（画面座標）を不動点に factor 倍へ伸縮する（ズーム演出・
     /// 拡大プレビュー用）。at を pivot からの距離ごと伸縮し、中身は scaled に任せる —
     /// Box の style の太さ・Text の fontSize・Sprite の maskPolys の追随はそこが持つ。
-    /// Clipped の窓 rect も一緒に伸縮する（窓の規約: 平行移動と一様 scale は窓も追随・
+    /// Clipped の clip 矩形も一緒に伸縮する（clip 矩形の規約: 平行移動と一様 scale は clip 矩形も追随・
     /// 回転だけ据え置き — movedAll と同じ）。
     /// 倍率は一様（Float64 1 つ）だけ受ける — 非等方だと回転済みの物や円が歪み、
     /// 「見た目を保ったまま大きさだけ変える」約束が守れないため、型で締め出す。
@@ -385,8 +385,8 @@ mod Render {
                   |> overWindows(r ->
                       { position = stretch(r#position), size = Vec2.mul(r#size, factor) }) })
 
-    /// Clipped の窓 rect（入れ子は全段）だけを f で写す。葉（中身）には触らない —
-    /// onLeaf の裏面で、「窓 = 画面平行」の規約を守る変換（平行移動・一様 scale）専用。
+    /// Clipped の clip 矩形（入れ子は全段）だけを f で写す。葉（中身）には触らない —
+    /// onLeaf の裏面で、「clip 矩形 = 画面平行」の規約を守る変換（平行移動・一様 scale）専用。
     def overWindows(f: Rect2.Rect2 -> Rect2.Rect2, item: Item): Item =
         match item {
             case Item.Clipped(c) => Item.Clipped({ rect = f(c#rect), inner = overWindows(f, c#inner) })
@@ -520,7 +520,7 @@ mod Render {
     /// 置き場所つきの列を、pivot（画面座標）のまわりに丸ごと t 傾ける。カード 1 枚のように
     /// 複数部品で 1 つの物を作っているとき、これを通せば全体が 1 枚の板のように傾く
     /// （各部品を自分の軸で回しつつ、置き場所も pivot のまわりを回る）。
-    /// 注意: 窓（clipped）の枠は傾かない — 中身だけが回る。centered=false のスプライトは
+    /// 注意: clip 矩形（clipped）の枠は傾かない — 中身だけが回る。centered=false のスプライトは
     /// 中心位置がここでは分からないため左上を軸に回る（既定の centered=true ならズレない）。
     pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed -> {
@@ -532,7 +532,7 @@ mod Render {
     /// 置き場所つきの列を、pivot（画面座標）のまわりに t（1 周 = 1.0）回す純関数。
     /// at を pivot まわりに公転させ、中身は自分の軸で t 自転する: Sprite / Box / Text は
     /// rotation に t を加算、Poly は頂点を自前回転（絶対座標で組んだ lineSeg / polygon が
-    /// そのまま正しく回る）、Clipped は中身だけ回して窓は据え置き（窓が画面に平行の約束を保つ）。
+    /// そのまま正しく回る）、Clipped は中身だけ回して clip 矩形は据え置き（clip 矩形が画面に平行の約束を保つ）。
     /// Shader の面は非対応 — そのまま返す（uv の向きが面と回ると模様の意味が変わるため。
     /// 模様を回したいときは spec 側の Rotate を使う）。
     /// turnedAll と違い anchor（Box の中心）を見ない素朴な at 公転 — Box を「1 枚の板」として
@@ -668,7 +668,7 @@ mod Render {
     /// レンダーターゲット name の一部 src（ターゲット上の px 矩形）を、at を中心に size の
     /// 四角へ伸縮して貼る。描画の四角の大きさは「テクスチャ実寸 × scale」なので
     /// scale = size / ターゲットの寸（ターゲットは常に design 解像度）。
-    /// 反転圧縮・小窓縮小・モザイク拡大が全部この 1 本で書ける。
+    /// 反転圧縮・パネルへの縮小・モザイク拡大が全部この 1 本で書ける。
     /// blend / alpha / tint / 反転は overItem + blended / fade / tinted 等で後がけする。
     pub def blitRegion(spec: { name = String, design = Vec2.Vec2, src = Rect2.Rect2,
                                at = Vec2.Vec2, size = Vec2.Vec2, z = Int32 }): PlacedItem =
@@ -811,8 +811,8 @@ mod Render {
             }
         })
 
-    /// draw / drawWith の共通トラバーサル。Clipped を剥がして有効な窓（入れ子は交差）を決め、
-    /// 葉を Drawable / PolygonRenderCmd へ振り分けてから窓を刻む。振り分けの分岐を 1 本に
+    /// draw / drawWith の共通トラバーサル。Clipped を剥がして有効な clip 矩形（入れ子は交差）を決め、
+    /// 葉を Drawable / PolygonRenderCmd へ振り分けてから clip 矩形を刻む。振り分けの分岐を 1 本に
     /// しておかないと、Clipped の扱いが 2 経路で割れる。
     /// 2 列は 1 回の走査で同時に積む。列ごとに走査を分けると、描く物 1 個につき
     /// Clipped の剥がしと葉の振り分けが 2 度ずつ走る（物量の多い画面では、その 2 度目が
@@ -822,9 +822,9 @@ mod Render {
         let (dsRev, psRev) = items |> List.foldLeft((acc, placed) -> {
             let (ds, ps) = acc;
             let (leaf, clip) = unwrapClip(placed#item, None);
-            // 窓が無いときは刻まない。作りたての Drawable / 描画命令は clip = None なので、
+            // clip 矩形が無いときは刻まない。作りたての Drawable / 描画命令は clip = None なので、
             // ここで None を書き直すと、同じ値を入れ直すためだけにフィールドの
-            // 抜き差しが描く物の数だけ走る（窓を使う画面はごく一部）。
+            // 抜き差しが描く物の数だけ走る（clip 矩形を使う画面はごく一部）。
             match (leaf, clip) {
                 case (Item.Poly(p), None)    => (ds, polyCmd(placed#at, p) :: ps)
                 case (Item.Poly(p), Some(_)) => (ds, { clip = clip | polyCmd(placed#at, p) } :: ps)
@@ -838,7 +838,7 @@ mod Render {
         }, ((Nil, Nil): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])));
         (List.reverse(dsRev), List.reverse(psRev))
 
-    /// Clipped を剥がし、(芯の item, 有効な窓) を返す。入れ子の窓は交差する。
+    /// Clipped を剥がし、(芯の item, 有効な clip 矩形) を返す。入れ子の clip 矩形は交差する。
     def unwrapClip(item: Item, clip: Option[Rect2.Rect2]): (Item, Option[Rect2.Rect2]) =
         match item {
             case Item.Clipped(c) =>
@@ -876,7 +876,7 @@ mod Render {
             ds)
 
     /// 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
-    /// Clipped は中身を変換してから窓を刻む（入れ子は交差 — draw を通さない直呼びでも clip が効く）。
+    /// Clipped は中身を変換してから clip 矩形を刻む（入れ子は交差 — draw を通さない直呼びでも clip が効く）。
     pub def toDrawables(item: Item, pos: Vec2.Vec2): List[GameEngine.Drawable] =
         match item {
             case Item.Sprite(s) =>
@@ -898,7 +898,7 @@ mod Render {
                 toDrawables(c#inner, pos) |> List.map(d -> { clip = mergeClip(c#rect, d#clip) | d })
         }
 
-    /// 窓 rect を既存の clip と重ねる（両方あれば交差）。
+    /// clip 矩形 rect を既存の clip と重ねる（両方あれば交差）。
     def mergeClip(rect: Rect2.Rect2, existing: Option[Rect2.Rect2]): Option[Rect2.Rect2] =
         match existing {
             case None    => Some(rect)

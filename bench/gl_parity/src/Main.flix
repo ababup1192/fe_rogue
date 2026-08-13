@@ -1,8 +1,8 @@
 // 入口。同じ scene 宣言（Scenes）を GL と SoftRaster の両方で 1 コマ焼き、画素を突き合わせて
 // 1 行 1 scene の表を出す。A 段（バイト一致層）に不一致があれば exit 1。
 //
-// GL の絵はスナップショット化しない — 基準は「もう片方の経路」であって過去の絵ではない
-// （過去の絵との突き合わせは templates の snapshot-check / snapshot-update の役目）。
+// GL の絵はリファレンス画像化しない — 基準は「もう片方の経路」であって過去の絵ではない
+// （過去の絵との突き合わせは templates の reference-check / reference-update の役目）。
 mod ParityMain {
     import java.io.File
     import java.lang.System
@@ -19,7 +19,7 @@ mod ParityMain {
             (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
         Render.drawWith(texInfoOf, Render.withoutShaders(items))
 
-    // ── GL 側（隠し窓の中で 1 scene = 1 コマ）──
+    // ── GL 側（隠しウィンドウの中で 1 scene = 1 コマ）──
 
     def glShoot(sc: Scenes.Scene): Unit \ IO + GameEngine.Game + ShaderEffect.Shader + RenderTarget.Target =
         let texInfoOf = name -> GameEngine.Game.getTextureInfo(name);

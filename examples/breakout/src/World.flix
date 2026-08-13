@@ -120,7 +120,7 @@ mod Field {
     pub def paddleMinX(hits: HitDoc.Sheet): Float64 = innerLeft() + paddleHalfWidth(hits)
     pub def paddleMaxX(hits: HitDoc.Sheet): Float64 = innerRight() - paddleHalfWidth(hits)
 
-    /// ボールの半径（px）。寸法の正本は hitbox.json で、ここは sheet から引くだけ。
+    /// ボールの半径（px）。寸法の source of truth は hitbox.json で、ここは sheet から引くだけ。
     pub def ballRadius(hits: HitDoc.Sheet): Float64 = Hits.ballRadius(hits)
     /// ボールの基準の速さ（px/秒）。サーブとミス後のリセットはこの値に戻る。
     /// プレイ中はパドルヒットのたびに Bounce の加速規則で少しずつ速くなる。

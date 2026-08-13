@@ -1,5 +1,5 @@
 # ゲーム開発の入口。
-#   make run    … ゲームを起動する（窓が開く）
+#   make run    … ゲームを起動する（ウィンドウが開く）
 #   make debug  … 保存即反映(watchFile)と F8 を有効にして起動
 #   make test   … テストを実行する（記録は .test-logs/）
 #   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
@@ -7,8 +7,8 @@
 #   make bake   … ギャラリー PNG を焼く（決定的）
 #   make palette … Studio 用の色の写し(assets/px.palette.json)を作り直す
 #   make shot STAGE=1 … 調整中の 1 面だけ debug/shot.png へ焼く（スナップショットを汚さない）
-#   make snapshot-check  … 生成した絵をスナップショットとバイト比較する
-#   make snapshot-update … いまの gallery をスナップショットとして更新する
+#   make reference-check  … 生成した絵をリファレンス画像とバイト比較する
+#   make reference-update … いまの gallery をリファレンス画像として更新する
 #   make stages … 面の罠ゼロ(BFS)と流れを機械検査する
 #   make checkpoints … 中間ポイント(c)を等間隔に置き直し、そのまま stages で検査する
 #   make loc    … src/ + test/ の .flix 合計行数（上限 3,000 行）
@@ -43,7 +43,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check bake shot snapshot-check snapshot-update stages checkpoints playtest probe loc palette api hooks check-docs-sync
+.PHONY: status run debug test build check bake shot reference-check reference-update stages checkpoints playtest probe loc palette api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -102,11 +102,11 @@ bake: palette
 shot:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" STAGE=$(STAGE) $(FLIX) run --entrypoint Bake.one
 
-snapshot-check: bake
-	"$(ENGINE)/bin/snapshot-check.sh"
+reference-check: bake
+	"$(ENGINE)/bin/reference-check.sh"
 
-snapshot-update:
-	"$(ENGINE)/bin/snapshot-update.sh"
+reference-update:
+	"$(ENGINE)/bin/reference-update.sh"
 
 stages:
 	$(PYTHON) tools/check_stages.py
@@ -143,7 +143,7 @@ status:
 engine-upgrade:
 	@$(MAKE) -C "$(ENGINE)" upgrade-game GAME="$(CURDIR)"
 
-# コミット時の関所 (焼いた絵の混入・矩形だけの View・規約の配線ずれを止める)。
+# コミット時のゲート (焼いた絵の混入・矩形だけの View・規約の配線ずれを止める)。
 # .git/hooks は git 管理外なので clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 hooks:
 	@git config core.hooksPath bin/githooks

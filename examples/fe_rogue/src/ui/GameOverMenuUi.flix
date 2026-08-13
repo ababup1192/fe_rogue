@@ -22,7 +22,7 @@ mod GameOverMenuUi {
         case RestartBeginning
     }
 
-    /// ui.json の置き場。起動時の spawnAsset・F1 リロード台帳の登録に使う。
+    /// ui.json の置き場。起動時の spawnAsset・F1 リロードレジストリの登録に使う。
     pub def specPath(): String = AssetPath.resolve("src/ui/assets/GameOverMenu.ui.json")
 
     /// root（可視トグルの対象）とリスト所有 entity（選択カーソルのキー）の名前パス。

@@ -845,7 +845,7 @@ mod ShaderJson {
             fallback
         }
 
-    /// err が詰めた説明文を、器の定型句（"type mismatch: expected"）を剥がして返す。
+    /// err が詰めた説明文を、コンテナの定型句（"type mismatch: expected"）を剥がして返す。
     def describeErr(e: JsonError): String =
         match e {
             case Decode(_, TypeMismatch(msg)) => msg
