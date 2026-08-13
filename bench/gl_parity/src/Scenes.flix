@@ -40,8 +40,8 @@ mod Scenes {
     def c8(r: Int32, g: Int32, b: Int32): Color =
         { r = f255(r), g = f255(g), b = f255(b) }
 
-    def f255(k: Int32): Float32 =
-        Float64.truncateToFloat32(Int32.toFloat64(k) / 255.0)
+    def f255(k: Int32): Float64 =
+        Int32.toFloat64(k) / 255.0
 
     def at(x: Float64, y: Float64, item: Render.Item): Render.PlacedItem =
         { at = { x = x, y = y }, item = item }
@@ -81,8 +81,8 @@ mod Scenes {
 
     def atlasSprite(spec: { srcPos = Vec2.Vec2, srcSize = Vec2.Vec2, sx = Float64, sy = Float64,
                             fH = Bool, fV = Bool, z = Int32 }): Render.Item =
-        Render.Item.Sprite({ texture = "atlas", tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
-            alpha = 1.0f32, scale = { x = spec#sx, y = spec#sy }, rotation = 0.0, centered = true,
+        Render.Item.Sprite({ texture = "atlas", tint = { r = 1.0, g = 1.0, b = 1.0 },
+            alpha = 1.0, scale = { x = spec#sx, y = spec#sy }, rotation = 0.0, centered = true,
             flipH = spec#fH, flipV = spec#fV,
             regionRect = Some({ position = spec#srcPos, size = spec#srcSize }),
             zIndex = spec#z, blend = DrawCmd.BlendMode.Normal, maskPolys = Nil })

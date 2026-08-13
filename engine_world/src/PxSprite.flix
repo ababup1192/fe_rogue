@@ -53,8 +53,8 @@ mod PxSprite {
                 { at = pos,
                   item = Render.Item.Sprite({
                       texture = texture,
-                      tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
-                      alpha = 1.0f32,
+                      tint = { r = 1.0, g = 1.0, b = 1.0 },
+                      alpha = 1.0,
                       // Drawable の表示寸法 = テクスチャ全寸 × scale なので、
                       // 「コマ px × 整数 scale」になるよう辺長で割り戻す。
                       scale = { x = s * rect#size#x / sideF, y = s * rect#size#y / sideF },

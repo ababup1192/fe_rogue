@@ -7,7 +7,7 @@ pub enum Polygon {
     case Polygon({
         transform = Transform,     // 位置・回転・スケール・せん断
         visual = Visual,           // 色変調・可視性・描画順
-        alpha = Float32,
+        alpha = Float64,
         points = List[Vec2.Vec2]   // 局所座標の頂点列（自己交差しない単純多角形・順序付き）
     })
 }
@@ -19,7 +19,7 @@ mod Polygon {
         Polygon.Polygon({
             transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
             visual = Visual.setColor(color, Visual.default()),
-            alpha = 1.0f32,
+            alpha = 1.0,
             points = points
         })
 
@@ -65,7 +65,7 @@ mod Polygon {
         let Polygon.Polygon(r) = poly;
         Polygon.Polygon({visual = f(r#visual) | r})
 
-    pub def setAlpha(alpha: Float32, poly: Polygon): Polygon =
+    pub def setAlpha(alpha: Float64, poly: Polygon): Polygon =
         let Polygon.Polygon(r) = poly;
         Polygon.Polygon({alpha = alpha | r})
 

@@ -69,7 +69,7 @@ mod TestDocs {
         let ink = Theme.resolve(d, "ink");
         let ink0 = Theme.resolve(Theme.defaults(), "ink");
         Assert.assertEq(
-            expected = (1.0f32, 0.0f32, 0.0f32, (ink0#r, ink0#g, ink0#b)),
+            expected = (1.0, 0.0, 0.0, (ink0#r, ink0#g, ink0#b)),
             (coin#r, coin#g, coin#b, (ink#r, ink#g, ink#b)))
 
     /// 色票(assets/px.palette.json)は生成物 — Theme や legend を変えて

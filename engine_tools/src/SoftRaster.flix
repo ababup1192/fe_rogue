@@ -363,9 +363,9 @@ mod SoftRaster {
     /// Color(0..1) + alpha(0..1) を ARGB int へ。
     def argbOf(c: Color, a: Float64): Int32 =
         Int32.leftShift(clampI(ri(a * 255.0), 0i32, 255i32), 24)
-            |> Int32.bitwiseOr(Int32.leftShift(byteOf(c#r), 16))
-            |> Int32.bitwiseOr(Int32.leftShift(byteOf(c#g), 8))
-            |> Int32.bitwiseOr(byteOf(c#b))
+            |> Int32.bitwiseOr(Int32.leftShift(byteOf(f32(c#r)), 16))
+            |> Int32.bitwiseOr(Int32.leftShift(byteOf(f32(c#g)), 8))
+            |> Int32.bitwiseOr(byteOf(f32(c#b)))
 
     /// 本体と下書き（blendedDraw）が同じ見た目で描くための描画品質ヒント一式。
     def applyQualityHints(g: Graphics2D): Unit \ IO =
@@ -715,7 +715,7 @@ mod SoftRaster {
                 let baselineX = d#position#x * sf;
                 let baselineY = (d#position#y + atlas#ascent * bakeScale) * sf;
                 g.setFont(fctx#baseFont.deriveFont(f32(outFontSize)));
-                g.setColor(awtColor(d#color, d#alpha));
+                g.setColor(awtColor(d#color, f32(d#alpha)));
                 g.drawString(str, f32(baselineX), f32(baselineY))
         }
 
@@ -728,26 +728,26 @@ mod SoftRaster {
         let bh = ri(d#scale#y * sf);
         let (corner, borderW, borderCol, borderA) = match d#style {
             case Some(st) => (st#cornerRadius, st#borderWidth, st#borderColor, st#borderAlpha)
-            case None     => (0.0, 0.0, ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color), 0.0f32)
+            case None     => (0.0, 0.0, ({r = 1.0, g = 1.0, b = 1.0}: Color), 0.0)
         };
         let arc = ri(corner * 2.0 * sf);
-        g.setColor(awtColor(d#color, d#alpha));
+        g.setColor(awtColor(d#color, f32(d#alpha)));
         g.fillRoundRect(x, y, bw, bh, arc, arc);
         match d#style {
             case Some(st) => drawBoxOverlays(g, sf, d, st)
             case None     => ()
         };
-        if (borderW > 0.0 and borderA > 0.0f32) {
+        if (borderW > 0.0 and borderA > 0.0) {
             g.setStroke(new BasicStroke(f32(borderW * sf)));
-            g.setColor(awtColor(borderCol, borderA));
+            g.setColor(awtColor(borderCol, f32(borderA)));
             g.drawRoundRect(x, y, bw, bh, arc, arc)
         } else ()
 
     /// 塗りの上に縞と市松を重ねる。box の角丸矩形にクリップして描き、終わったら解除する。
     def drawBoxOverlays(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
                         st: GameEngine.BoxStyle): Unit \ IO =
-        let hasStripe = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0;
-        let hasChecker = st#checkerCell > 0.0 and st#checkerAlpha > 0.0f32;
+        let hasStripe = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0;
+        let hasChecker = st#checkerCell > 0.0 and st#checkerAlpha > 0.0;
         if (hasStripe or hasChecker) {
             // fillRoundRect と同じ丸め済みの値でクリップ形を作り、塗りとぴったり重ねる。
             let x = ri(d#position#x * sf);
@@ -778,7 +778,7 @@ mod SoftRaster {
         let cy = d#position#y * sf + bh / 2.0;
         let period = st#stripePeriod * sf;
         let width = st#stripeWidth * sf;
-        g.setColor(awtColor(st#stripeColor, st#stripeAlpha));
+        g.setColor(awtColor(st#stripeColor, f32(st#stripeAlpha)));
         if (st#stripeDir == 1) {
             // 横縞: 範囲 [hv-width/2, hv+width/2] を塗り矩形で(AA が掛からずくっきり — 走査線用)。
             forEachStripe(period, bh / 2.0, width, hv ->
@@ -813,7 +813,7 @@ mod SoftRaster {
         let cx = d#position#x * sf + bw / 2.0;
         let cy = d#position#y * sf + bh / 2.0;
         let cell = st#checkerCell * sf;
-        g.setColor(awtColor(st#checkerColor, st#checkerAlpha));
+        g.setColor(awtColor(st#checkerColor, f32(st#checkerAlpha)));
         let iMin = floorI(-1.0 * bw / 2.0 / cell);
         let iMax = floorI(bw / 2.0 / cell);
         let jMin = floorI(-1.0 * bh / 2.0 / cell);
@@ -845,7 +845,7 @@ mod SoftRaster {
         let sh = clampI(ri(d#uvScale#y * texH), 1i32, img.getHeight() - sy);
         let sub = img.getSubimage(sx, sy, sw, sh);
         // color tint と alpha を各バンドに乗算（白グリフ×tint=文字色、スプライトは概ね白×1）。
-        let scales = Array#{d#color#r, d#color#g, d#color#b, d#alpha} @ Static;
+        let scales = Array#{f32(d#color#r), f32(d#color#g), f32(d#color#b), f32(d#alpha)} @ Static;
         let offsets = Array#{0.0f32, 0.0f32, 0.0f32, 0.0f32} @ Static;
         let op = new RescaleOp(scales, offsets, unchecked_cast(null as RenderingHints));
         let tinted = op.filter(sub, unchecked_cast(null as BufferedImage));
@@ -902,7 +902,7 @@ mod SoftRaster {
                 match gradSample(tris, at) {
                     case None     => ()
                     case Some(gv) =>
-                        let srcArgb = argbOf(gv#color, Float32.toFloat64(gv#alpha));
+                        let srcArgb = argbOf(gv#color, gv#alpha);
                         Array.put(blendPixel(p#blend, srcArgb, dst), i, buf)
                 }
             }, buf);
@@ -936,13 +936,12 @@ mod SoftRaster {
             let w2 = 1.0 - w0 - w1;
             if (w0 < 0.0 or w1 < 0.0 or w2 < 0.0) None
             else {
-                let lerp3 = f -> f32(w0 * Float32.toFloat64(f(a))
-                                   + w1 * Float32.toFloat64(f(b))
-                                   + w2 * Float32.toFloat64(f(c)));
-                Some({ color = { r = lerp3(v -> v#color#r),
-                                 g = lerp3(v -> v#color#g),
-                                 b = lerp3(v -> v#color#b) },
-                       alpha = lerp3(v -> v#alpha) })
+                let lerp3 = f -> f32(w0 * f(a) + w1 * f(b) + w2 * f(c));
+                let ch = g -> Float32.toFloat64(lerp3(v -> Float32.toFloat64(f32(g(v)))));
+                Some({ color = { r = ch(v -> v#color#r),
+                                 g = ch(v -> v#color#g),
+                                 b = ch(v -> v#color#b) },
+                       alpha = Float32.toFloat64(lerp3(v -> v#alpha)) })
             }
         }
 
@@ -951,12 +950,12 @@ mod SoftRaster {
         let xs = List.toArray(rc, List.map(v -> ri(v#x * sf), p#vertices));
         let ys = List.toArray(rc, List.map(v -> ri(v#y * sf), p#vertices));
         let n = List.length(p#vertices);
-        g.setColor(awtColor(p#color, p#alpha));
+        g.setColor(awtColor(p#color, f32(p#alpha)));
         g.fillPolygon(xs, ys, n)
 
     /// Flix Color(0..1) + alpha を AWT Color(0..255) へ。
     def awtColor(c: Color, alpha: Float32): AwtColor \ IO =
-        new AwtColor(byteOf(c#r), byteOf(c#g), byteOf(c#b), byteOf(alpha))
+        new AwtColor(byteOf(f32(c#r)), byteOf(f32(c#g)), byteOf(f32(c#b)), byteOf(alpha))
 
     /// Float64 → Float32（BasicStroke 用）。
     def f32(x: Float64): Float32 =

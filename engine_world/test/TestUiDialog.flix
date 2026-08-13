@@ -22,7 +22,7 @@ mod TestUiDialog {
     /// 2 行の会話（あおの発言 → 地の文）。1 行目は色付き名前 + 太字入りのスパン列。
     def twoLines(): List[UiDialog.Line] =
         ({ speaker = "あおの人",
-           body = RichText.colored("みどり", {r = 0.0f32, g = 1.0f32, b = 0.0f32})
+           body = RichText.colored("みどり", {r = 0.0, g = 1.0, b = 0.0})
                :: RichText.plain("は")
                :: RichText.strong("嘘つき")
                :: RichText.plain("だよ") :: Nil }: UiDialog.Line)

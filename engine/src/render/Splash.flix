@@ -71,7 +71,7 @@ mod Splash {
     // ── 部品 ──────────────────────────────────────────────────
 
     def background(design: Vec2.Vec2): GameEngine.Drawable =
-        box({ x = 0.0, y = 0.0 }, design, backdrop(), 1.0f32, 0)
+        box({ x = 0.0, y = 0.0 }, design, backdrop(), 1.0, 0)
 
     def logoDrawables(v: View, cx: Float64, top: Float64, logoH: Float64): List[GameEngine.Drawable] =
         if (v#logoSize#x <= 0.0 or v#logoSize#y <= 0.0) Nil
@@ -82,7 +82,7 @@ mod Splash {
               scale    = { x = w / v#logoSize#x, y = logoH / v#logoSize#y },
               rotation = 0.0,
               color    = white(),
-              alpha    = 1.0f32,
+              alpha    = 1.0,
               centered = false,
               uvOffset = { x = 0.0, y = 0.0 },
               uvScale  = { x = 1.0, y = 1.0 },
@@ -97,16 +97,16 @@ mod Splash {
     def gauge(v: View, cx: Float64, top: Float64, h: Float64, scale: Float64): List[GameEngine.Drawable] =
         let w = Float64.floor(Float64.min(v#design#x - 16.0 * scale, v#design#x * 0.6));
         let left = Float64.floor(cx - w / 2.0);
-        let track = box({ x = left, y = top }, { x = w, y = h }, white(), 0.18f32, 1);
+        let track = box({ x = left, y = top }, { x = w, y = h }, white(), 0.18, 1);
         let fill = match v#ratio {
             case Some(r) =>
                 let fw = Float64.floor(w * r);
                 if (fw < 1.0) Nil
-                else box({ x = left, y = top }, { x = fw, y = h }, white(), 1.0f32, 2) :: Nil
+                else box({ x = left, y = top }, { x = fw, y = h }, white(), 1.0, 2) :: Nil
             case None =>
                 let bw = Float64.floor(w * 0.25);
                 let x = left + Float64.floor((w - bw) * v#turns);
-                box({ x = x, y = top }, { x = bw, y = h }, white(), 1.0f32, 2) :: Nil
+                box({ x = x, y = top }, { x = bw, y = h }, white(), 1.0, 2) :: Nil
         };
         track :: fill
 
@@ -119,7 +119,7 @@ mod Splash {
                 |> Text.mapVisual(Visual.setColor(color) >> Visual.setZIndex(z))
                 |> (t -> Text.toDrawables(t, { x = cx, y = top }))
 
-    def box(pos: Vec2.Vec2, size: Vec2.Vec2, color: Color, alpha: Float32,
+    def box(pos: Vec2.Vec2, size: Vec2.Vec2, color: Color, alpha: Float64,
             z: Int32): GameEngine.Drawable =
         { texture  = "",
           position = pos,
@@ -157,8 +157,8 @@ mod Splash {
     def lineHeightOf(atlas: FontAtlas, scale: Float64): Float64 =
         (atlas#ascent + atlas#descent + atlas#lineGap) * scale
 
-    def backdrop(): Color = { r = 0.043f32, g = 0.055f32, b = 0.071f32 }
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
-    def brand(): Color = { r = 0.62f32, g = 0.80f32, b = 0.95f32 }
-    def dim(): Color = { r = 0.55f32, g = 0.58f32, b = 0.64f32 }
+    def backdrop(): Color = { r = 0.043, g = 0.055, b = 0.071 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
+    def brand(): Color = { r = 0.62, g = 0.80, b = 0.95 }
+    def dim(): Color = { r = 0.55, g = 0.58, b = 0.64 }
 }

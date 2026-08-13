@@ -10,7 +10,7 @@ mod ShaderEval {
     /// （反転の吸収は GL の uTexFlip だけが持つ既存の非対称と同型）。
     pub type alias TexData = { width = Int32, height = Int32, pixels = Vector[Int32] }
 
-    /// 代表点 uv（0..1 目安）と時刻 t の最終色（Color = 0..1 の Float32 rgb）。
+    /// 代表点 uv（0..1 目安）と時刻 t の最終色（Color = 0..1 の rgb）。
     pub def evalPixel(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Color =
         evalPixelTex(spec, uv, t, Map.empty())
 
@@ -57,15 +57,15 @@ mod ShaderEval {
             case ShaderDoc.Shade.Ramp(r)  =>
                 // cycleRate = 0 は素直な補間。cycleRate>0 だけ三角波で往復（パレット循環）。
                 let field = evalFieldEnv(r#field, uv, t, env, texEnv);
-                let phase = if (cycleRate == 0.0) clamp01(field)
-                            else clamp01(triWave(field + cycleRate * t));
+                let phase = if (cycleRate == 0.0) Num.clamp01(field)
+                            else Num.clamp01(triWave(field + cycleRate * t));
                 mixColor(r#lo, r#hi, phase)
             case ShaderDoc.Shade.Gradient(g) =>
                 // GLSL と同じ数式でなぞる: 係数 f を Ramp と同じ規約で作り、
                 // 先頭色から隣の区切りごとに smoothstep 重みで次の色へ近づける。
                 let field = evalFieldEnv(g#field, uv, t, env, texEnv);
-                let f = if (cycleRate == 0.0) clamp01(field)
-                        else clamp01(triWave(field + cycleRate * t));
+                let f = if (cycleRate == 0.0) Num.clamp01(field)
+                        else Num.clamp01(triWave(field + cycleRate * t));
                 gradientColor(f, g#stops)
             case ShaderDoc.Shade.Cosine(cs) =>
                 let field = evalFieldEnv(cs#field, uv, t, env, texEnv);
@@ -86,13 +86,13 @@ mod ShaderEval {
           g = ch(colorF64(pa#g), colorF64(pb#g), colorF64(pc#g), colorF64(pd#g)),
           b = ch(colorF64(pa#b), colorF64(pb#b), colorF64(pc#b), colorF64(pd#b)) }
 
-    def colorF64(x: Float32): Float64 = Float32.toFloat64(x)
-    def colorF32(x: Float64): Float32 = Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
+    def colorF64(x: Float64): Float64 = Float32.toFloat64(RenderUtil.f32(x))
+    def colorF32(x: Float64): Float64 = Float32.toFloat64(Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x))
 
     /// 係数 f（0..1）で stops を混ぜた色。ShaderGen の gradientExpr と同じ入れ子 mix を辿る。
     def gradientColor(f: Float64, stops: List[(Float64, Color)]): Color =
         match stops {
-            case Nil => { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+            case Nil => { r = 0.0, g = 0.0, b = 0.0 }
             case (_, c0) :: rest =>
                 let (col, _) = List.foldLeft((acc, sc) -> {
                     let (curCol, prevPos) = acc;
@@ -166,10 +166,10 @@ mod ShaderEval {
                 let uv2 = { x = c#x + p#x * co - p#y * s, y = c#y + p#x * s + p#y * co };
                 evalFieldEnv(rt#of, uv2, t, env, texEnv)
             case ShaderDoc.Field.Mix(m) =>
-                lerp(evalFieldEnv(m#a, uv, t, env, texEnv), evalFieldEnv(m#b, uv, t, env, texEnv), m#t)
+                Num.lerp(evalFieldEnv(m#a, uv, t, env, texEnv), evalFieldEnv(m#b, uv, t, env, texEnv), m#t)
             case ShaderDoc.Field.Blend(bl) =>
-                lerp(evalFieldEnv(bl#a, uv, t, env, texEnv), evalFieldEnv(bl#b, uv, t, env, texEnv),
-                     clamp01(evalFieldEnv(bl#by, uv, t, env, texEnv)))
+                Num.lerp(evalFieldEnv(bl#a, uv, t, env, texEnv), evalFieldEnv(bl#b, uv, t, env, texEnv),
+                         Num.clamp01(evalFieldEnv(bl#by, uv, t, env, texEnv)))
             case ShaderDoc.Field.Disk(d) =>
                 let dist = Vec2.length(Vec2.sub(uv, { x = d#cx, y = d#cy }));
                 1.0 - smoothstep(d#radius, d#radius + d#feather, dist)
@@ -190,12 +190,12 @@ mod ShaderEval {
                     let center = { x = ip#x + Int32.toFloat64(i) + 0.5 + stag, y = cy + 0.5 };
                     Float64.min(acc, Vec2.length(Vec2.sub(p, center)))
                 }, 8.0, neighborCells());
-                clamp01(best)
+                Num.clamp01(best)
             case ShaderDoc.Field.Glints(g) =>
                 let p = Vec2.mul(uv, g#scale);
                 let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
-                let fpx = fract(p#x);
-                let fpy = fract(p#y);
+                let fpx = Num.fract(p#x);
+                let fpy = Num.fract(p#y);
                 let sd = Int32.toFloat64(g#seed);
                 let on = if (hash1(ip, sd) >= 1.0 - g#density) 1.0 else 0.0;
                 let phase = hash1(ip, sd + 7.0) * 6.2831853;
@@ -212,7 +212,7 @@ mod ShaderEval {
             case ShaderDoc.Field.Sparkle(sp) =>
                 let p = Vec2.mul(uv, sp#scale);
                 let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
-                let fp = { x = fract(p#x), y = fract(p#y) };
+                let fp = { x = Num.fract(p#x), y = Num.fract(p#y) };
                 let sd = Int32.toFloat64(sp#seed);
                 let tt = t * sp#rate + hash1(ip, sd + 3.0) * 6.2831853;
                 let cyc = Float64.floor(tt / 6.2831853);
@@ -250,11 +250,11 @@ mod ShaderEval {
                 match un#op {
                     case ShaderDoc.UnOp.Neg      => -x
                     case ShaderDoc.UnOp.Abs      => Float64.abs(x)
-                    case ShaderDoc.UnOp.Fract    => fract(x)
+                    case ShaderDoc.UnOp.Fract    => Num.fract(x)
                     case ShaderDoc.UnOp.Floor    => Float64.floor(x)
                     case ShaderDoc.UnOp.Sin      => Vec2.sin(x)
                     case ShaderDoc.UnOp.Cos      => Vec2.cos(x)
-                    case ShaderDoc.UnOp.Sat      => clamp01(x)
+                    case ShaderDoc.UnOp.Sat      => Num.clamp01(x)
                     case ShaderDoc.UnOp.OneMinus => 1.0 - x
                 }
             case ShaderDoc.Field.Pow(pw) =>
@@ -263,7 +263,7 @@ mod ShaderEval {
                 t * tm#scale + evalFieldEnv(tm#offset, uv, t, env, texEnv)
             case ShaderDoc.Field.Tiling(tl) =>
                 // 各マス内は fract(uv*tiles)。of をこの座標で読む（GLSL の差し替えと同じ形）。
-                let uv2 = { x = fract(uv#x * tl#tiles#x), y = fract(uv#y * tl#tiles#y) };
+                let uv2 = { x = Num.fract(uv#x * tl#tiles#x), y = Num.fract(uv#y * tl#tiles#y) };
                 evalFieldEnv(tl#of, uv2, t, env, texEnv)
             case ShaderDoc.Field.Snap(sn) =>
                 // GLSL の (floor(uv*cells)+0.5)/cells と同じ形（描き出しと実機で塊の位置を割らない）。
@@ -344,14 +344,14 @@ mod ShaderEval {
         }
 
     def hash1(p: Vec2.Vec2, seed: Float64): Float64 =
-        fract(Vec2.sin(p#x * 127.1 + p#y * 311.7 + seed * 0.017) * 43758.5453123)
+        Num.fract(Vec2.sin(p#x * 127.1 + p#y * 311.7 + seed * 0.017) * 43758.5453123)
 
     def hash2(p: Vec2.Vec2, seed: Float64): Vec2.Vec2 =
         { x = hash1(p, seed), y = hash1(Vec2.add(p, { x = 19.19, y = 7.31 }), seed) }
 
     def worleyF1F2(p: Vec2.Vec2, seed: Float64): (Float64, Float64) =
         let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
-        let fp = { x = fract(p#x), y = fract(p#y) };
+        let fp = { x = Num.fract(p#x), y = Num.fract(p#y) };
         // 近傍 3x3 セルを走査して最近 F1・次近 F2 を求める。
         List.foldLeft((acc, cell) -> {
             let (f1, f2) = acc;
@@ -372,15 +372,15 @@ mod ShaderEval {
 
     def valueNoise(p: Vec2.Vec2, seed: Float64): Float64 =
         let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
-        let fx = fract(p#x);
-        let fy = fract(p#y);
+        let fx = Num.fract(p#x);
+        let fy = Num.fract(p#y);
         let wx = fx * fx * (3.0 - 2.0 * fx);
         let wy = fy * fy * (3.0 - 2.0 * fy);
         let a = hash1(ip, seed);
         let b = hash1(Vec2.add(ip, { x = 1.0, y = 0.0 }), seed);
         let c = hash1(Vec2.add(ip, { x = 0.0, y = 1.0 }), seed);
         let d = hash1(Vec2.add(ip, { x = 1.0, y = 1.0 }), seed);
-        lerp(lerp(a, b, wx), lerp(c, d, wx), wy)
+        Num.lerp(Num.lerp(a, b, wx), Num.lerp(c, d, wx), wy)
 
     def fbm(p: Vec2.Vec2, octaves: Int32, seed: Float64): Float64 =
         List.foldLeft((acc, i) -> {
@@ -395,8 +395,8 @@ mod ShaderEval {
     // 格子点を period で折り返す value noise（GLSL prelude の sg_valueNoiseTile と同じ構造）。
     def valueNoiseTile(p: Vec2.Vec2, period: Vec2.Vec2, seed: Float64): Float64 =
         let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
-        let fx = fract(p#x);
-        let fy = fract(p#y);
+        let fx = Num.fract(p#x);
+        let fy = Num.fract(p#y);
         let wx = fx * fx * (3.0 - 2.0 * fx);
         let wy = fy * fy * (3.0 - 2.0 * fy);
         let wrap = (dx, dy) ->
@@ -405,7 +405,7 @@ mod ShaderEval {
         let b = hash1(wrap(1.0, 0.0), seed);
         let c = hash1(wrap(0.0, 1.0), seed);
         let d = hash1(wrap(1.0, 1.0), seed);
-        lerp(lerp(a, b, wx), lerp(c, d, wx), wy)
+        Num.lerp(Num.lerp(a, b, wx), Num.lerp(c, d, wx), wy)
 
     // 周期つき fbm。オクターブごとに period も freq 倍する（sg_fbmTile と同じ構造）。
     def fbmTile(p: Vec2.Vec2, period: Vec2.Vec2, octaves: Int32, seed: Float64): Float64 =
@@ -420,25 +420,21 @@ mod ShaderEval {
 
     def fst3(t: (Float64, Float64, Float64)): Float64 = let (a, _, _) = t; a
 
-    def fract(x: Float64): Float64 = x - Float64.floor(x)
-
-    def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
-
-    def lerp(a: Float64, b: Float64, t: Float64): Float64 = a + (b - a) * t
-
     /// 0..1 を三角波（0→1→0）に折り返す（GLSL の abs(fract(x)*2-1) と同じ）。
-    def triWave(x: Float64): Float64 = Float64.abs(fract(x) * 2.0 - 1.0)
+    def triWave(x: Float64): Float64 = Float64.abs(Num.fract(x) * 2.0 - 1.0)
 
     def smoothstep(lo: Float64, hi: Float64, x: Float64): Float64 =
         if (hi - lo == 0.0) (if (x < lo) 0.0 else 1.0)
         else {
-            let tt = clamp01((x - lo) / (hi - lo));
+            let tt = Num.clamp01((x - lo) / (hi - lo));
             tt * tt * (3.0 - 2.0 * tt)
         }
 
     def mixColor(a: Color, b: Color, t: Float64): Color =
         let tf = Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, t);
-        { r = a#r + (b#r - a#r) * tf,
-          g = a#g + (b#g - a#g) * tf,
-          b = a#b + (b#b - a#b) * tf }
+        let f32 = RenderUtil.f32;
+        let wide = Float32.toFloat64;
+        { r = wide(f32(a#r) + (f32(b#r) - f32(a#r)) * tf),
+          g = wide(f32(a#g) + (f32(b#g) - f32(a#g)) * tf),
+          b = wide(f32(a#b) + (f32(b#b) - f32(a#b)) * tf) }
 }

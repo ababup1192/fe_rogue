@@ -149,7 +149,7 @@
 - 1 フレームの前後の World（{before, after}）から鳴らす音名を導く関数を繋ぐ
   `pub def withAudio(sfx: { before = w, after = w } -> List[String] \ ef, app: App[w, ef]): App[w, ef]`
 - 鳴り続けてほしい音 1 本の宣言。name は project.json の sounds の論理名、
-  `pub type alias Sustain = { name = String, volume = Float32, pitch = Float32 }`
+  `pub type alias Sustain = { name = String, volume = Float64, pitch = Float64 }`
 - 「このフレームで鳴り続けていてほしい音」を World から導く関数を繋ぐ。
   `pub def withSustained(f: w -> List[Sustain] \ ef, app: App[w, ef]): App[w, ef]`
 - 前のフレームの宣言（名前の列）と今のフレームの宣言から、鳴らし始める音・
@@ -631,6 +631,17 @@
   `pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, Spec]`
 
 ## GameLogger — `engine_world/src/GameLogger.flix`
+- `pub eff GameLogger`
+- プレイヤー側のメッセージを白色で 1 行積む
+  `pub eff GameLogger { def playerLog(msg: String): Unit }`
+- 敵側のメッセージを赤色で 1 行積む
+  `pub eff GameLogger { def enemyLog(msg: String): Unit }`
+- ゲームオーバーを濃赤で 1 行積む（プレイヤー HP=0 時の通知）。
+  `pub eff GameLogger { def gameOverLog(msg: String): Unit }`
+- 1 ターン終わり（味方ターン + 敵ターン = 1 ターン）。
+  `pub eff GameLogger { def endTurn(): Unit }`
+- engine 内部用: 蓄積された Entry を古→新の順で返し、内部キューを空にする
+  `pub eff GameLogger { def drainEntries(): List[Entry] }`
 - 1 行のログエントリ。色は color で Text に乗算する。
   `pub type alias Entry = { text = String, color = Color }`
 - player 行のデフォルト色（白）
@@ -1236,7 +1247,7 @@
 
 ## Render — `engine_world/src/Render.flix`
 - 傾き（rotation）の単位は「回転数」— 1 周 = 1.0・正で時計回り。ラジアンへの変換は
-  `pub enum Item { case Sprite({ texture = String, tint = Color, alpha = Float32, scale = Vec2.Vec2, rotation = Float64, centered = Bool, flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32, blend = DrawCmd.BlendMode, maskPolys = List[List[Vec2.Vec2]] }) case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, rotation = Float64, zIndex = Int32, wrapWidth = Option[Float64] }) case Box({ size = Vec2.Vec2, color = Color, alpha = Float32, rotation = Float64, style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode }) case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32, blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] }) case Clipped({ rect = Rect2.Rect2, inner = Item }) case Shader({ rect = Rect2.Rect2, spec = ShaderDoc.Spec, t = Float64, mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }) }`
+  `pub enum Item { case Sprite({ texture = String, tint = Color, alpha = Float64, scale = Vec2.Vec2, rotation = Float64, centered = Bool, flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32, blend = DrawCmd.BlendMode, maskPolys = List[List[Vec2.Vec2]] }) case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, rotation = Float64, zIndex = Int32, wrapWidth = Option[Float64] }) case Box({ size = Vec2.Vec2, color = Color, alpha = Float64, rotation = Float64, style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode }) case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float64, zIndex = Int32, blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] }) case Clipped({ rect = Rect2.Rect2, inner = Item }) case Shader({ rect = Rect2.Rect2, spec = ShaderDoc.Spec, t = Float64, mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }) }`
 - 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
   `pub type alias PlacedItem = { at = Vec2.Vec2, item = Item }`
 - 全テクスチャ・等倍・中心原点のスプライト（最頻ケース）。反転が要るときは spriteFlipped。
@@ -1671,7 +1682,7 @@
   `pub enum Spec { case Spec({ name = String, widget = Widget, style = UiLayout.Style, visible = Bool, binding = Option[String], meta = Option[String], hover = Option[UiWidget.HoverStyle], note = Option[String], origin = Option[String], layer = Int32, children = List[Spec] }) }`
 - `pub enum Widget { case NoneW case BoxW(BoxSpec) case TextW(TextSpec) case SpriteW(UiWidget.SpriteComp) case PolyW(PolySpec) case ShapeW(ShapeSpec) }`
 - poly widget（UiWidget.PolyComp の宣言形 + rotation/pivot 拡張）。
-  `pub type alias PolySpec = { points = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32, rotation = Float64, pivot = Option[Vec2.Vec2] }`
+  `pub type alias PolySpec = { points = List[Vec2.Vec2], color = Color, alpha = Float64, zIndex = Int32, rotation = Float64, pivot = Option[Vec2.Vec2] }`
 - box widget（UiWidget.BoxComp + 傾き）。rotation は回転数（1 周 = 1.0）。
   `pub type alias BoxSpec = { box = UiWidget.BoxComp, rotation = Float64, pivot = Option[Vec2.Vec2] }`
 - text widget（UiWidget.TextComp + 傾き）。軸の決め方は BoxSpec と同じ。
@@ -1839,13 +1850,13 @@
 - 同じ絵を出す 2 レイヤの選択（star / ellipse）。RenderVia = Item の近道、
   `pub enum Via with Eq { case RenderVia case BezierVia }`
 - 図形 widget の描画コンポーネント。alpha は Render.fade、border は円（Box）にのみ効く。
-  `pub type alias ShapeComp = { shape = Shape, color = Color, alpha = Float32, zIndex = Int32, borderWidth = Float64, borderColor = Option[Color] }`
+  `pub type alias ShapeComp = { shape = Shape, color = Color, alpha = Float64, zIndex = Int32, borderWidth = Float64, borderColor = Option[Color] }`
 - 図形のパラメータから導く内在サイズ（width/height 未指定時に Px として敷かれる）。
   `pub def intrinsicSize(shape: Shape): Vec2.Vec2`
 - 図形を rect の中心に描く。修飾は「fade → outline → 置く」の順（ギャラリーの書き味と同順）。
   `pub def placedItems(s: ShapeComp, r: Rect2.Rect2): List[Render.PlacedItem]`
 - alpha < 1 のときだけ Render.fade を掛ける（1.0 は無修飾のまま — 既存の絵を変えない）。
-  `pub def fadeIf(alpha: Float32, item: Render.Item): Render.Item`
+  `pub def fadeIf(alpha: Float64, item: Render.Item): Render.Item`
 
 ## UiSlots — `engine_world/src/UiSlots.flix`
 - スロット 1 個分の項目。text = 表示文字列（スロットの `label` 子へ）、
@@ -1915,7 +1926,7 @@
 - 名前パスの box コンポーネントの色を差し替える。box を持たなければ no-op。
   `pub def setBoxColor(path: String, c: Color, ui: UiWorld): UiWorld`
 - 名前パスの box コンポーネントの不透明度（fill alpha）を差し替える。box を持たなければ no-op。
-  `pub def setBoxAlpha(path: String, alpha: Float32, ui: UiWorld): UiWorld`
+  `pub def setBoxAlpha(path: String, alpha: Float64, ui: UiWorld): UiWorld`
 - 名前パスの図形コンポーネントの色を差し替える。図形を持たなければ no-op。
   `pub def setShapeColor(path: String, c: Color, ui: UiWorld): UiWorld`
 - 名前パスの図形コンポーネントの枠線色を差し替える。図形を持たなければ no-op
@@ -1983,7 +1994,7 @@
 
 ## UiWidget — `engine_world/src/UiWidget.flix`
 - 単色塗り矩形の描画属性。サイズは layout が決める。
-  `pub type alias BoxComp = { color = Color, alpha = Float32, zIndex = Int32, cornerRadius = Float64, borderWidth = Float64, borderColor = Color, skin = Option[String], skinCorner = Option[Float64] }`
+  `pub type alias BoxComp = { color = Color, alpha = Float64, zIndex = Int32, cornerRadius = Float64, borderWidth = Float64, borderColor = Color, skin = Option[String], skinCorner = Option[Float64] }`
 - テキストの折り返し宣言。
   `pub enum TextWrap with Eq, Order, ToString { case WrapOff case WrapAuto case WrapPx(Float64) }`
 - fit（枠に収める縮小）の規則。
@@ -1997,9 +2008,9 @@
 - スプライトの描画属性。
   `pub type alias SpriteComp = { texture = String, regionRect = Option[Rect2.Rect2], scale = Vec2.Vec2, flipH = Bool, flipV = Bool, tint = Color, zIndex = Int32, hframes = Int32, vframes = Int32, frame = Int32 }`
 - hover 時の部分上書き（宣言 UI の ":hover" 相当）。全フィールド任意 — Some の
-  `pub type alias HoverStyle = { color = Option[Color], borderColor = Option[Color], tint = Option[Color], alpha = Option[Float32] }`
+  `pub type alias HoverStyle = { color = Option[Color], borderColor = Option[Color], tint = Option[Color], alpha = Option[Float64] }`
 - 塗り潰し凸多角形（の集合）の描画属性。サイズは layout が決め、頂点はその矩形内へ置く。
-  `pub type alias PolyComp = { polys = List[List[Vec2.Vec2]], color = Color, alpha = Float32, zIndex = Int32 }`
+  `pub type alias PolyComp = { polys = List[List[Vec2.Vec2]], color = Color, alpha = Float64, zIndex = Int32 }`
 - リスト選択カーソルを delta だけ動かす（端で反対側へ回り込む）。
   `pub def selectionMove(count: Int32, delta: Int32, current: Int32): Int32`
 - disabled 項目を飛ばしてカーソルを 1 つ動かす（端で反対側へ回り込む）。

@@ -9,7 +9,7 @@
 /// 使い方:
 ///   AudioStreamPlayer.play("bgm")
 ///   AudioStreamPlayer.stop("bgm")
-///   AudioStreamPlayer.setVolume("bgm", 0.5f32)
+///   AudioStreamPlayer.setVolume("bgm", 0.5)
 ///   AudioStreamPlayer.setLooping("bgm", true)
 ///
 /// enum 本体は stream / autoplay / loop / volume を保持する値で、`applyAttach` で
@@ -19,7 +19,7 @@ pub enum AudioStreamPlayer {
         stream   = String,    // サウンドマニフェスト (project.json#sounds) の論理名
         autoplay = Bool,      // scene attach 時に自動再生する
         loop     = Bool,      // 再生時に AL_LOOPING を ON にする
-        volume   = Float32    // 音量 (gain), 0.0–1.0
+        volume   = Float64    // 音量 (gain), 0.0–1.0
     })
 }
 
@@ -31,7 +31,7 @@ mod AudioStreamPlayer {
             stream   = stream,
             autoplay = false,
             loop     = false,
-            volume   = 1.0f32
+            volume   = 1.0
         })
 
     /// 指定した名前のオーディオを再生する（先頭から再生し直す）
@@ -44,12 +44,12 @@ mod AudioStreamPlayer {
 
     /// 指定した名前のオーディオの音量（gain）を 0.0〜1.0 で設定する。
     /// 再生中・停止中のいずれでも反映され、次回 play 後も維持される。
-    pub def setVolume(name: String, volume: Float32): Unit \ GameEngine.Audio =
+    pub def setVolume(name: String, volume: Float64): Unit \ GameEngine.Audio =
         GameEngine.Audio.setVolume(name, volume)
 
     /// 指定した名前のオーディオの高さ（再生速度）を変える。1.0 = 元のまま・
     /// 2.0 で 1 オクターブ上・0.5 で 1 オクターブ下。鳴っている音にも即座に効く。
-    pub def setPitch(name: String, pitch: Float32): Unit \ GameEngine.Audio =
+    pub def setPitch(name: String, pitch: Float64): Unit \ GameEngine.Audio =
         GameEngine.Audio.setPitch(name, pitch)
 
     /// 指定した名前のオーディオの loop フラグ (AL_LOOPING) を実行時に切り替える。

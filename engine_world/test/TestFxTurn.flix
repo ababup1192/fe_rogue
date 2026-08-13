@@ -3,7 +3,7 @@
 // 回る速さ × 経過であること、既定値なら既存の絵が 1 ビットも動かないこと。
 mod TestFxTurn {
 
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     /// ばらつきゼロ・等速 10px/s・全方位に開いた基準 emitter（粒は箱 = 回転が見える形）。
     def baseEmitter(): FxDoc.Emitter =

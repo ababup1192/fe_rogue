@@ -70,8 +70,8 @@ mod Sfx {
         let pitch = (lo + (hi - lo) * ratio) * k#pitch * (if (spun) 0.55 else 1.0);
         let volume = k#volume * (0.6 + 0.4 * ratio) * (if (spun) 0.5 else 1.0);
         { name = "engine",
-          volume = Float64.truncateToFloat32(Num.clamp01(volume)),
-          pitch = Float64.truncateToFloat32(Float64.max(0.1, pitch)) } :: Nil
+          volume = Num.clamp01(volume),
+          pitch = Float64.max(0.1, pitch) } :: Nil
 
     /// 滑っている間の擦れ。ニトロゲージが貯まっているほど濃く出す — 危険な走りが
     /// 溜まっていることを、絵（火花）と同じ強さで耳にも返す。
@@ -80,8 +80,8 @@ mod Sfx {
         else {
             let k = w#sfxtune#skid;
             { name = "skid",
-              volume = Float64.truncateToFloat32(Num.clamp01(k#volume * (0.6 + 0.4 * Num.clamp01(w#nitro)))),
-              pitch = Float64.truncateToFloat32(Float64.max(0.1, k#pitch)) } :: Nil
+              volume = Num.clamp01(k#volume * (0.6 + 0.4 * Num.clamp01(w#nitro))),
+              pitch = Float64.max(0.1, k#pitch) } :: Nil
         }
 
     /// ガードレールを擦っている間の金属の擦れ。壁に当たった一発の音を鳴らさないのは、
@@ -92,8 +92,8 @@ mod Sfx {
         else {
             let k = w#sfxtune#scrape;
             { name = "scrape",
-              volume = Float64.truncateToFloat32(Num.clamp01(k#volume)),
-              pitch = Float64.truncateToFloat32(Float64.max(0.1, k#pitch)) } :: Nil
+              volume = Num.clamp01(k#volume),
+              pitch = Float64.max(0.1, k#pitch) } :: Nil
         }
 
     /// もう抜いたライバルの数（増えたフレームが「1 台抜いた」）。

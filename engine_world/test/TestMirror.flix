@@ -14,9 +14,9 @@ mod TestMirror {
 
     /// 明るさ 0.0 / 0.35 / 1.0 の 3 色（緑を倍に見るので g だけで作れる）。
     def resolver(): String -> Color = key -> match key {
-        case "dark" => { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
-        case "mid"  => { r = 0.0f32, g = 0.7f32, b = 0.0f32 }
-        case _      => { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+        case "dark" => { r = 0.0, g = 0.0, b = 0.0 }
+        case "mid"  => { r = 0.0, g = 0.7, b = 0.0 }
+        case _      => { r = 1.0, g = 1.0, b = 1.0 }
     }
 
     def draw(runs: List[PxSprite.Run]): List[Render.PlacedItem] =

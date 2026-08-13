@@ -29,7 +29,7 @@ mod TestUiDoc {
     def firstChild(spec: UiDoc.Spec): Option[UiDoc.Spec] =
         List.head(childrenOf(spec))
 
-    def colorTuple(c: Color): (Float32, Float32, Float32) =
+    def colorTuple(c: Color): (Float64, Float64, Float64) =
         (c#r, c#g, c#b)
 
     def sizeTuple(v: Vec2.Vec2): (Float64, Float64) =
@@ -68,7 +68,7 @@ mod TestUiDoc {
                 }
                 case _ => None
             });
-        Assert.assertEq(expected = Some(("c", 18.0, 10, (1.0f32, 0.0f32, 0.0f32))), got)
+        Assert.assertEq(expected = Some(("c", 18.0, 10, (1.0, 0.0, 0.0))), got)
 
     @Test
     def testShapeIntrinsicBecomesPxStyle(): Unit \ Assert =
@@ -117,7 +117,7 @@ mod TestUiDoc {
         Assert.assertEq(expected = Some(colorTuple(expected)), got)
 
     @Test
-    def testRgbColorTruncatesToFloat32(): Unit \ Assert =
+    def testRgbColorKeepsTheNumbersAsWritten(): Unit \ Assert =
         let doc = "{\"root\": {\"name\":\"g\",\"children\":["
                 + "{\"name\":\"c\",\"widget\":\"circle\",\"radius\":1.0,\"color\":{\"rgb\":[0.560784,0.588235,0.713726]}}]}}";
         let got = parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
@@ -126,9 +126,7 @@ mod TestUiDoc {
                 case _ => None
             });
         Assert.assertEq(
-            expected = Some((Float64.truncateToFloat32(0.560784),
-                             Float64.truncateToFloat32(0.588235),
-                             Float64.truncateToFloat32(0.713726))),
+            expected = Some((0.560784, 0.588235, 0.713726)),
             got)
 
     @Test
@@ -204,7 +202,7 @@ mod TestUiDoc {
                 case _ => None
             });
         Assert.assertEq(
-            expected = Some(((1.0f32, 0.0f32, 0.0f32), Some((1.0f32, 0.0f32, 0.0f32)))),
+            expected = Some(((1.0, 0.0, 0.0), Some((1.0, 0.0, 0.0)))),
             got)
 
     @Test
@@ -229,7 +227,7 @@ mod TestUiDoc {
                 case UiDoc.Widget.BoxW(box) => Some(colorTuple(box#box#color))
                 case _ => None
             });
-        Assert.assertEq(expected = Some((0.0f32, 1.0f32, 0.0f32)), got)
+        Assert.assertEq(expected = Some((0.0, 1.0, 0.0)), got)
 
     @Test
     def testWrapValidation(): Unit \ Assert =
@@ -292,7 +290,7 @@ mod TestUiDoc {
             case UiDoc.Spec.Spec(node) => node#hover |> Option.map(h ->
                 (Option.map(colorTuple, h#color), Option.isEmpty(h#tint), Option.isEmpty(h#alpha)))
         });
-        Assert.assertEq(expected = Some((Some((1.0f32, 0.0f32, 0.0f32)), true, true)), got)
+        Assert.assertEq(expected = Some((Some((1.0, 0.0, 0.0)), true, true)), got)
 
     @Test
     def testHoverAppliesOnExtractOnlyWhenHovered(): Unit \ Assert =
@@ -312,7 +310,7 @@ mod TestUiDoc {
         let got = spawnDoc(doc) |> Option.map(ui ->
             (boxColorAt(ui), boxColorAt(UiStore.setHovered(Some("g"), ui))));
         Assert.assertEq(
-            expected = Some((Some((0.0f32, 0.0f32, 0.0f32)), Some((1.0f32, 0.0f32, 0.0f32)))),
+            expected = Some((Some((0.0, 0.0, 0.0)), Some((1.0, 0.0, 0.0)))),
             got)
 
     @Test
@@ -335,7 +333,7 @@ mod TestUiDoc {
             (polyColor(hovered("g/p")), spriteTint(hovered("g/s")))
         });
         Assert.assertEq(
-            expected = Some((Some((1.0f32, 0.0f32, 0.0f32)), Some((1.0f32, 0.0f32, 0.0f32)))),
+            expected = Some((Some((1.0, 0.0, 0.0)), Some((1.0, 0.0, 0.0)))),
             got)
 
     @Test
@@ -394,7 +392,7 @@ mod TestUiDoc {
     @Test
     def testSetShapeColorChangesExtractedShape(): Unit \ Assert =
         let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"circle\",\"radius\":5.0,\"color\":\"#000000\"}}";
-        let red = { r = 1.0f32, g = 0.0f32, b = 0.0f32 };
+        let red = { r = 1.0, g = 0.0, b = 0.0 };
         let shapeColorAt = ui -> {
             UiExtract.extractShapes(ui, layoutOf(ui), visOf(ui))
                 |> List.head
@@ -405,7 +403,7 @@ mod TestUiDoc {
         };
         let got = spawnDoc(doc) |> Option.map(ui ->
             shapeColorAt(UiStore.setShapeColor("g", red, ui)));
-        Assert.assertEq(expected = Some(Some((1.0f32, 0.0f32, 0.0f32))), got)
+        Assert.assertEq(expected = Some(Some((1.0, 0.0, 0.0))), got)
 
     /// doc を parse → UiSpec 射影 → spawn した UiWorld（テスト用の定型）。
     def spawnDoc(doc: String): Option[UiStore.UiWorld] =
@@ -578,16 +576,16 @@ mod TestUiDoc {
         let got = run { UiSpec.load("test/assets/palette_main.ui.json") } with Fs.FileRead.runWithIO;
         let colors = got |> Result.toOption |> Option.flatMap(firstTwoBoxColors);
         Assert.assertEq(
-            expected = Some(((1.0f32, 0.0f32, 0.0f32), (0.0f32, 0.0f32, 1.0f32))),
+            expected = Some(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0))),
             colors)
 
     /// root 直下の子 2 つの box 色を取り出す(paletteFile テスト用)。
-    def firstTwoBoxColors(spec: UiSpec.Spec): Option[((Float32, Float32, Float32), (Float32, Float32, Float32))] =
+    def firstTwoBoxColors(spec: UiSpec.Spec): Option[((Float64, Float64, Float64), (Float64, Float64, Float64))] =
         match spec {
             case UiSpec.Spec.Spec(root) => twoBoxColors(root#children)
         }
 
-    def twoBoxColors(children: List[UiSpec.Spec]): Option[((Float32, Float32, Float32), (Float32, Float32, Float32))] =
+    def twoBoxColors(children: List[UiSpec.Spec]): Option[((Float64, Float64, Float64), (Float64, Float64, Float64))] =
         match children {
             case UiSpec.Spec.Spec(a) :: UiSpec.Spec.Spec(b) :: Nil =>
                 a#box |> Option.flatMap(ab -> b#box |> Option.map(bb ->

@@ -27,7 +27,7 @@ mod ThemeDoc {
     /// 色見本の 6 桁 16 進をそのまま書くための近道。読めない綴りはマゼンタ
     /// （書き間違いが画面で目に見える）。
     def hex(code: String): Color =
-        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0, g = 0.0, b = 1.0 })
 
     /// コード側の既定値（assets/rpg.theme.json と同じ色から出発する）。
     pub def defaults(): Doc =
@@ -166,6 +166,6 @@ mod ThemeDoc {
             case "wallShade"   => darken(doc#wall, 0.35)
             case "wallFront"   => darken(doc#wall, 0.22)
             case "fieldShade"  => darken(doc#field, 0.35)
-            case _             => { r = 1.0f32, g = 0.0f32, b = 1.0f32 }
+            case _             => { r = 1.0, g = 0.0, b = 1.0 }
         }
 }

@@ -140,7 +140,7 @@ mod TestShadow {
     /// 頂点数=2（線分そのもの）・影四角形 Poly の頂点数=4 という 2 種の混在が pin される。
     @Test
     def testItemsForProducesMultiplyBlackPolyWithConfiguredAlphaAndZ(): Unit \ Assert =
-        let light: Light.Light = { at = at(-100.0, 0.0), radius = 50.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.0 };
+        let light: Light.Light = { at = at(-100.0, 0.0), radius = 50.0, color = { r = 1.0, g = 1.0, b = 1.0 }, halo = 0.0 };
         let segment = at(0.0, -5.0) :: at(0.0, 5.0) :: Nil;
         let items = Shadow.itemsFor(light, segment :: Nil, cfgNoRim());
         let attrsOf = (placed: Render.PlacedItem) -> match placed#item {
@@ -149,8 +149,8 @@ mod TestShadow {
         };
         // 2件: [0]=胴体(線分そのまま2頂点)、[1]=影四角形(4頂点)。
         Assert.assertEq(expected = (2,
-                Some((DrawCmd.BlendMode.Multiply, 0.6f32, 7, 0.0f32, 2)),
-                Some((DrawCmd.BlendMode.Multiply, 0.6f32, 7, 0.0f32, 4))),
+                Some((DrawCmd.BlendMode.Multiply, 0.6, 7, 0.0, 2)),
+                Some((DrawCmd.BlendMode.Multiply, 0.6, 7, 0.0, 4))),
             (List.length(items),
              List.head(items) |> Option.flatMap(attrsOf),
              List.drop(1, items) |> List.head |> Option.flatMap(attrsOf)))
@@ -160,7 +160,7 @@ mod TestShadow {
     /// square は3背面辺を持つので、items = 胴体1 + 影四角形3 = 4件になる。
     @Test
     def testItemsForIncludesOccluderBodyAsMultiplyPoly(): Unit \ Assert =
-        let light: Light.Light = { at = at(-100.0, 0.0), radius = 50.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.0 };
+        let light: Light.Light = { at = at(-100.0, 0.0), radius = 50.0, color = { r = 1.0, g = 1.0, b = 1.0 }, halo = 0.0 };
         let items = Shadow.itemsFor(light, square() :: Nil, cfgNoRim());
         let bodyVertsOf = (placed: Render.PlacedItem) -> match placed#item {
             case Render.Item.Poly(p) => p#vertices
@@ -249,7 +249,7 @@ mod TestShadow {
     @Test
     def testItemsForAddsAddBlendRimPolyWithLightColorAndStrength(): Unit \ Assert =
         let light: Light.Light = { at = at(-100.0, 0.0), radius = 1000.0,
-                                     color = { r = 1.0f32, g = 0.75f32, b = 0.4f32 }, halo = 0.0 };
+                                     color = { r = 1.0, g = 0.75, b = 0.4 }, halo = 0.0 };
         let segment = at(0.0, -5.0) :: at(0.0, 5.0) :: Nil;
         let cfg = { darkness = 0.6, z = 7, extrudeLength = 100.0, rimWidth = 2.5, rimStrength = 0.5 };
         let items = Shadow.itemsFor(light, segment :: Nil, cfg);
@@ -258,7 +258,7 @@ mod TestShadow {
             case _                   => None
         };
         let rim = List.drop(2, items) |> List.head |> Option.flatMap(attrsOf);
-        Assert.assertEq(expected = (3, Some((DrawCmd.BlendMode.Add, 0.5f32, 7, 1.0f32, 0.75f32, 0.4f32))),
+        Assert.assertEq(expected = (3, Some((DrawCmd.BlendMode.Add, 0.5, 7, 1.0, 0.75, 0.4))),
             (List.length(items), rim))
 
     // ── rimQuads: 遮蔽（修正D）・自己遮蔽（修正D）・距離減衰（修正E） ──
@@ -330,7 +330,7 @@ mod TestShadow {
     @Test
     def testItemsForAppliesFalloffToRimAlpha(): Unit \ Assert =
         let light: Light.Light = { at = at(0.0, 0.0), radius = 100.0,
-                                     color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.0 };
+                                     color = { r = 1.0, g = 1.0, b = 1.0 }, halo = 0.0 };
         let cfg = { darkness = 0.6, z = 7, extrudeLength = 400.0, rimWidth = 2.5, rimStrength = 0.5 };
         let items = Shadow.itemsFor(light, squareAt(155.0) :: Nil, cfg);
         let alphaOf = (placed: Render.PlacedItem) -> match placed#item {
@@ -338,5 +338,5 @@ mod TestShadow {
             case _                   => None
         };
         let rimAlpha = items |> List.filterMap(alphaOf) |> List.head;
-        Assert.assertEq(expected = Some(0.25f32), rimAlpha)
+        Assert.assertEq(expected = Some(0.25), rimAlpha)
 }

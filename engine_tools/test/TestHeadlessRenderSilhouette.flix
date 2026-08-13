@@ -5,16 +5,16 @@ mod TestHeadlessRenderSilhouette {
     /// z に置いた最小の Drawable。シルエット化で消えるべき情報（色・半透明・Add）を持たせる。
     def drawableAt(z: Int32): GameEngine.Drawable =
         { texture = "", position = { x = 0.0, y = 0.0 }, scale = { x = 8.0, y = 8.0 },
-          rotation = 0.0, color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, alpha = 0.5f32,
+          rotation = 0.0, color = { r = 1.0, g = 0.0, b = 0.0 }, alpha = 0.5,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
           zIndex = z, style = None, clip = None, blend = DrawCmd.BlendMode.Add, mask = Nil }
 
     /// z に置いた最小の多角形。grad（頂点色）はシルエット化で外れるべき情報。
     def polygonAt(z: Int32): GameEngine.PolygonRenderCmd =
         { vertices = { x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 4.0 } :: Nil,
-          color = { r = 0.2f32, g = 0.8f32, b = 0.4f32 }, alpha = 0.5f32, zIndex = z,
+          color = { r = 0.2, g = 0.8, b = 0.4 }, alpha = 0.5, zIndex = z,
           clip = None, blend = DrawCmd.BlendMode.Add,
-          grad = Some({ color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32 } :: Nil) }
+          grad = Some({ color = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0 } :: Nil) }
 
     @Test
     def testWorldBandDropsUiAndHud(): Unit \ Assert =
@@ -32,8 +32,8 @@ mod TestHeadlessRenderSilhouette {
         let (drawables, polygons) = HeadlessRender.silhouette(HeadlessRender.SilhouetteScope.All,
             drawableAt(ZBand.hudBase()) :: Nil, polygonAt(3) :: Nil);
         Assert.assertEq(
-            expected = (Some(((0.0f32, 0.0f32, 0.0f32), 1.0f32, DrawCmd.BlendMode.Normal)),
-                        Some(((0.0f32, 0.0f32, 0.0f32), 1.0f32, DrawCmd.BlendMode.Normal, true))),
+            expected = (Some(((0.0, 0.0, 0.0), 1.0, DrawCmd.BlendMode.Normal)),
+                        Some(((0.0, 0.0, 0.0), 1.0, DrawCmd.BlendMode.Normal, true))),
             (List.head(drawables) |> Option.map(d -> (Color.channels(d#color), d#alpha, d#blend)),
              List.head(polygons)  |> Option.map(p ->
                  (Color.channels(p#color), p#alpha, p#blend, Option.isEmpty(p#grad)))))

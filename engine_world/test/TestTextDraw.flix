@@ -36,7 +36,7 @@ mod TestTextDraw {
     @Test
     def testCenteredUsesCenterLeftAndWidth(): Unit \ Assert =
         let a = { text = "AB", atlas = atlas(), size = 2.0,
-                  color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, z = 0, centerX = 100.0, y = 5.0 };
+                  color = {r = 1.0, g = 1.0, b = 1.0}, z = 0, centerX = 100.0, y = 5.0 };
         let pos = TextDraw.centered(a)#at;
         Assert.assertEq(
             expected = (TextDraw.centerLeft("AB", atlas(), 2.0, 100.0), 5.0),
@@ -47,7 +47,7 @@ mod TestTextDraw {
     @Test
     def testCenteredAtSubtractsHalfSize(): Unit \ Assert =
         let a = { text = "AB", atlas = atlas(), size = 2.0,
-                  color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, z = 0,
+                  color = {r = 1.0, g = 1.0, b = 1.0}, z = 0,
                   center = {x = 100.0, y = 50.0} };
         let pos = TextDraw.centeredAt(a)#at;
         let s = TextDraw.size("AB", atlas(), 2.0);

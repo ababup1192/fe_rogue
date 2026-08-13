@@ -7,8 +7,6 @@
 
 mod Curve {
 
-    def fract(x: Float64): Float64 = x - Float64.floor(x)
-
     /// 進行度0から始まり、中央で1、進行度1で0へ戻る放物線。
     /// 通常は0から1を渡す。範囲外は補正せず、同じ式の延長として負の値を返す。
     pub def arch01(progress: Float64): Float64 =
@@ -17,7 +15,7 @@ mod Curve {
     /// 速さ `speed` で増える量を `span` で折り返し、[0, span) に収めた値。落ち物や流れる
     /// 絵が端まで来たら反対側から出直す、途切れない周回に使う。
     pub def loop(speed: Float64, span: Float64, t: Float64): Float64 =
-        fract(speed * t / span) * span
+        Num.fract(speed * t / span) * span
 
     /// 中心 0 のまわりを振幅 `amp` で往復する波。`freq` は 1 秒あたりの角速度（ラジアン）、
     /// `phase` は t=0 での位相。ゆらぎ・点滅・上下動などの反復に使う。
@@ -31,11 +29,10 @@ mod Curve {
     /// 周期 `period` で 0→1→0 を往復する三角波。前半で 0 から 1 へ直線で昇り、後半で
     /// 1 から 0 へ直線で降りる。sine より角ばった、行きも帰りも一定速の脈動に使う
     /// （フェード往復・点滅・ピストン運動など）。値は常に [0, 1]。
-    /// 注意: t は Float64。結果を Float32（color や alpha）へ落とすのは呼び側の責務。
     pub def tri(period: Float64, t: Float64): Float64 =
         if (period <= 0.0) 0.0
         else {
-            let phase = fract(t / period);          // [0, 1) の周期内位置
+            let phase = Num.fract(t / period);      // [0, 1) の周期内位置
             1.0 - Float64.abs(2.0 * phase - 1.0)    // 0→1→0 の山
         }
 

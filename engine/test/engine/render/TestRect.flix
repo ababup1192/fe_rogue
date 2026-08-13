@@ -3,8 +3,8 @@
 /// toDrawable が色をどの流路（本体 or style）へ流すかを検証する。
 mod TestRect {
 
-    def black(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def black(): Color = {r = 0.0, g = 0.0, b = 0.0}
+    def white(): Color = {r = 1.0, g = 1.0, b = 1.0}
 
     /// 枠線・角丸・縞がどれも無いときは style=None（素の塗り 1 枚）
     @Test
@@ -19,7 +19,7 @@ mod TestRect {
     def testBorderEmitsStyled(): Unit \ Assert =
         let rect = Rect.make({x = 100.0, y = 50.0}, black())
             |> Rect.setBorderColor(white())
-            |> Rect.setBorderAlpha(1.0f32)
+            |> Rect.setBorderAlpha(1.0)
             |> Rect.setBorderWidth(2.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
         let bw = match d#style {
@@ -73,7 +73,7 @@ mod TestRect {
     @Test
     def testStripeEmitsStyled(): Unit \ Assert =
         let rect = Rect.make({x = 100.0, y = 50.0}, black())
-            |> Rect.setStripe(white(), 0.5f32, 1.0, 2.0);
+            |> Rect.setStripe(white(), 0.5, 1.0, 2.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
         Assert.assertEq(expected = false, Option.isEmpty(d#style))
 
@@ -81,18 +81,18 @@ mod TestRect {
     /// （色の流路の取り違え防止）
     @Test
     def testStyledDrawableCarriesColors(): Unit \ Assert =
-        let bg = {r = 0.2f32, g = 0.3f32, b = 0.4f32};
-        let border = {r = 0.9f32, g = 0.8f32, b = 0.7f32};
+        let bg = {r = 0.2, g = 0.3, b = 0.4};
+        let border = {r = 0.9, g = 0.8, b = 0.7};
         let rect = Rect.make({x = 100.0, y = 50.0}, bg)
-            |> Rect.setAlpha(0.8f32)
+            |> Rect.setAlpha(0.8)
             |> Rect.setBorderColor(border)
-            |> Rect.setBorderAlpha(0.5f32)
+            |> Rect.setBorderAlpha(0.5)
             |> Rect.setBorderWidth(2.0)
             |> Rect.setCornerRadius(6.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
         let info = match d#style {
             case Some(st) => (d#color#r, d#alpha, st#borderColor#r, st#borderAlpha)
-            case None     => (-1.0f32, -1.0f32, -1.0f32, -1.0f32)
+            case None     => (-1.0, -1.0, -1.0, -1.0)
         };
-        Assert.assertEq(expected = (0.2f32, 0.8f32, 0.9f32, 0.5f32), info)
+        Assert.assertEq(expected = (0.2, 0.8, 0.9, 0.5), info)
 }

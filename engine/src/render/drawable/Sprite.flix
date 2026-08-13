@@ -18,7 +18,7 @@ pub enum Sprite {
     case Sprite({
         transform = Transform,           // 位置・回転・スケール・せん断
         visual = Visual,                 // 色変調・可視性・描画順
-        alpha = Float32,                 // 不透明度 0.0–1.0。Color にアルファが無いため別フィールド
+        alpha = Float64,                 // 不透明度 0.0–1.0。Color にアルファが無いため別フィールド
         texture = String,                // テクスチャパス
         centered = Bool,                 // 中心を原点にするか
         offset = Vec2.Vec2,             // 描画オフセット
@@ -37,7 +37,7 @@ mod Sprite {
         Sprite.Sprite({
             transform = { position = position, rotation = 0.0, scale = scale, skew = 0.0 },
             visual = Visual.default(),
-            alpha = 1.0f32,
+            alpha = 1.0,
             texture = texture,
             centered = true,
             offset = {x = 0.0, y = 0.0},
@@ -70,7 +70,7 @@ mod Sprite {
         Sprite.Sprite({visual = f(r#visual) | r})
 
     /// 不透明度を設定する（0.0 = 完全透明、1.0 = 不透明）
-    pub def setAlpha(alpha: Float32, sprite: Sprite): Sprite =
+    pub def setAlpha(alpha: Float64, sprite: Sprite): Sprite =
         let Sprite.Sprite(r) = sprite;
         Sprite.Sprite({alpha = alpha | r})
 

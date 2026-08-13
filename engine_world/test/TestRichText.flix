@@ -3,7 +3,7 @@
 mod TestRichText {
 
     def spans(): List[RichText.Span] =
-        RichText.colored("あお", {r = 0.0f32, g = 0.0f32, b = 1.0f32})
+        RichText.colored("あお", {r = 0.0, g = 0.0, b = 1.0})
             :: RichText.plain("は")
             :: RichText.strong("嘘つき")
             :: RichText.plain("だよ") :: Nil

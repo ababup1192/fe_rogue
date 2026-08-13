@@ -112,19 +112,19 @@ mod ViewScene {
         let wide = World.designW();
         let glowStrip = { at = { x = 0.0, y = 0.0 },
                           item = Render.gradPolygon(
-                                 { pos = { x = 0.0, y = top },        color = c, alpha = 0.55f32 }
-                              :: { pos = { x = wide, y = top },       color = c, alpha = 0.55f32 }
-                              :: { pos = { x = wide, y = top + 7.0 }, color = c, alpha = 0.0f32 }
-                              :: { pos = { x = 0.0, y = top + 7.0 },  color = c, alpha = 0.0f32 }
+                                 { pos = { x = 0.0, y = top },        color = c, alpha = 0.55 }
+                              :: { pos = { x = wide, y = top },       color = c, alpha = 0.55 }
+                              :: { pos = { x = wide, y = top + 7.0 }, color = c, alpha = 0.0 }
+                              :: { pos = { x = 0.0, y = top + 7.0 },  color = c, alpha = 0.0 }
                               :: Nil, zHorizon())
                               |> Render.blended(DrawCmd.BlendMode.Add) };
         let sx = sunAt(cam, w)#x;
         // 陽が水面に落ちた照り返し。丸い光だまりにすると空に太陽が 2 つあるように読めるので、
         // 水平線より下（海の上）だけに、横へ長い面として置く。
         let pool = shineStripe(c, { cx = sx, halfW = 78.0, y0 = top + 0.5,
-                                    y1 = top + 7.0, alpha = 0.40f32 })
+                                    y1 = top + 7.0, alpha = 0.40 })
             ::: shineStripe(c, { cx = sx, halfW = 30.0, y0 = top + 1.0,
-                                 y1 = top + 26.0, alpha = 0.30f32 });
+                                 y1 = top + 26.0, alpha = 0.30 });
         glowStrip :: pool
 
     // ── 遠景の岬（水平線の向こうの陸） ──
@@ -166,26 +166,26 @@ mod ViewScene {
             { at = { x = 0.0, y = 0.0 },
               item = Render.gradPolygon(
                      { pos = { x = x0, y = base - r#height * ridgeProfile(x0 - shift, r#seed) },
-                       color = high, alpha = 1.0f32 }
+                       color = high, alpha = 1.0 }
                   :: { pos = { x = x1, y = base - r#height * ridgeProfile(x1 - shift, r#seed) },
-                       color = high, alpha = 1.0f32 }
-                  :: { pos = { x = x1, y = base + 3.0 }, color = low, alpha = 1.0f32 }
-                  :: { pos = { x = x0, y = base + 3.0 }, color = low, alpha = 1.0f32 }
+                       color = high, alpha = 1.0 }
+                  :: { pos = { x = x1, y = base + 3.0 }, color = low, alpha = 1.0 }
+                  :: { pos = { x = x0, y = base + 3.0 }, color = low, alpha = 1.0 }
                   :: Nil, zRidge()) }
         })
 
     /// 水面の照り返しの面 1 枚。中心 cx が一番明るく、左右の端と下端で消える。
     /// 4 頂点の面 1 枚では中心を山にできないので、左右に割って 2 枚で描く。
     def shineStripe(c: Color, s: { cx = Float64, halfW = Float64, y0 = Float64,
-                                   y1 = Float64, alpha = Float32 }): List[Render.PlacedItem] =
+                                   y1 = Float64, alpha = Float64 }): List[Render.PlacedItem] =
         let half = side -> {
             let xe = s#cx + side * s#halfW;
             { at = { x = 0.0, y = 0.0 },
               item = Render.gradPolygon(
-                     { pos = { x = xe, y = s#y0 },   color = c, alpha = 0.0f32 }
+                     { pos = { x = xe, y = s#y0 },   color = c, alpha = 0.0 }
                   :: { pos = { x = s#cx, y = s#y0 }, color = c, alpha = s#alpha }
-                  :: { pos = { x = s#cx, y = s#y1 }, color = c, alpha = 0.0f32 }
-                  :: { pos = { x = xe, y = s#y1 },   color = c, alpha = 0.0f32 }
+                  :: { pos = { x = s#cx, y = s#y1 }, color = c, alpha = 0.0 }
+                  :: { pos = { x = xe, y = s#y1 },   color = c, alpha = 0.0 }
                   :: Nil, zHorizon())
                   |> Render.blended(DrawCmd.BlendMode.Add) }
         };
@@ -199,10 +199,10 @@ mod ViewScene {
             let (a, b) = pair;
             { at = { x = 0.0, y = 0.0 },
               item = Render.gradPolygon(
-                     { pos = { x = 0.0, y = a#y },  color = a#color, alpha = 1.0f32 }
-                  :: { pos = { x = wide, y = a#y }, color = a#color, alpha = 1.0f32 }
-                  :: { pos = { x = wide, y = b#y }, color = b#color, alpha = 1.0f32 }
-                  :: { pos = { x = 0.0, y = b#y },  color = b#color, alpha = 1.0f32 }
+                     { pos = { x = 0.0, y = a#y },  color = a#color, alpha = 1.0 }
+                  :: { pos = { x = wide, y = a#y }, color = a#color, alpha = 1.0 }
+                  :: { pos = { x = wide, y = b#y }, color = b#color, alpha = 1.0 }
+                  :: { pos = { x = 0.0, y = b#y },  color = b#color, alpha = 1.0 }
                   :: Nil, z) }
         })
 

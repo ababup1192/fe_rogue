@@ -10,21 +10,21 @@ mod Daylight {
 
     /// よくある一日（夜明け前の紺 → 朝の淡い青 → 昼は素通し → 夕方の橙 → 夜の紺）。
     pub def defaults(): List[Key] =
-        { at = 0.00, color = { r = 0.24f32, g = 0.30f32, b = 0.60f32 }, strength = 0.90 }
-     :: { at = 0.22, color = { r = 0.50f32, g = 0.56f32, b = 0.78f32 }, strength = 0.58 }
-     :: { at = 0.30, color = { r = 0.94f32, g = 0.90f32, b = 0.86f32 }, strength = 0.18 }
-     :: { at = 0.50, color = { r = 1.00f32, g = 1.00f32, b = 1.00f32 }, strength = 0.00 }
-     :: { at = 0.72, color = { r = 1.00f32, g = 0.82f32, b = 0.62f32 }, strength = 0.34 }
-     :: { at = 0.80, color = { r = 0.98f32, g = 0.60f32, b = 0.44f32 }, strength = 0.52 }
-     :: { at = 0.88, color = { r = 0.36f32, g = 0.36f32, b = 0.68f32 }, strength = 0.80 }
-     :: { at = 0.95, color = { r = 0.24f32, g = 0.30f32, b = 0.60f32 }, strength = 0.90 }
+        { at = 0.00, color = { r = 0.24, g = 0.30, b = 0.60 }, strength = 0.90 }
+     :: { at = 0.22, color = { r = 0.50, g = 0.56, b = 0.78 }, strength = 0.58 }
+     :: { at = 0.30, color = { r = 0.94, g = 0.90, b = 0.86 }, strength = 0.18 }
+     :: { at = 0.50, color = { r = 1.00, g = 1.00, b = 1.00 }, strength = 0.00 }
+     :: { at = 0.72, color = { r = 1.00, g = 0.82, b = 0.62 }, strength = 0.34 }
+     :: { at = 0.80, color = { r = 0.98, g = 0.60, b = 0.44 }, strength = 0.52 }
+     :: { at = 0.88, color = { r = 0.36, g = 0.36, b = 0.68 }, strength = 0.80 }
+     :: { at = 0.95, color = { r = 0.24, g = 0.30, b = 0.60 }, strength = 0.90 }
      :: Nil
 
     /// t（1 日の進み）のときの空気の色と濃さ。節が 1 つも無ければ素通し。
     pub def sample(keys: List[Key], t: Float64): Key =
         let sorted = List.sortBy(k -> k#at, keys);
         match sorted {
-            case Nil       => { at = t, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, strength = 0.0 }
+            case Nil       => { at = t, color = { r = 1.0, g = 1.0, b = 1.0 }, strength = 0.0 }
             case one :: Nil => { at = t | one }
             case first :: _ =>
                 let u = wrap01(t);
@@ -34,7 +34,7 @@ mod Daylight {
                 let lo = Option.getWithDefault(shifted(-1.0, lastOf(sorted, first)), before);
                 let hi = Option.getWithDefault(shifted(1.0, first), after);
                 let span = hi#at - lo#at;
-                let f = if (Float64.abs(span) < 0.000001) 0.0 else clamp01((u - lo#at) / span);
+                let f = if (Float64.abs(span) < 0.000001) 0.0 else Num.clamp01((u - lo#at) / span);
                 { at = u,
                   color = mixColor(lo#color, hi#color, f),
                   strength = lo#strength + (hi#strength - lo#strength) * f }
@@ -51,17 +51,21 @@ mod Daylight {
         let air = sample(spec#keys, t);
         if (air#strength <= 0.001) Nil
         else
-            let white = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
+            let white = { r = 1.0, g = 1.0, b = 1.0 };
             { at = spec#at,
-              item = RawDraw.box(spec#size, mixColor(white, air#color, clamp01(air#strength)), spec#z)
+              item = RawDraw.box(spec#size, mixColor(white, air#color, Num.clamp01(air#strength)), spec#z)
                   |> Render.blended(DrawCmd.BlendMode.Multiply) } :: Nil
 
     /// 空気の色を 1 つの色に掛ける。空そのものや遠景など、乗算の幕より手前に置きたい物を
     /// 手で染めるときに使う。
     pub def tint(keys: List[Key], t: Float64, base: Color): Color =
         let air = sample(keys, t);
-        let mixed = mixColor({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }, air#color, clamp01(air#strength));
-        { r = base#r * mixed#r, g = base#g * mixed#g, b = base#b * mixed#b }
+        let mixed = mixColor({ r = 1.0, g = 1.0, b = 1.0 }, air#color, Num.clamp01(air#strength));
+        let f32 = RenderUtil.f32;
+        let wide = Float32.toFloat64;
+        { r = wide(f32(base#r) * f32(mixed#r)),
+          g = wide(f32(base#g) * f32(mixed#g)),
+          b = wide(f32(base#b) * f32(mixed#b)) }
 
     // ── 太陽の位置から導く物 ──
 
@@ -91,8 +95,8 @@ mod Daylight {
         let sun = sunAt(t);
         // 昼の度合い。日の出・日の入りをまたぐ所でなめらかに立ち上げる —
         // 0/1 で切り替えると、影の長さがその瞬間だけパチンと飛ぶ。
-        let dayness = clamp01(sun#height * 6.0);
-        let up = clamp01(sun#height);
+        let dayness = Num.clamp01(sun#height * 6.0);
+        let up = Num.clamp01(sun#height);
         let dirX = 0.0 - sun#east;                         // 影は太陽の反対側へ
         let len = Vec2.sqrt(dirX * dirX + spec#tilt * spec#tilt);
         { dir = if (len < 0.0001) { x = 0.0, y = 1.0 }
@@ -151,7 +155,7 @@ mod Daylight {
     /// 明かりを点ける・沈む物を暗くするといった判断は、これを読めば空気の色とずれない
     /// （別に昼夜の曲線を作ると、ランプの点灯と空の色が食い違う）。
     pub def darkness(keys: List[Key], t: Float64): Float64 =
-        clamp01(sample(keys, t)#strength)
+        Num.clamp01(sample(keys, t)#strength)
 
     // ── 内部 ──
 
@@ -162,15 +166,14 @@ mod Daylight {
         List.last(sorted) |> Option.getWithDefault(fallback)
 
     def mixColor(a: Color, b: Color, f: Float64): Color =
-        let t = Float64.truncateToFloat32(clamp01(f));
-        { r = a#r + (b#r - a#r) * t,
-          g = a#g + (b#g - a#g) * t,
-          b = a#b + (b#b - a#b) * t }
+        let t = Float64.truncateToFloat32(Num.clamp01(f));
+        let f32 = RenderUtil.f32;
+        let wide = Float32.toFloat64;
+        { r = wide(f32(a#r) + (f32(b#r) - f32(a#r)) * t),
+          g = wide(f32(a#g) + (f32(b#g) - f32(a#g)) * t),
+          b = wide(f32(a#b) + (f32(b#b) - f32(a#b)) * t) }
 
     def wrap01(v: Float64): Float64 =
         let f = v - Float64.floor(v);
         if (f < 0.0) f + 1.0 else f
-
-    def clamp01(v: Float64): Float64 =
-        Float64.max(0.0, Float64.min(1.0, v))
 }

@@ -103,9 +103,9 @@ mod TestSfx {
         // 高さは Doc の下限・上限を出ない（速度がどこまで伸びても甲高くなり切らない）。
         let w = racing();
         let pitchAt = sp -> Sfx.hums({ speed = sp | w })
-            |> List.map(h -> h#pitch) |> List.head |> Option.getWithDefault(0.0f32);
-        let lo = Float64.truncateToFloat32(w#sfxtune#enginePitchLow);
-        let hi = Float64.truncateToFloat32(w#sfxtune#enginePitchHigh);
+            |> List.map(h -> h#pitch) |> List.head |> Option.getWithDefault(0.0);
+        let lo = w#sfxtune#enginePitchLow;
+        let hi = w#sfxtune#enginePitchHigh;
         Assert.assertEq(expected = (lo, hi), (pitchAt(0.0), pitchAt(99999.0)))
 
     @Test

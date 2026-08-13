@@ -31,15 +31,13 @@ mod Transition {
     /// 進行度と種類から、画面を覆う描画物の列を返す。
     /// 返る列は 0 個（何も覆わない）か 1 個（覆いの矩形）。
     pub def itemsAt(cover: Cover): List[Render.PlacedItem] =
-        let tc = clamp01(cover#t);
+        let tc = Num.clamp01(cover#t);
         match cover#kind {
             case Kind.FadeOut  => fadeItems(tc, cover#viewport, cover#color, cover#z)
             case Kind.FadeIn   => fadeItems(1.0 - tc, cover#viewport, cover#color, cover#z)
             case Kind.WipeLeft => wipeItems(tc, cover#viewport, cover#color, cover#z, true)
             case Kind.WipeRight => wipeItems(tc, cover#viewport, cover#color, cover#z, false)
         }
-
-    def clamp01(t: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, t))
 
     /// 画面全体を覆う矩形の alpha を t にする（t=0 で見えない・t=1 で不透明）。
     def fadeItems(t: Float64, viewport: Vec2.Vec2, color: Color, z: Int32): List[Render.PlacedItem] =
@@ -79,7 +77,7 @@ mod Transition {
     /// 現在の進行度 t（[0,1]）。duration が 0 以下なら常に 1.0。
     pub def tOf(progress: Progress): Float64 =
         if (progress#duration <= 0.0) 1.0
-        else clamp01(progress#elapsed / progress#duration)
+        else Num.clamp01(progress#elapsed / progress#duration)
 
     /// 遷移が終わっているか（t が 1.0 に達した）。
     pub def done(progress: Progress): Bool = tOf(progress) >= 1.0

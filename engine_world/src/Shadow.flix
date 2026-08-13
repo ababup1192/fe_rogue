@@ -195,7 +195,7 @@ mod Shadow {
 
     /// 頂点列 quad を Multiply・alpha=darkness の黒 Poly にする（絶対座標のまま at=zero）。
     def blackQuad(quad: List[Vec2.Vec2], darkness: Float64, z: Int32): Render.PlacedItem =
-        let black = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
+        let black = { r = 0.0, g = 0.0, b = 0.0 };
         { at = Vec2.zero(),
           item = RawDraw.polygon(quad, black, z)
               |> Render.blended(DrawCmd.BlendMode.Multiply)

@@ -45,7 +45,7 @@ mod TestPreviewSprite {
     def testFallbackColorDeterministicAndBounded(): Unit \ Assert =
         let a = PreviewSprite.fallbackColor("body");
         let b = PreviewSprite.fallbackColor("body");
-        let inRange = v -> v >= 0.25f32 and v <= 0.85f32;
+        let inRange = v -> v >= 0.25 and v <= 0.85;
         Assert.assertEq(expected = (true, true),
             ((a#r, a#g, a#b) == (b#r, b#g, b#b),
              inRange(a#r) and inRange(a#g) and inRange(a#b)))

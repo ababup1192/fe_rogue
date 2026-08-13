@@ -36,8 +36,9 @@ mod Palette {
             + "教えるための写し。色を変えるのは __NAME__.theme.json 側。\",\n"
             + body + "\n}\n"
 
-    def channel(v: Float32): String =
-        Float32.toString(v)
+    /// Studio と実機の GL に渡るのは Float32 の値なので、その桁で書く。
+    def channel(v: Float64): String =
+        Float32.toString(RenderUtil.f32(v))
 
     /// 写しを書き出す。読むのは Studio だけなので、走らせるのは開発の手元だけでよい。
     pub def write(): Unit \ IO =

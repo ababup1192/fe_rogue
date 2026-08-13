@@ -107,7 +107,7 @@ mod Annotate {
               message: String): List[Render.PlacedItem] =
         { at = topLeft,
           item = RawDraw.box(badgeSize(fontAtlas, fontSize, message),
-                            { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+                            { r = 0.0, g = 0.0, b = 0.0 },
                             ZBand.debugBase() + 1) |> Render.fade(0.7) }
         :: { at = { x = topLeft#x + badgePad(), y = topLeft#y + badgePad() },
              item = Render.text(message, fontAtlas, fontSize, ZBand.debugBase() + 2) }
@@ -417,7 +417,7 @@ mod Annotate {
     /// zIndex はエンジンデバッグの範囲（ZBand.debugBase）— ゲームのどの絵にも隠されない。
     pub def overlayItems(dragStart: Vec2.Vec2, cursorDesign: Vec2.Vec2): List[Render.PlacedItem] =
         let rect = normRect(dragStart, cursorDesign);
-        let red = { r = 1.0f32, g = 0.25f32, b = 0.25f32 };
+        let red = { r = 1.0, g = 0.25, b = 0.25 };
         { at = rect#position,
           item = RawDraw.box(rect#size, red, ZBand.debugBase())
               |> Render.fade(0.25)

@@ -2,8 +2,8 @@
 mod TestDaylight {
 
     def keys(): List[Daylight.Key] =
-        { at = 0.0, color = { r = 0.0f32, g = 0.0f32, b = 1.0f32 }, strength = 1.0 }
-     :: { at = 0.5, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, strength = 0.0 } :: Nil
+        { at = 0.0, color = { r = 0.0, g = 0.0, b = 1.0 }, strength = 1.0 }
+     :: { at = 0.5, color = { r = 1.0, g = 1.0, b = 1.0 }, strength = 0.0 } :: Nil
 
     @Test
     def testSampleHitsTheKeyExactly(): Unit \ Assert =

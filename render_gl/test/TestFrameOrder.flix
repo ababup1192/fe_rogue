@@ -6,13 +6,13 @@ mod TestFrameOrder {
 
     def spriteAt(z: Int32, tag: Float64): DrawCmd.Drawable =
         { texture = "", position = { x = tag, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
-          rotation = 0.0, color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, alpha = 1.0f32,
+          rotation = 0.0, color = { r = 0.0, g = 0.0, b = 0.0 }, alpha = 1.0,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
           zIndex = z, style = None, clip = None, blend = DrawCmd.BlendMode.Normal, mask = Nil }
 
     def polyAt(z: Int32, tag: Float64): DrawCmd.PolygonRenderCmd =
-        { vertices = { x = tag, y = 0.0 } :: Nil, color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
-          alpha = 1.0f32, zIndex = z, clip = None, blend = DrawCmd.BlendMode.Normal, grad = None }
+        { vertices = { x = tag, y = 0.0 } :: Nil, color = { r = 0.0, g = 0.0, b = 0.0 },
+          alpha = 1.0, zIndex = z, clip = None, blend = DrawCmd.BlendMode.Normal, grad = None }
 
     /// 並んだ列を「種類の頭文字 + 目印」の文字列にして読む。
     def trace(items: List[RenderFrame.Merged]): String =

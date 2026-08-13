@@ -379,15 +379,15 @@ mod PreviewUi {
             case _ => None
         }
 
-    def channelOf(x: Float64): Float32 =
-        Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
+    def channelOf(x: Float64): Float64 =
+        Float64.max(0.0, Float64.min(1.0, x))
 
     /// Color (0〜1 の 3 チャンネル) を "#rrggbb" にする。
     def colorToHex(c: Color): String =
         "#${hexByte(c#r)}${hexByte(c#g)}${hexByte(c#b)}"
 
-    def hexByte(x: Float32): String =
-        let raw = Float64.tryToInt32(Float32.toFloat64(x) * 255.0 + 0.5) |> Option.getWithDefault(0);
+    def hexByte(x: Float64): String =
+        let raw = Float64.tryToInt32(x * 255.0 + 0.5) |> Option.getWithDefault(0);
         let n = Int32.max(0, Int32.min(255, raw));
         "${hexDigit(n / 16)}${hexDigit(Int32.modulo(n, 16))}"
 

@@ -15,7 +15,7 @@ mod PaletteDoc {
     pub def path(): String = "assets/race.palette.json"
 
     def hex(code: String): Color =
-        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0, g = 0.0, b = 1.0 })
 
     /// コード側の既定値（assets/race.palette.json の colors と同じ値から出発する）。
     pub def defaults(): Doc =
@@ -82,7 +82,7 @@ mod PaletteDoc {
 
     /// 意味色キー → 実色。無いキーはマゼンタ（書き間違いが画面で目に見える）。
     pub def resolve(doc: Doc, name: String): Color =
-        Map.get(name, doc) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
+        Map.get(name, doc) |> Option.getWithDefault({ r = 1.0, g = 0.0, b = 1.0 })
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =

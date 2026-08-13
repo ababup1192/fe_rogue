@@ -140,7 +140,7 @@ mod PxSpriteAtlas {
     /// (round・クランプ)— box 列(polygon 塗り)とアトラス画素の色をバイト一致させるため。
     pub def argbOf(c: Color): Int32 =
         let ch = v -> {
-            let i = Float64.tryToInt32(Float32.toFloat64(v) * 255.0 + 0.5)
+            let i = Float64.tryToInt32(Float32.toFloat64(RenderUtil.f32(v)) * 255.0 + 0.5)
                 |> Option.getWithDefault(0);
             Int32.max(0, Int32.min(255, i))
         };

@@ -42,7 +42,7 @@ mod UiDoc {
 
     /// poly widget（UiWidget.PolyComp の宣言形 + rotation/pivot 拡張）。
     pub type alias PolySpec = {
-        points = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
+        points = List[Vec2.Vec2], color = Color, alpha = Float64, zIndex = Int32,
         rotation = Float64, pivot = Option[Vec2.Vec2]
     }
 
@@ -330,7 +330,7 @@ mod UiDoc {
                 tint        <- parseColorOpt(palette, "tint", m);
                 alphaOpt    <- (DocJson.getAtKeyOpt(Root, "alpha", m): Result[JsonError, Option[Float64]])
             ) yield Some({ color = color, borderColor = borderColor, tint = tint,
-                           alpha = Option.map(a -> Float64.truncateToFloat32(a), alphaOpt) })
+                           alpha = alphaOpt })
         }
 
     def resolveTemplate(templates: Map[String, Map[String, Json]],
@@ -448,7 +448,7 @@ mod UiDoc {
             skinCornerOpt   <- (DocJson.getAtKeyOpt(Root, "skinCorner", map): Result[JsonError, Option[Float64]])
         ) yield ({
             color = color,
-            alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
+            alpha = Option.getWithDefault(1.0, alphaOpt),
             zIndex = Option.getWithDefault(0, zIndexOpt),
             cornerRadius = Option.getWithDefault(0.0, cornerRadiusOpt),
             borderWidth = Option.getWithDefault(0.0, borderWidthOpt),
@@ -545,7 +545,7 @@ mod UiDoc {
             pivot       <- parseVec2Opt("pivot", map)
         ) yield ({
             points = points, color = color,
-            alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
+            alpha = Option.getWithDefault(1.0, alphaOpt),
             zIndex = Option.getWithDefault(0, zIndexOpt),
             rotation = Option.getWithDefault(0.0, rotationOpt),
             pivot = pivot
@@ -565,7 +565,7 @@ mod UiDoc {
         ) yield Widget.ShapeW({
             shape = ({
                 shape = shape, color = color,
-                alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
+                alpha = Option.getWithDefault(1.0, alphaOpt),
                 zIndex = Option.getWithDefault(0, zIndexOpt),
                 borderWidth = Option.getWithDefault(0.0, borderWidthOpt),
                 borderColor = borderColorOpt
@@ -847,9 +847,7 @@ mod UiDoc {
                 case (None, Some(rgbJson)) =>
                     floats3(key, rgbJson) |> Result.map(t -> {
                         let (r, g, b) = t;
-                        ({ r = Float64.truncateToFloat32(r),
-                           g = Float64.truncateToFloat32(g),
-                           b = Float64.truncateToFloat32(b) }: Color)
+                        ({ r = r, g = g, b = b }: Color)
                     })
                 case _ => Err(colorFormatError(key))
             }
@@ -883,7 +881,7 @@ mod UiDoc {
             case None    => Err(DocJson.jsonError(Root, Set#{"hex color must be #rrggbb (got: ${hex})"}))
         }
 
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def white(): Color = {r = 1.0, g = 1.0, b = 1.0}
 
     def bigDecToF64(bd: BigDecimal): Float64 =
         bd.doubleValue()

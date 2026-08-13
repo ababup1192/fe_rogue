@@ -63,7 +63,7 @@ mod TestDocs {
         // palette.json に accentLight が宣言されていればそれが勝つ。
         let doc = ThemeDoc.overlayAccentLight(
             "{\"accentLight\": {\"rgb\": [0.0, 0.5, 1.0]}}", ThemeDoc.defaults());
-        Assert.assertEq(expected = (0.0f32, 0.5f32, 1.0f32),
+        Assert.assertEq(expected = (0.0, 0.5, 1.0),
             (doc#accentLight#r, doc#accentLight#g, doc#accentLight#b))
 
     @Test

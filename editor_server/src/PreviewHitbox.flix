@@ -171,8 +171,8 @@ mod PreviewHitbox {
     /// 形の塗り色。ゲーム側の H デバッグ表示 (半透明の赤) と同じ見た目に揃える。
     def hitColor(): Color = Color.hsv({ h = 0.0, s = 0.85, v = 1.00 })
 
-    def crossColor(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
-    def labelColor(): Color = { r = 0.85f32, g = 0.85f32, b = 0.85f32 }
+    def crossColor(): Color = { r = 1.0, g = 1.0, b = 1.0 }
+    def labelColor(): Color = { r = 0.85, g = 0.85, b = 0.85 }
 
     def zCross(): Int32 = 1
     def zShape(): Int32 = 2

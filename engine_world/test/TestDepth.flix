@@ -36,7 +36,7 @@ mod TestDepth {
         let b = Depth.forRows({ back = 5, originY = 0.0, rows = 10, tileSize = 20.0 });
         Assert.assertEq(expected = (5, 15, 200.0), (b#back, b#front, b#bottom))
 
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     def zOf(placed: Render.PlacedItem): Int32 =
         match placed#item {

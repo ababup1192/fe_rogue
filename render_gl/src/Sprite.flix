@@ -87,8 +87,8 @@ mod RenderSprite {
             f32(tx), f32(ty), 0.0f32, 1.0f32
         } @ Static;
         GL20.glUniformMatrix4fv(uniforms#model, false, model);
-        GL20.glUniform3f(uniforms#spriteColor, color#r, color#g, color#b);
-        GL20.glUniform1f(uniforms#spriteAlpha, alpha);
+        GL20.glUniform3f(uniforms#spriteColor, f32(color#r), f32(color#g), f32(color#b));
+        GL20.glUniform1f(uniforms#spriteAlpha, f32(alpha));
         GL20.glUniform2f(uniforms#uvOffset, f32(uvOff#x), f32(uvOff#y));
         GL20.glUniform2f(uniforms#uvScale, f32(uvSc#x), f32(uvSc#y));
         GL20.glUniform1i(uniforms#useTexture, if (useTex) 1 else 0);
@@ -103,19 +103,19 @@ mod RenderSprite {
                 GL20.glUniform2f(uniforms#rectSize, f32(size#x), f32(size#y));
                 GL20.glUniform1f(uniforms#cornerRadius, f32(st#cornerRadius));
                 GL20.glUniform1f(uniforms#borderWidth, f32(st#borderWidth));
-                GL20.glUniform3f(uniforms#borderColor, st#borderColor#r, st#borderColor#g, st#borderColor#b);
-                GL20.glUniform1f(uniforms#borderAlpha, st#borderAlpha);
+                GL20.glUniform3f(uniforms#borderColor, f32(st#borderColor#r), f32(st#borderColor#g), f32(st#borderColor#b));
+                GL20.glUniform1f(uniforms#borderAlpha, f32(st#borderAlpha));
                 // 斜線ハッチ uniform。幅・濃さ・周期がすべて正のときのみ有効化(SoftRaster と同じ判定)。
-                let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0;
+                let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0;
                 GL20.glUniform1i(uniforms#hatchEnabled, if (hatchOn) 1 else 0);
-                GL20.glUniform3f(uniforms#hatchColor, st#stripeColor#r, st#stripeColor#g, st#stripeColor#b);
-                GL20.glUniform1f(uniforms#hatchAlpha, st#stripeAlpha);
+                GL20.glUniform3f(uniforms#hatchColor, f32(st#stripeColor#r), f32(st#stripeColor#g), f32(st#stripeColor#b));
+                GL20.glUniform1f(uniforms#hatchAlpha, f32(st#stripeAlpha));
                 GL20.glUniform1f(uniforms#hatchWidth, f32(st#stripeWidth));
                 GL20.glUniform1f(uniforms#hatchPeriod, f32(st#stripePeriod));
                 GL20.glUniform1i(uniforms#hatchDir, st#stripeDir);
                 // 市松 uniform。有効判定 (cell>0 かつ alpha>0) はシェーダ側で行う。
-                GL20.glUniform3f(uniforms#checkerColor, st#checkerColor#r, st#checkerColor#g, st#checkerColor#b);
-                GL20.glUniform1f(uniforms#checkerAlpha, st#checkerAlpha);
+                GL20.glUniform3f(uniforms#checkerColor, f32(st#checkerColor#r), f32(st#checkerColor#g), f32(st#checkerColor#b));
+                GL20.glUniform1f(uniforms#checkerAlpha, f32(st#checkerAlpha));
                 GL20.glUniform1f(uniforms#checkerCell, f32(st#checkerCell))
             case None =>
                 GL20.glUniform1i(uniforms#styleEnabled, 0);
@@ -162,12 +162,12 @@ mod RenderSprite {
         match pc#grad {
             case None =>
                 let color = pc#color;
-                let alpha = pc#alpha;
+                let alpha = f32(pc#alpha);
                 let flat = Triangulate.triangles(pc#vertices)
                     |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
                 let n = List.length(flat);
                 let vertsRev = List.foldLeft((rest, v) ->
-                    (Array#{ f32(v#x), f32(v#y), color#r, color#g, color#b, alpha } @ Static) :: rest,
+                    (Array#{ f32(v#x), f32(v#y), f32(color#r), f32(color#g), f32(color#b), alpha } @ Static) :: rest,
                     Nil, flat);
                 (n, vertsRev)
             case Some(_) =>
@@ -175,7 +175,7 @@ mod RenderSprite {
                     |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
                 let n = List.length(flat);
                 let vertsRev = List.foldLeft((rest, v) ->
-                    (Array#{ f32(v#pos#x), f32(v#pos#y), v#color#r, v#color#g, v#color#b, v#alpha } @ Static) :: rest,
+                    (Array#{ f32(v#pos#x), f32(v#pos#y), f32(v#color#r), f32(v#color#g), f32(v#color#b), f32(v#alpha) } @ Static) :: rest,
                     Nil, flat);
                 (n, vertsRev)
         }
@@ -189,10 +189,10 @@ mod RenderSprite {
         match pc#grad {
             case None =>
                 let color = pc#color;
-                let r = color#r;
-                let g = color#g;
-                let b = color#b;
-                let alpha = pc#alpha;
+                let r = RenderUtil.f32(color#r);
+                let g = RenderUtil.f32(color#g);
+                let b = RenderUtil.f32(color#b);
+                let alpha = RenderUtil.f32(pc#alpha);
                 Triangulate.triangles(pc#vertices) |> List.foldLeft((i, tri) -> {
                     let (v0, v1, v2) = tri;
                     writeXY(data, i,     v0, r, g, b, alpha);
@@ -222,7 +222,8 @@ mod RenderSprite {
 
     def writeTinted(data: FloatBuffer, vert: Int32, v: DrawCmd.GradVertex): Unit \ IO =
         let color = v#color;
-        writeXY(data, vert, v#pos, color#r, color#g, color#b, v#alpha)
+        writeXY(data, vert, v#pos, RenderUtil.f32(color#r), RenderUtil.f32(color#g),
+                RenderUtil.f32(color#b), RenderUtil.f32(v#alpha))
 
     /// 溜めた頂点 [0, vertexCount) を 1 回の draw call で塗る（入れ物から直に流す）。
     /// 流し終えたら書ける範囲を元に戻す — 上限を切ったままだと次の書き込みが弾かれる。
@@ -349,11 +350,11 @@ mod RenderSprite {
             let uvSc = inst#uvSc;
             Array.put(f32(uvSc#x),     base + 4, data);
             Array.put(f32(uvSc#y),     base + 5, data);
-            Array.put(inst#alpha,      base + 6, data);
+            Array.put(f32(inst#alpha), base + 6, data);
             let tint = inst#tint;
-            Array.put(tint#r,          base + 7, data);
-            Array.put(tint#g,          base + 8, data);
-            Array.put(tint#b,          base + 9, data);
+            Array.put(f32(tint#r),     base + 7, data);
+            Array.put(f32(tint#g),     base + 8, data);
+            Array.put(f32(tint#b),     base + 9, data);
             i + 1
         }, 0, instances);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
@@ -403,7 +404,7 @@ mod RenderSprite {
         GL20.glUniform2f(uniforms#layerPos, f32(layerPos#x), f32(layerPos#y));
         GL20.glUniform1f(uniforms#tileSize, f32(tileSize));
         GL20.glUniform2f(uniforms#tileScale, f32(tileScale#x), f32(tileScale#y));
-        GL20.glUniform3f(uniforms#layerColor, color#r, color#g, color#b);
+        GL20.glUniform3f(uniforms#layerColor, f32(color#r), f32(color#g), f32(color#b));
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
         GL30.glBindVertexArray(tileVao);

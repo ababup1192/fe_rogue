@@ -59,7 +59,7 @@ def testWaterVeinsSpecShape(): Unit \ Assert =
 /// Spec 本体を組む小道具（prelude 抜きの main 式を作るためのラッパ）。
 def bodyOfField(field: ShaderDoc.Field): String =
     ShaderGen.compileBody({ name = "t", cycleRate = 0.0, bindings = Nil,
-        out = ShaderDoc.Out.Fill({ shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+        out = ShaderDoc.Out.Fill({ shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
                                    alpha = field }) })
 
 /// prelude は長さだけ pin（本文は別扱い）。長さが変わったら prelude を触った合図。
@@ -71,8 +71,8 @@ def testPreludeLength(): Unit \ Assert =
 @Test
 def testDemoBodySnapshot(): Unit \ Assert =
     let expected =
-        "outColor = vec4(mix(vec3(0.15000000596046448, 0.3499999940395355, 0.550000011920929), " +
-        "vec3(0.550000011920929, 0.8500000238418579, 0.949999988079071), " +
+        "outColor = vec4(mix(vec3(0.15, 0.35, 0.55), " +
+        "vec3(0.55, 0.85, 0.95), " +
         "clamp(abs(fract(((vUv).x) + 0.5 * uTime) * 2.0 - 1.0), 0.0, 1.0)), 1.0);";
     Assert.assertEq(expected = expected, ShaderGen.compileBody(ShaderDoc.demoSurface()))
 
@@ -191,20 +191,22 @@ def testEvalRotateHalfTurnMirrors(): Unit \ Assert =
 @Test
 def testEvalCosineBaseColorIsA(): Unit \ Assert =
     let shade = ShaderDoc.Shade.Cosine({
-        a = { r = 0.5f32, g = 0.2f32, b = 0.8f32 },
-        b = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
-        c = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
-        d = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+        a = { r = 0.5, g = 0.2, b = 0.8 },
+        b = { r = 0.0, g = 0.0, b = 0.0 },
+        c = { r = 1.0, g = 1.0, b = 1.0 },
+        d = { r = 0.0, g = 0.0, b = 0.0 },
         field = ShaderDoc.Field.Const(0.3) });
     let spec = { name = "t", cycleRate = 0.0, bindings = Nil,
                  out = ShaderDoc.Out.Fill({ shade = shade, alpha = ShaderDoc.Field.Const(1.0) }) };
-    Assert.assertEq(expected = 0.5f32, ShaderEval.evalPixel(spec, { x = 0.0, y = 0.0 }, 0.0)#r)
+    Assert.assertEq(expected = 0.5, ShaderEval.evalPixel(spec, { x = 0.0, y = 0.0 }, 0.0)#r)
 
 /// waterVeins は Ramp 2 色の範囲内の色を返す（lo..hi の間・網目の濃淡）。
 @Test
 def testEvalWaterVeinsInRange(): Unit \ Assert =
     let c = ShaderEval.evalPixel(ShaderDoc.waterVeins(), { x = 0.3, y = 0.3 }, 0.0);
-    let inRange = c#r >= 0.35f32 and c#r <= 0.80f32 and c#g >= 0.55f32 and c#g <= 0.95f32;
+    // 端の色そのものになる点があり、色は Float32 に落として混ぜるので、両端に丸め 1 つぶんの余裕を持たせる。
+    let eps = 0.000001;
+    let inRange = c#r >= 0.35 - eps and c#r <= 0.80 + eps and c#g >= 0.55 - eps and c#g <= 0.95 + eps;
     Assert.assertEq(expected = true, inRange)
 
 /// Disk: 中心=1・radius+feather の外=0・feather 中間=0.5。
@@ -322,7 +324,7 @@ def testJsonHexColor(): Unit \ Assert =
     };
     // #ff8000 → (1.0, 0.502..., 0.0)。中央値は 128/255 なので近い値で確かめる。
     let ok = match got {
-        case Some((r, g, b)) => r == 1.0f32 and b == 0.0f32 and g > 0.49f32 and g < 0.51f32
+        case Some((r, g, b)) => r == 1.0 and b == 0.0 and g > 0.49 and g < 0.51
         case None            => false
     };
     Assert.assertEq(expected = true, ok)
@@ -408,7 +410,7 @@ def testRipplesAtomsMatchPrimitive(): Unit \ Assert =
     let (bindings, alpha) = ripplesAtomField();
     let spec = { name = "r", cycleRate = 0.0, bindings = bindings,
                  out = ShaderDoc.Out.Fill({
-                     shade = ShaderDoc.Shade.Solid({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }),
+                     shade = ShaderDoc.Shade.Solid({ r = 1.0, g = 1.0, b = 1.0 }),
                      alpha = alpha }) };
     let atomVal = ShaderEval.evalAlpha(spec, uv, t);
     let prim = ShaderDoc.Field.Ripples({ freq = 9.0, amp = 0.24, speed = 0.09, seed = 7 });
@@ -434,7 +436,7 @@ def testBindingForwardRef(): Unit \ Assert =
             a = ShaderDoc.Field.Ref("base"), b = ShaderDoc.Field.Const(0.25) })) :: Nil;
     let spec = { name = "f", cycleRate = 0.0, bindings = bindings,
                  out = ShaderDoc.Out.Fill({
-                     shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+                     shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
                      alpha = ShaderDoc.Field.Ref("wob") }) };
     Assert.assertEq(expected = 0.75, ShaderEval.evalAlpha(spec, { x = 0.0, y = 0.0 }, 0.0))
 
@@ -448,7 +450,7 @@ def testBindingCompilesToBindingVar(): Unit \ Assert =
             a = ShaderDoc.Field.Ref("base"), b = ShaderDoc.Field.Const(0.25) })) :: Nil;
     let spec = { name = "f", cycleRate = 0.0, bindings = bindings,
                  out = ShaderDoc.Out.Fill({
-                     shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+                     shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
                      alpha = ShaderDoc.Field.Ref("wob") }) };
     let expected =
         "    float sg_b_base = 0.5;\n" +
@@ -576,12 +578,12 @@ def testHashCallCountBounded(): Unit \ Assert =
     // 直書き版: alpha = h * h（h を 2 か所に展開）→ sg_hash がテキストで 2 回出る。
     let inlinedSpec = { name = "inl", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
             alpha = mul(h, h) }) };
     // 共有版: binding "h" に 1 回だけ計算し、alpha = use(h) * use(h)。sg_hash はテキストで 1 回。
     let sharedSpec = { name = "shr", cycleRate = 0.0, bindings = ("h", h) :: Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
             alpha = mul(ShaderDoc.Field.Ref("h"), ShaderDoc.Field.Ref("h")) }) };
     let nInlined = countOccurrences("sg_hash", ShaderGen.compileBody(inlinedSpec));
     let nShared  = countOccurrences("sg_hash", ShaderGen.compileBody(sharedSpec));
@@ -612,9 +614,9 @@ def bodyOfGradient(stops: List[(Float64, Color)], field: ShaderDoc.Field): Strin
 @Test
 def testGradientNodeSnapshot(): Unit \ Assert =
     let stops =
-        (0.0, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }) ::
-        (0.5, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }) ::
-        (1.0, { r = 1.0f32, g = 1.0f32, b = 0.0f32 }) :: Nil;
+        (0.0, { r = 0.0, g = 0.0, b = 0.0 }) ::
+        (0.5, { r = 1.0, g = 0.0, b = 0.0 }) ::
+        (1.0, { r = 1.0, g = 1.0, b = 0.0 }) :: Nil;
     let field = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U });
     let expected =
         "outColor = vec4(mix(mix(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), " +
@@ -629,9 +631,9 @@ def testGradientNodeSnapshot(): Unit \ Assert =
 @Test
 def testGradientRepresentativeColor(): Unit \ Assert =
     let stops =
-        (0.0, { r = 0.1f32, g = 0.02f32, b = 0.01f32 }) ::
-        (0.5, { r = 0.8f32, g = 0.3f32, b = 0.05f32 }) ::
-        (1.0, { r = 1.0f32, g = 0.9f32, b = 0.6f32 }) :: Nil;
+        (0.0, { r = 0.1, g = 0.02, b = 0.01 }) ::
+        (0.5, { r = 0.8, g = 0.3, b = 0.05 }) ::
+        (1.0, { r = 1.0, g = 0.9, b = 0.6 }) :: Nil;
     let spec = { name = "g", cycleRate = 0.0, bindings = Nil,
                  out = ShaderDoc.Out.Fill({
                      shade = ShaderDoc.Shade.Gradient({ stops = stops,
@@ -639,9 +641,9 @@ def testGradientRepresentativeColor(): Unit \ Assert =
                      alpha = ShaderDoc.Field.Const(1.0) }) };
     let got = ShaderDoc.representativeColor(spec);
     // f=0.5 の補間は 2 つ目の色そのもの（1つ目→2つ目 smoothstep=1・2つ目→3つ目 smoothstep=0）。
-    let ok = Float32.abs(got#r - 0.8f32) < 0.001f32 and
-             Float32.abs(got#g - 0.3f32) < 0.001f32 and
-             Float32.abs(got#b - 0.05f32) < 0.001f32;
+    let ok = Float64.abs(got#r - 0.8) < 0.001 and
+             Float64.abs(got#g - 0.3) < 0.001 and
+             Float64.abs(got#b - 0.05) < 0.001;
     Assert.assertEq(expected = true, ok)
 
 /// ヒーロー: magma_geothermal（地熱の脈動する溶岩流）。§3 の hero JSON を parse し、
@@ -679,7 +681,7 @@ def testMagmaGeothermalPulses(): Unit \ Assert =
                 let c1 = ShaderEval.evalPixel(spec, uv, 1.0);
                 // 脈動: 2 時刻で色が違う。正気: 各成分が 0..1 に収まる。
                 let differ = c0#r != c1#r or c0#g != c1#g or c0#b != c1#b;
-                let sane = c0#r >= 0.0f32 and c0#r <= 1.0f32 and c1#g >= 0.0f32 and c1#g <= 1.0f32;
+                let sane = c0#r >= 0.0 and c0#r <= 1.0 and c1#g >= 0.0 and c1#g <= 1.0;
                 Some((differ, sane))
             case Err(_) => None
         }
@@ -750,7 +752,7 @@ def testRadialVignetteCpuGpuParity(): Unit \ Assert =
 def testRadialJsonRoundTrip(): Unit \ Assert =
     let spec: ShaderDoc.Spec = { name = "vignette", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.1f32, g = 0.1f32, b = 0.2f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.1, g = 0.1, b = 0.2 }),
             alpha = ShaderDoc.Field.Smoothstep({ lo = 0.3, hi = 0.7,
                 of = ShaderDoc.Field.Radial({ cx = 0.4, cy = 0.6 }) }) }) };
     let roundTrip = ShaderJson.parse(ShaderJson.toJson(spec));
@@ -855,7 +857,7 @@ def testEvalRadialAspectCircle(): Unit \ Assert =
 def testNewNodesJsonRoundTripGlslIdentical(): Unit \ Assert =
     let spec: ShaderDoc.Spec = { name = "tile", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.2f32, g = 0.4f32, b = 0.6f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.2, g = 0.4, b = 0.6 }),
             alpha = ShaderDoc.Field.Quantize({ steps = 5,
                 of = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul,
                     a = ShaderDoc.Field.FbmTile({ octaves = 2, scale = 4.0,
@@ -935,7 +937,7 @@ def testEvalSnapHoldsValueInsideCell(): Unit \ Assert =
 def testSnapJsonRoundTripGlslIdentical(): Unit \ Assert =
     let spec: ShaderDoc.Spec = { name = "nebula", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.3f32, g = 0.5f32, b = 0.9f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.3, g = 0.5, b = 0.9 }),
             alpha = ShaderDoc.Field.Snap({ cells = { x = 120.0, y = 68.0 },
                 of = ShaderDoc.Field.Fbm({ octaves = 3, scale = 4.0, seed = 11 }) }) }) };
     let same = match ShaderJson.parse(ShaderJson.toJson(spec)) {
@@ -1018,8 +1020,8 @@ def testTexNamesCanonicalOrder(): Unit \ Assert =
         { name = "o", cycleRate = 0.0,
           bindings = ("s", texOf("b")) :: Nil,
           out = ShaderDoc.Out.Fill({
-              shade = ShaderDoc.Shade.Ramp({ lo = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
-                                             hi = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+              shade = ShaderDoc.Shade.Ramp({ lo = { r = 0.0, g = 0.0, b = 0.0 },
+                                             hi = { r = 1.0, g = 1.0, b = 1.0 },
                                              field = texOf("a") }),
               alpha = texOf("b") }) };
     Assert.assertEq(expected = "b" :: "a" :: Nil, ShaderDoc.texNames(spec))
@@ -1054,7 +1056,7 @@ def testEvalTexSamplesCorners(): Unit \ Assert =
     let at = (u, v, chan) -> {
         let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0, bindings = Nil,
             out = ShaderDoc.Out.Fill({
-                shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+                shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
                 alpha = ShaderDoc.Field.Tex({ name = "t", chan = chan }) }) };
         ShaderEval.evalAlphaTex(spec, { x = u, y = v }, 0.0, env)
     };
@@ -1069,7 +1071,7 @@ def testEvalTexClampsAtEdges(): Unit \ Assert =
     let env = Map#{ "t" => tex2x2() };
     let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
             alpha = ShaderDoc.Field.Tex({ name = "t", chan = ShaderDoc.TexChan.R }) }) };
     let at = u -> ShaderEval.evalAlphaTex(spec, { x = u, y = 0.25 }, 0.0, env);
     Assert.assertEq(expected = (at(0.25), at(0.75)), (at(-0.5), at(1.5)))
@@ -1081,7 +1083,7 @@ def testEvalShiftUsesOuterUv(): Unit \ Assert =
     let env = Map#{ "t" => tex2x2() };
     let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
             alpha = ShaderDoc.Field.Shift({
                 dx = ShaderDoc.Field.Const(0.0),
                 dy = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.V }),
@@ -1097,7 +1099,7 @@ def testEvalSharedFrozenAtBaseUv(): Unit \ Assert =
     let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0,
         bindings = ("u0", ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U })) :: Nil,
         out = ShaderDoc.Out.Fill({
-            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            shade = ShaderDoc.Shade.Solid({ r = 0.0, g = 0.0, b = 0.0 }),
             alpha = ShaderDoc.Field.Shift({
                 dx = ShaderDoc.Field.Const(0.5), dy = ShaderDoc.Field.Const(0.0),
                 of = ShaderDoc.Field.Ref("u0") }) }) };

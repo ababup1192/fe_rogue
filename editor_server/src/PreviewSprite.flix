@@ -87,9 +87,9 @@ mod PreviewSprite {
             r <- Int32.parse(16, String.takeLeft(2, hex)) |> Result.toOption;
             g <- Int32.parse(16, String.slice(start = 2, end = 4, hex)) |> Result.toOption;
             b <- Int32.parse(16, String.dropLeft(4, hex)) |> Result.toOption
-        ) yield ({ r = Int32.toFloat32(r) / 255.0f32,
-                   g = Int32.toFloat32(g) / 255.0f32,
-                   b = Int32.toFloat32(b) / 255.0f32 }: Color)
+        ) yield ({ r = Int32.toFloat64(r) / 255.0,
+                   g = Int32.toFloat64(g) / 255.0,
+                   b = Int32.toFloat64(b) / 255.0 }: Color)
 
     /// colors に無いキーは決定的なフォールバック色 (キーの文字列ハッシュから導く —
     /// 同じキーは常に同じ色なので、テーマ未指定でも部位の区別がつく)。
@@ -105,7 +105,7 @@ mod PreviewSprite {
             Int32.bitwiseAnd(acc * 31 + Char.toBmpCodePoint(ch), 16777215), 7);
         let chan = shift -> {
             let v = Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, h), 255);
-            0.25f32 + 0.6f32 * Int32.toFloat32(v) / 255.0f32
+            0.25 + 0.6 * Int32.toFloat64(v) / 255.0
         };
         { r = chan(16), g = chan(8), b = chan(0) }
 
@@ -162,7 +162,7 @@ mod PreviewSprite {
                     case None          =>
                         (200, failJson(Option.getWithDefault("no font available for preview", List.head(fonts#warnings))))
                     case Some(primary) =>
-                        let bgc: Color = { r = 0.09f32, g = 0.10f32, b = 0.11f32 };
+                        let bgc: Color = { r = 0.09, g = 0.10, b = 0.11 };
                         let built =
                             if (req#mode == "frame") buildFrame(doc, req, primary#atlas)
                             else buildSheet(doc, req, primary#atlas);
@@ -240,7 +240,7 @@ mod PreviewSprite {
                 let labelItem: Render.PlacedItem =
                     { at = { x = gap, y = y0 + cellH / 2.0 },
                       item = Render.textTinted(name, atlas, 10.0,
-                          { r = 0.85f32, g = 0.85f32, b = 0.80f32 }, 50) };
+                          { r = 0.85, g = 0.85, b = 0.80 }, 50) };
                 let cellItems = row |> List.zipWithIndex |> List.flatMap(cellEntry -> {
                     let (colIdx, cell) = cellEntry;
                     let resolver = req#themes |> List.drop(cell#theme) |> List.head

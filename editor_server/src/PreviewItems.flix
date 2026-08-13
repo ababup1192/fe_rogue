@@ -14,19 +14,19 @@ mod PreviewItems {
     pub enum Item {
         /// 左上 (x, y) から w×h の塗り箱。outline があれば枠線も引く。
         case BoxI({ id = Option[String], x = Float64, y = Float64, w = Float64, h = Float64,
-                    color = Color, alpha = Float32, z = Int32, outline = Option[Color] })
+                    color = Color, alpha = Float64, z = Int32, outline = Option[Color] })
         /// 中心 (x, y)・半径 r の塗り円。
         case CircleI({ id = Option[String], x = Float64, y = Float64, r = Float64,
-                       color = Color, alpha = Float32, z = Int32 })
+                       color = Color, alpha = Float64, z = Int32 })
         /// 端点 a→b を太さ width で結ぶ線。
         case LineI({ id = Option[String], a = Vec2.Vec2, b = Vec2.Vec2, width = Float64,
-                     color = Color, alpha = Float32, z = Int32 })
+                     color = Color, alpha = Float64, z = Int32 })
         /// 左上 (x, y) に字の高さ size で置く文字列。
         case TextI({ id = Option[String], x = Float64, y = Float64, size = Float64,
                      text = String, color = Color, z = Int32 })
         /// 左上 (x, y) から w×h に伸縮して置くテクスチャ。texture は project.json の manifest 名。
         case SpriteI({ id = Option[String], x = Float64, y = Float64, w = Float64, h = Float64,
-                       texture = String, alpha = Float32, z = Int32 })
+                       texture = String, alpha = Float64, z = Int32 })
     }
 
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
@@ -143,7 +143,7 @@ mod PreviewItems {
     /// 表記の解釈は ui.json と同じ UiDoc.colorOf にそろえる (色方言を増やさない)。
     def colorField(loc: String, key: String, obj: Map[String, Json]): Result[String, Color] =
         match Map.get(key, obj) {
-            case None       => Ok({ r = 1.0f32, g = 1.0f32, b = 1.0f32 })
+            case None       => Ok({ r = 1.0, g = 1.0, b = 1.0 })
             case Some(json) => UiDoc.colorOf(Map.empty(), key, json)
                 |> Result.mapErr(_ -> "${loc}: ${key} は \"#rrggbb\" の形で書いてください")
         }
@@ -160,8 +160,8 @@ mod PreviewItems {
     def idField(obj: Map[String, Json]): Option[String] =
         Map.get("id", obj) |> Option.flatMap(JsonCodec.expectString)
 
-    def alphaField(obj: Map[String, Json]): Float32 =
-        JsonCodec.floatOr("alpha", 1.0, obj) |> Float64.truncateToFloat32
+    def alphaField(obj: Map[String, Json]): Float64 =
+        JsonCodec.floatOr("alpha", 1.0, obj)
 
     def zField(obj: Map[String, Json]): Int32 =
         JsonCodec.intOr("z", 0, obj)
@@ -282,7 +282,7 @@ mod PreviewItems {
         match item {
             case Item.BoxI(box)       =>
                 let body = RawDraw.box({ x = box#w, y = box#h }, box#color, box#z)
-                    |> Render.fade(Float32.toFloat64(box#alpha));
+                    |> Render.fade(box#alpha);
                 let framed = match box#outline {
                     case None        => body
                     case Some(color) => body |> Render.outline(color, 1.0)
@@ -290,10 +290,10 @@ mod PreviewItems {
                 ({ at = { x = box#x, y = box#y }, item = framed }) :: Nil
             case Item.CircleI(circle) =>
                 let filled = RawDraw.circleAt({ x = circle#x, y = circle#y }, circle#r, circle#color, circle#z);
-                ({ item = Render.fade(Float32.toFloat64(circle#alpha), filled#item) | filled }) :: Nil
+                ({ item = Render.fade(circle#alpha, filled#item) | filled }) :: Nil
             case Item.LineI(line)     =>
                 let seg = RawDraw.lineSeg(line#a, line#b, line#width, line#color, line#z);
-                ({ item = Render.fade(Float32.toFloat64(line#alpha), seg#item) | seg }) :: Nil
+                ({ item = Render.fade(line#alpha, seg#item) | seg }) :: Nil
             case Item.TextI(text)     =>
                 ({ at = { x = text#x, y = text#y },
                    item = Render.textTinted(text#text, atlas, text#size, text#color, text#z) }) :: Nil
@@ -305,7 +305,7 @@ mod PreviewItems {
                     // 合わせる伸縮は縦横で倍率が違い、一様倍率しか無い Render.scaled では書けない。
                     ({ at = { x = sprite#x + sprite#w / 2.0, y = sprite#y + sprite#h / 2.0 },
                        item = Render.Item.Sprite({
-                           texture = sprite#texture, tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                           texture = sprite#texture, tint = { r = 1.0, g = 1.0, b = 1.0 },
                            alpha = sprite#alpha,
                            scale = { x = sprite#w / info#width, y = sprite#h / info#height },
                            rotation = 0.0, centered = true, flipH = false, flipV = false,

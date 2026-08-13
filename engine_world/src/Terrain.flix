@@ -177,7 +177,7 @@ mod Terrain {
                 else Some(
                     { at = { x = x0, y = y0 },
                       item = RawDraw.box({ x = x1 - x0, y = y1 - y0 },
-                                        { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                                        { r = 1.0, g = 1.0, b = 1.0 },
                                         entry#z#surface)
                           |> Render.fade(alpha) })
             })

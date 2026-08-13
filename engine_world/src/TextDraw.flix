@@ -56,7 +56,7 @@ mod TextDraw {
                     let (i, line) = pair;
                     { at = { x = 8.0, y = 8.0 + Int32.toFloat64(i) * 11.0 },
                       item = Render.textTinted(line, atlas, 8.0,
-                                               { r = 1.0f32, g = 0.4f32, b = 0.4f32 }, 200) }
+                                               { r = 1.0, g = 0.4, b = 0.4 }, 200) }
                 })
         }
 

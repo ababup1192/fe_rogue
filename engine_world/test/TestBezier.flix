@@ -24,5 +24,5 @@ mod TestBezier {
         let starFill = Bezier.fill(Bezier.star({x = 0.0, y = 0.0}, rOut = 21.0, rIn = 9.0), white(), 1);
         Assert.assertEq(expected = (1, 1), (List.length(ellipseFill), List.length(starFill)))
 
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def white(): Color = {r = 1.0, g = 1.0, b = 1.0}
 }

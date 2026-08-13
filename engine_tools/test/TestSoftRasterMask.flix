@@ -28,14 +28,14 @@ mod TestSoftRasterMask {
             :: Nil;
         let d: GameEngine.Drawable =
             { texture = "paper", position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
-              rotation = 0.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
+              rotation = 0.0, color = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0,
               centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
               zIndex = 0, style = None, clip = None, blend = DrawCmd.BlendMode.Normal,
               mask = mask };
         let req: SoftRaster.RasterReq =
             { drawables = d :: Nil, polygons = Nil,
               design = { x = 8.0, y = 8.0 }, scale = 1,
-              background = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+              background = { r = 0.0, g = 0.0, b = 0.0 },
               texturePath = Map.empty(),
               fontTtf = "../templates/game-starter/assets/Xolonium-Regular.ttf",
               fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,

@@ -32,7 +32,7 @@ mod TestCameraRig {
     def testToWorldPosInvertsCenterOn(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
         let world = { x = 110.0, y = 50.0 };
-        let placed = { at = world, item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, 0) };
+        let placed = { at = world, item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0, g = 0.0, b = 0.0 }, 0) };
         let screen = CameraRig.centerOn(center, zoom = 2.0, design = rigDesign(), placed :: Nil)
             |> List.head |> Option.map(p -> p#at) |> Option.getWithDefault(Vec2.zero());
         let back = CameraRig.toWorldPos(center, zoom = 2.0, design = rigDesign(), screen = screen);
@@ -151,7 +151,7 @@ mod TestCameraRig {
         Assert.assertEq(expected = (-60.0, -70.0, 320.0, 240.0),
             (r#position#x, r#position#y, r#size#x, r#size#y))
 
-    def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
+    def red(): Color = { r = 1.0, g = 0.0, b = 0.0 }
 
     // ── clampCenter / parallaxCenter ──
 

@@ -20,7 +20,7 @@ mod Lifetime {
 
     /// 進行度 0..1（開始で 0・寿命で 1）。
     pub def progressOf(now: Float64, l: Lifetime): Float64 =
-        clamp01((now - l#startedAt) / l#dur)
+        Num.clamp01((now - l#startedAt) / l#dur)
 
     /// 残り秒（0 未満にはならない）。
     pub def remaining(now: Float64, l: Lifetime): Float64 =
@@ -30,6 +30,4 @@ mod Lifetime {
     pub def alive(now: Float64, l: Lifetime): Bool =
         let e = now - l#startedAt;
         e >= 0.0 and e < l#dur
-
-    def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
 }

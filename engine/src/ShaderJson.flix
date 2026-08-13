@@ -514,7 +514,7 @@ mod ShaderJson {
             case JString(s)  => parseHexColor(s)
             case JObject(m)  =>
                 forM (r <- numAt("r", m); g <- numAt("g", m); b <- numAt("b", m))
-                    yield ({ r = f32(r), g = f32(g), b = f32(b) }: Color)
+                    yield ({ r = unit01(r), g = unit01(g), b = unit01(b) }: Color)
             case _ => Err(err("color must be \"#rrggbb\" or {r,g,b}"))
         }
 
@@ -525,9 +525,9 @@ mod ShaderJson {
                     hexByte(String.slice({ start = 2 }, { end = 4 }, hex)),
                     hexByte(String.slice({ start = 4 }, { end = 6 }, hex))) {
             case (Some(r), Some(g), Some(b)) =>
-                Ok({ r = f32(Int32.toFloat64(r) / 255.0),
-                     g = f32(Int32.toFloat64(g) / 255.0),
-                     b = f32(Int32.toFloat64(b) / 255.0) })
+                Ok({ r = Int32.toFloat64(r) / 255.0,
+                     g = Int32.toFloat64(g) / 255.0,
+                     b = Int32.toFloat64(b) / 255.0 })
             case _ => Err(err("color hex has non-hex digits: '${s}'"))
         }
 
@@ -590,8 +590,8 @@ mod ShaderJson {
     def err(msg: String): JsonError =
         Decode(JsonPath.empty(), TypeMismatch(msg))
 
-    def f32(x: Float64): Float32 =
-        Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
+    def unit01(x: Float64): Float64 =
+        Float64.max(0.0, Float64.min(1.0, x))
 
     // ========================================================================
     // toJson（Spec → Json・往復テスト用）
@@ -782,9 +782,7 @@ mod ShaderJson {
         }
 
     def colorToJson(c: Color): Json =
-        JObject(Map#{ "r" => num(Float32.toFloat64(c#r)),
-                      "g" => num(Float32.toFloat64(c#g)),
-                      "b" => num(Float32.toFloat64(c#b)) })
+        JObject(Map#{ "r" => num(c#r), "g" => num(c#g), "b" => num(c#b) })
 
     def vec2ToJson(v: Vec2.Vec2): Json =
         JObject(Map#{ "x" => num(v#x), "y" => num(v#y) })

@@ -369,7 +369,7 @@ mod App {
 
     /// 鳴り続けてほしい音 1 本の宣言。name は project.json の sounds の論理名、
     /// volume は音量 0.0〜1.0、pitch は高さ（1.0 = 元のまま・2.0 で 1 オクターブ上）。
-    pub type alias Sustain = { name = String, volume = Float32, pitch = Float32 }
+    pub type alias Sustain = { name = String, volume = Float64, pitch = Float64 }
 
     /// 「このフレームで鳴り続けていてほしい音」を World から導く関数を繋ぐ。
     /// 宣言に載っている間その音は鳴り続け（ループ再生）、載らなくなったフレームで止まる。
@@ -1183,7 +1183,7 @@ mod App {
                         tileSize    = spec#tileSet#atlasSource#tileSize,
                         position    = pos,
                         tileScale   = scale,
-                        color       = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                        color       = { r = 1.0, g = 1.0, b = 1.0 },
                         zIndex      = spec#zIndex,
                         tileVaoId   = vao,
                         tileCount   = count };

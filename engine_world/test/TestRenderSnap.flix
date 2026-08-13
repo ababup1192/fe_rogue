@@ -3,7 +3,7 @@ mod TestRenderSnap {
 
     def poly(xs: List[(Float64, Float64)]): Render.Item =
         RawDraw.polygon(xs |> List.map(p -> { x = fst(p), y = snd(p) }),
-            { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 0)
+            { r = 1.0, g = 1.0, b = 1.0 }, 0)
 
     def vertsOf(item: Render.Item): List[(Float64, Float64)] =
         match item {
@@ -38,7 +38,7 @@ mod TestRenderSnap {
     def testNonPolygonItemsPassThrough(): Unit \ Assert =
         // 箱や絵は元から軸に平行なので、頂点をいじる必要はない（置き場所だけ揃う）。
         let box = { at = { x = 3.7, y = 3.2 },
-                    item = RawDraw.box({ x = 4.0, y = 4.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 0) };
+                    item = RawDraw.box({ x = 4.0, y = 4.0 }, { r = 1.0, g = 1.0, b = 1.0 }, 0) };
         let out = Render.snappedAll(1.0, box :: Nil) |> List.map(p -> (p#at#x, p#at#y));
         Assert.assertEq(expected = (4.0, 3.0) :: Nil, out)
 }

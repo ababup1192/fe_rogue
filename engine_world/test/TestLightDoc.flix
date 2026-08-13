@@ -19,7 +19,7 @@ mod TestLightDoc {
     def firstLight(spec: LightDoc.Spec): Option[LightDoc.LightSpec] =
         List.head(spec#lights)
 
-    def colorTuple(c: Color): (Float32, Float32, Float32) =
+    def colorTuple(c: Color): (Float64, Float64, Float64) =
         (c#r, c#g, c#b)
 
     /// 相談で承認したカンテラ相当のスペック（light.json 語彙の正の形）。
@@ -49,7 +49,7 @@ mod TestLightDoc {
     def testParseLight(): Unit \ Assert =
         let got = parseDoc(lanternDoc()) |> Option.flatMap(firstLight)
             |> Option.map(l -> (l#at#x, l#at#y, l#radius, colorTuple(l#color), l#halo));
-        let ch = (v: Int32) -> Float64.truncateToFloat32(Int32.toFloat64(v) / 255.0);
+        let ch = (v: Int32) -> Int32.toFloat64(v) / 255.0;
         Assert.assertEq(
             expected = Some((160.0, 120.0, 48.0, (ch(255), ch(191), ch(102)), 0.35)),
             got)
@@ -85,7 +85,7 @@ mod TestLightDoc {
     @Test
     def testParseAmbientAndShadowStrength(): Unit \ Assert =
         let doc = "{ \"ambient\": \"#102030\", \"shadowStrength\": 0.7, \"lights\": [] }";
-        let ch = (v: Int32) -> Float64.truncateToFloat32(Int32.toFloat64(v) / 255.0);
+        let ch = (v: Int32) -> Int32.toFloat64(v) / 255.0;
         let got = parseDoc(doc) |> Option.map(spec -> (colorTuple(spec#ambient), spec#shadowStrength));
         Assert.assertEq(expected = Some(((ch(16), ch(32), ch(48)), 0.7)), got)
 
@@ -122,7 +122,7 @@ mod TestLightDoc {
     def testParseColorVariants(): Unit \ Assert =
         let doc = "{ \"lights\": [ { \"at\": [0,0], \"radius\": 1, \"color\": {\"rgb\":[0.1,0.2,0.3]} } ] }";
         let got = parseDoc(doc) |> Option.flatMap(firstLight) |> Option.map(l -> colorTuple(l#color));
-        Assert.assertEq(expected = Some((0.1f32, 0.2f32, 0.3f32)), got)
+        Assert.assertEq(expected = Some((0.1, 0.2, 0.3)), got)
 
     // ════════════════════════════════════════════════════════
     // parse: エラー（形違い・パス付き）
@@ -178,7 +178,7 @@ mod TestLightDoc {
     def testToConfigWithLightsReplacesLights(): Unit \ Assert =
         let spec = parseDoc(lanternDoc()) |> Option.getWithDefault(LightDoc.empty());
         let runtimeLight = { at = { x = 5.0, y = 6.0 }, radius = 9.0,
-                             color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.2 };
+                             color = { r = 1.0, g = 1.0, b = 1.0 }, halo = 0.2 };
         let cfg = LightDoc.toConfigWithLights(spec, runtimeLight :: Nil, ctxFor(Nil));
         Assert.assertEq(
             expected = Some((5.0, 6.0)),
@@ -218,7 +218,7 @@ mod TestLightDoc {
     def testToLightMapConfigWithLightsReplacesLights(): Unit \ Assert =
         let spec = parseDoc(lanternDoc()) |> Option.getWithDefault(LightDoc.empty());
         let runtimeLight = { at = { x = 5.0, y = 6.0 }, radius = 9.0,
-                             color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.2 };
+                             color = { r = 1.0, g = 1.0, b = 1.0 }, halo = 0.2 };
         let cfg = LightDoc.toLightMapConfigWithLights(spec, runtimeLight :: Nil, mapCtx());
         Assert.assertEq(
             expected = Some((5.0, 6.0)),

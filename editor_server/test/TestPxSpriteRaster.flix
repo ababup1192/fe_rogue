@@ -24,14 +24,14 @@ mod TestPxSpriteRaster {
 
     def resolver(key: String): Color =
         match key {
-            case "body" => { r = 0.86f32, g = 0.30f32, b = 0.29f32 }
-            case "hair" => { r = 0.18f32, g = 0.14f32, b = 0.12f32 }
-            case _      => { r = 0.91f32, g = 0.76f32, b = 0.63f32 }
+            case "body" => { r = 0.86, g = 0.30, b = 0.29 }
+            case "hair" => { r = 0.18, g = 0.14, b = 0.12 }
+            case _      => { r = 0.91, g = 0.76, b = 0.63 }
         }
 
     def design(): Vec2.Vec2 = { x = 48.0, y = 36.0 }
 
-    def bg(): Color = { r = 0.05f32, g = 0.075f32, b = 0.055f32 }
+    def bg(): Color = { r = 0.05, g = 0.075, b = 0.055 }
 
     /// items → BufferedImage(regionRect は textureInfoOf = アトラス寸法で解決)。
     def raster(sideF: Float64, texPath: Map[String, String],

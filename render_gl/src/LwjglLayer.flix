@@ -422,7 +422,7 @@ mod LwjglLayer {
         // 別の色で塗ると、起動画面の 1 枚目が出た瞬間に画面の色がパッと変わって見える。
         let clear = config#clearColor;
         GL11.glViewport(0, 0, fbWidth, fbHeight);
-        GL11.glClearColor(clear#r, clear#g, clear#b, 1.0f32);
+        GL11.glClearColor(RenderUtil.f32(clear#r), RenderUtil.f32(clear#g), RenderUtil.f32(clear#b), 1.0f32);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
         GLFW.glfwSwapBuffers(window);
         GLFW.glfwPollEvents();
@@ -913,7 +913,7 @@ mod LwjglLayer {
             }
             def setVolume(name, volume, k) = {
                 match Map.get(name, audioRegistry) {
-                    case Some(src) => AL10.alSourcef(src, AL10.AL_GAIN, volume)
+                    case Some(src) => AL10.alSourcef(src, AL10.AL_GAIN, RenderUtil.f32(volume))
                     case None      => warnMissingSound("setVolume", name)
                 };
                 k(())
@@ -921,7 +921,7 @@ mod LwjglLayer {
             def setPitch(name, pitch, k) = {
                 match Map.get(name, audioRegistry) {
                     // 0 以下は OpenAL がエラーにして音が止まるので、聞こえる下限で止める。
-                    case Some(src) => AL10.alSourcef(src, AL10.AL_PITCH, Float32.max(0.01f32, pitch))
+                    case Some(src) => AL10.alSourcef(src, AL10.AL_PITCH, RenderUtil.f32(Float64.max(0.01, pitch)))
                     case None      => warnMissingSound("setPitch", name)
                 };
                 k(())
@@ -937,7 +937,7 @@ mod LwjglLayer {
             }
             def setMasterVolume(gain, k) = {
                 // listener gain は全ソースに乗算で効く = マスター音量。範囲外は契約どおりクランプ。
-                AL10.alListenerf(AL10.AL_GAIN, Float32.max(0.0f32, Float32.min(1.0f32, gain)));
+                AL10.alListenerf(AL10.AL_GAIN, RenderUtil.f32(Float64.max(0.0, Float64.min(1.0, gain))));
                 k(())
             }
             def reloadAudio(name, path, k) = {

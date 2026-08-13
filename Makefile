@@ -112,6 +112,7 @@ help:
 	@echo "  make lint-audio           音名が SfxRender の名・project.json・コードの 3 か所でそろっているか検査"
 	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
 	@echo "  make lint-fallback        読み込みの途中で bug! していないか検査 (許すのは *OrBug の中だけ)"
+	@echo "  make lint-f32             engine の pub 面に Float32 が出ていないか検査 (Float32 は GL / OpenAL / STB の内側だけ)"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make render               render ターゲットを持つ全 template の生成物を描き出し直す"
@@ -304,6 +305,15 @@ lint-jargon:
 lint-fallback:
 	@python3 bin/lint-fallback.py --self-test >/dev/null
 	@python3 bin/lint-fallback.py --all
+
+# ── ゲート: pub 面に Float32 を出さない ───────────────────────
+# ゲームを書く側は Float64 と Int32 だけで済むのが決まり。Float32 は
+# GL / OpenAL / STB の境界の内側だけ (plans/f32-boundary.md)。
+# 残すと決めた Float32 は bin/lint-f32.py の EXEMPT に理由付きで載っている。
+.PHONY: lint-f32
+lint-f32:
+	@python3 bin/lint-f32.py --self-test >/dev/null
+	@python3 bin/lint-f32.py
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ

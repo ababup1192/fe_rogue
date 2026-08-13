@@ -100,16 +100,16 @@ mod ViewRoad {
         Color.mix(PaletteDoc.resolve(w#palette, key), ThemeDoc.hazeTo(w#theme), Proj.hazeAt(u))
 
     /// 落ち影の濃さ。霞のぶんだけ薄くする（遠くの影だけ黒く残ると点が散って見える）。
-    pub def shadowAlpha(u: Float64): Float32 =
-        Float64.truncateToFloat32(0.28 * (1.0 - Proj.hazeAt(u)))
+    pub def shadowAlpha(u: Float64): Float64 =
+        0.28 * (1.0 - Proj.hazeAt(u))
 
     /// 接地影の楕円 1 枚。立ち物・車の足元はぜんぶここから敷く（形と濃さの式を散らさない）。
     /// segs は縁の分割数 — 主役の車は既定の 32、遠くに何百と撒く立ち物は大きさなりに減らす。
     pub def shadowUnder(s: { at = Vec2.Vec2, radii = Vec2.Vec2, segs = Int32,
-                             alpha = Float32, z = Int32 }): Render.PlacedItem =
+                             alpha = Float64, z = Int32 }): Render.PlacedItem =
         RawDraw.ellipseSegsAt(s#at, s#radii, s#segs,
-                { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, s#z)
-            |> Render.overItem(Render.fade(Float32.toFloat64(s#alpha)))
+                { r = 0.0, g = 0.0, b = 0.0 }, s#z)
+            |> Render.overItem(Render.fade(s#alpha))
 
     /// 通し行の偶奇。OutRun 式の 1 行おきの縞は全部この判定に揃える
     /// （地面・路面・縁石が同じ行で同時に切り替わり、セグメントの境目が 1 本の線になる）。
@@ -154,10 +154,10 @@ mod ViewRoad {
         let wide = World.designW();
         { at = { x = 0.0, y = 0.0 },
           item = Render.gradPolygon(
-                 { pos = { x = 0.0, y = yTop },   color = far,  alpha = 1.0f32 }
-              :: { pos = { x = wide, y = yTop },  color = far,  alpha = 1.0f32 }
-              :: { pos = { x = wide, y = yBot },  color = near, alpha = 1.0f32 }
-              :: { pos = { x = 0.0, y = yBot },   color = near, alpha = 1.0f32 }
+                 { pos = { x = 0.0, y = yTop },   color = far,  alpha = 1.0 }
+              :: { pos = { x = wide, y = yTop },  color = far,  alpha = 1.0 }
+              :: { pos = { x = wide, y = yBot },  color = near, alpha = 1.0 }
+              :: { pos = { x = 0.0, y = yBot },   color = near, alpha = 1.0 }
               :: Nil, zGround()) } :: Nil
 
     // ── 草地の縦の筋（乾いた路肩・轍） ──
@@ -207,10 +207,10 @@ mod ViewRoad {
                 let quad = g ->
                     { at = { x = 0.0, y = 0.0 },
                       item = Render.gradPolygon(
-                             { pos = { x = Proj.edgeX(ed#near, g#nearA), y = y0 }, color = near, alpha = 1.0f32 }
-                          :: { pos = { x = Proj.edgeX(ed#near, g#nearB), y = y0 }, color = near, alpha = 1.0f32 }
-                          :: { pos = { x = Proj.edgeX(ed#far, g#farB),   y = y1 }, color = far,  alpha = 1.0f32 }
-                          :: { pos = { x = Proj.edgeX(ed#far, g#farA),   y = y1 }, color = far,  alpha = 1.0f32 }
+                             { pos = { x = Proj.edgeX(ed#near, g#nearA), y = y0 }, color = near, alpha = 1.0 }
+                          :: { pos = { x = Proj.edgeX(ed#near, g#nearB), y = y0 }, color = near, alpha = 1.0 }
+                          :: { pos = { x = Proj.edgeX(ed#far, g#farB),   y = y1 }, color = far,  alpha = 1.0 }
+                          :: { pos = { x = Proj.edgeX(ed#far, g#farA),   y = y1 }, color = far,  alpha = 1.0 }
                           :: Nil, zFurrow()) };
                 quad({ nearA = e#xl0 - o0 - lane#wid, nearB = e#xl0 - o0,
                        farA  = e#xl1 - o1 - lane#wid, farB  = e#xl1 - o1 })
@@ -296,10 +296,10 @@ mod ViewRoad {
         let xf = t -> Proj.edgeX(ed#far, lerp(e#xl1, e#xr1, t));
         { at = { x = 0.0, y = 0.0 },
           item = Render.gradPolygon(
-                 { pos = { x = xn(q#t0), y = y0 }, color = q#near, alpha = 1.0f32 }
-              :: { pos = { x = xn(q#t1), y = y0 }, color = q#near, alpha = 1.0f32 }
-              :: { pos = { x = xf(q#t1), y = y1 }, color = q#far,  alpha = 1.0f32 }
-              :: { pos = { x = xf(q#t0), y = y1 }, color = q#far,  alpha = 1.0f32 }
+                 { pos = { x = xn(q#t0), y = y0 }, color = q#near, alpha = 1.0 }
+              :: { pos = { x = xn(q#t1), y = y0 }, color = q#near, alpha = 1.0 }
+              :: { pos = { x = xf(q#t1), y = y1 }, color = q#far,  alpha = 1.0 }
+              :: { pos = { x = xf(q#t0), y = y1 }, color = q#far,  alpha = 1.0 }
               :: Nil, zRoad()) }
 
     /// 縁石の縞を何行で 1 色にするか。奥はセグメントが細くなり、1 行おきのままだと赤と白が同じ
@@ -509,16 +509,16 @@ mod ViewRoad {
         List.zip(stops, List.drop(1, stops)) |> List.map(pair -> {
             let (a, b) = pair;
             let vs = if (q#axis)
-                    { pos = { x = q#xl, y = yOfT(b#t) }, color = b#color, alpha = 1.0f32 }
-                 :: { pos = { x = q#xr, y = yOfT(b#t) }, color = b#color, alpha = 1.0f32 }
-                 :: { pos = { x = q#xr, y = yOfT(a#t) }, color = a#color, alpha = 1.0f32 }
-                 :: { pos = { x = q#xl, y = yOfT(a#t) }, color = a#color, alpha = 1.0f32 }
+                    { pos = { x = q#xl, y = yOfT(b#t) }, color = b#color, alpha = 1.0 }
+                 :: { pos = { x = q#xr, y = yOfT(b#t) }, color = b#color, alpha = 1.0 }
+                 :: { pos = { x = q#xr, y = yOfT(a#t) }, color = a#color, alpha = 1.0 }
+                 :: { pos = { x = q#xl, y = yOfT(a#t) }, color = a#color, alpha = 1.0 }
                  :: Nil
                 else
-                    { pos = { x = xOfT(a#t), y = q#yTop }, color = a#color, alpha = 1.0f32 }
-                 :: { pos = { x = xOfT(b#t), y = q#yTop }, color = b#color, alpha = 1.0f32 }
-                 :: { pos = { x = xOfT(b#t), y = q#yBot }, color = b#color, alpha = 1.0f32 }
-                 :: { pos = { x = xOfT(a#t), y = q#yBot }, color = a#color, alpha = 1.0f32 }
+                    { pos = { x = xOfT(a#t), y = q#yTop }, color = a#color, alpha = 1.0 }
+                 :: { pos = { x = xOfT(b#t), y = q#yTop }, color = b#color, alpha = 1.0 }
+                 :: { pos = { x = xOfT(b#t), y = q#yBot }, color = b#color, alpha = 1.0 }
+                 :: { pos = { x = xOfT(a#t), y = q#yBot }, color = a#color, alpha = 1.0 }
                  :: Nil;
             { at = { x = 0.0, y = 0.0 }, item = Render.gradPolygon(vs, q#z) }
         })
@@ -564,8 +564,8 @@ mod ViewRoad {
                        item = RawDraw.polygon(
                               { x = bl2, y = gb } :: { x = br2, y = gb }
                            :: { x = xr, y = gf }  :: { x = xl, y = gf }
-                           :: Nil, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
-                           |> Render.fade(Float32.toFloat64(shadowAlpha(s#uc))) };
+                           :: Nil, { r = 0.0, g = 0.0, b = 0.0 }, z)
+                           |> Render.fade(shadowAlpha(s#uc)) };
         let top = { at = { x = 0.0, y = 0.0 },
                     item = RawDraw.polygon(
                            { x = bl2, y = backTopY } :: { x = br2, y = backTopY }

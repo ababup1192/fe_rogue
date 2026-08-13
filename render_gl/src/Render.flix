@@ -20,7 +20,7 @@ mod RenderType {
         position   = Vec2.Vec2,
         scale      = Vec2.Vec2,
         color      = Color,
-        alpha      = Float32,
+        alpha      = Float64,
         uvOffset   = Vec2.Vec2,
         uvScale    = Vec2.Vec2,
         rotation   = Float64,

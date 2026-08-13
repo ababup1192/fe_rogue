@@ -72,12 +72,12 @@ mod TestSoftRaster {
     /// 最小の Drawable（属性は個々のテストで上書きする）。
     def drawable(texture: String, style: Option[GameEngine.BoxStyle]): GameEngine.Drawable =
         { texture = texture, position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
-          rotation = 0.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
+          rotation = 0.0, color = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
           zIndex = 0, style = style, clip = None, blend = DrawCmd.BlendMode.Normal, mask = Nil }
 
     def someStyle(): Option[GameEngine.BoxStyle] =
-        Some(DrawCmd.defaultStyle({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }))
+        Some(DrawCmd.defaultStyle({ r = 1.0, g = 1.0, b = 1.0 }))
 
     /// 単色の box に付けた style は描ける（＝報告に出ない）。テクスチャと文字に付けた style は
     /// この経路では絵に出ないので、件数つきで報告される。
@@ -100,17 +100,17 @@ mod TestSoftRaster {
     // 頂点色つき多角形（grad）の補間 — GL の頂点色補間と同じ線形の式であることの pin
     // ══════════════════════════════════════════════════════════════
 
-    def black(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    def black(): Color = { r = 0.0, g = 0.0, b = 0.0 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     /// 上 2 頂点 top・下 2 頂点 bottom の縦グラデ四角（0,0)-(4,4)。
     def vgradQuad(top: Color, bottom: Color): GameEngine.PolygonRenderCmd =
         { vertices = { x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 }
                   :: { x = 4.0, y = 4.0 } :: { x = 0.0, y = 4.0 } :: Nil,
-          color = top, alpha = 1.0f32, zIndex = 0, clip = None,
+          color = top, alpha = 1.0, zIndex = 0, clip = None,
           blend = DrawCmd.BlendMode.Normal,
-          grad = Some({ color = top, alpha = 1.0f32 } :: { color = top, alpha = 1.0f32 }
-                   :: { color = bottom, alpha = 1.0f32 } :: { color = bottom, alpha = 1.0f32 } :: Nil) }
+          grad = Some({ color = top, alpha = 1.0 } :: { color = top, alpha = 1.0 }
+                   :: { color = bottom, alpha = 1.0 } :: { color = bottom, alpha = 1.0 } :: Nil) }
 
     //   (0,0)黒 ── (4,0)黒
     //     │  y=1.5 の点は上下の 0.375 地点 → 灰 0.375（=3/8。二進で正確）
@@ -120,25 +120,25 @@ mod TestSoftRaster {
         let tris = DrawCmd.gradTriangles(vgradQuad(black(), white()));
         let got = SoftRaster.gradSample(tris, { x = 0.5, y = 1.5 })
             |> Option.map(t -> (t#color#r, t#color#g, t#color#b, t#alpha));
-        Assert.assertEq(expected = Some((0.375f32, 0.375f32, 0.375f32, 1.0f32)), got)
+        Assert.assertEq(expected = Some((0.375, 0.375, 0.375, 1.0)), got)
 
     /// 色列が頂点より短いときは残りを color（ここでは青）で補い、濃さは頂点 α × 全体 α。
     /// 角の真上でサンプルすると重みが (1,0,0) になるので、期待値が丸め無しで決まる。
     @Test
     def testGradShortListFallsBackToBaseColorAndFoldsAlpha(): Unit \ Assert =
-        let red: Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 };
-        let blue: Color = { r = 0.0f32, g = 0.0f32, b = 1.0f32 };
+        let red: Color = { r = 1.0, g = 0.0, b = 0.0 };
+        let blue: Color = { r = 0.0, g = 0.0, b = 1.0 };
         let tri: GameEngine.PolygonRenderCmd =
             { vertices = { x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 4.0 } :: Nil,
-              color = blue, alpha = 0.5f32, zIndex = 0, clip = None,
+              color = blue, alpha = 0.5, zIndex = 0, clip = None,
               blend = DrawCmd.BlendMode.Normal,
-              grad = Some({ color = red, alpha = 0.5f32 } :: Nil) };
+              grad = Some({ color = red, alpha = 0.5 } :: Nil) };
         let tris = DrawCmd.gradTriangles(tri);
         let sampleAt = at -> SoftRaster.gradSample(tris, at)
             |> Option.map(t -> (t#color#r, t#color#b, t#alpha));
         // 頂点 0 = 渡した赤（α = 0.5×0.5）、頂点 1 = 補われた青（α = 1×0.5）。
         Assert.assertEq(
-            expected = (Some((1.0f32, 0.0f32, 0.25f32)), Some((0.0f32, 1.0f32, 0.5f32))),
+            expected = (Some((1.0, 0.0, 0.25)), Some((0.0, 1.0, 0.5))),
             (sampleAt({ x = 0.0, y = 0.0 }), sampleAt({ x = 4.0, y = 0.0 })))
 
     /// 縦グラデ四角を 4×4 の PNG 画素に描き出すと、各行の画素中心 (y+0.5)/4 の位置の

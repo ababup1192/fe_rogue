@@ -32,13 +32,13 @@ mod TestHeadlessRenderImages {
         let atlas = HeadlessFont.buildUiAtlas(ttf, ttf);
         let cfg: HeadlessRender.RenderConfig =
             { design = { x = 16.0, y = 12.0 }, scale = 1,
-              background = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+              background = { r = 0.0, g = 0.0, b = 0.0 },
               texturePath = Map.empty(), fontTtf = ttf, fontAtlas = atlas,
               outDir = "build/test/rendergifwith", frameW = 16, frameH = 12,
               gifDelayMs = 66, gifFps = 15 };
         let spec: ShaderDoc.Spec = { name = "grad", cycleRate = 0.0, bindings = Nil,
             out = ShaderDoc.Out.Fill({
-                shade = ShaderDoc.Shade.Solid({ r = 1.0f32, g = 0.5f32, b = 0.2f32 }),
+                shade = ShaderDoc.Shade.Solid({ r = 1.0, g = 0.5, b = 0.2 }),
                 alpha = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) }) };
         let toCmds = t -> {
             let surf: SoftRaster.SurfaceCmd =

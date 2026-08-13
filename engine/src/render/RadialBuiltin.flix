@@ -54,7 +54,7 @@ mod RadialBuiltin {
     /// 直線減衰にしないのは、縁で傾きが 0 にならず正方形の輪郭が急な切り替わりとして
     /// 見えてしまうため（engine_world の Render.glowAt とも同じ式で、絵の系統が揃う）。
     def falloff(t: Float64): Float64 =
-        let x = clamp01(1.0 - t);
+        let x = Num.clamp01(1.0 - t);
         x * x * (3.0 - 2.0 * x)
 
     /// 画素 (x, y) の、テクスチャ中心からの距離を 0（中心）→ 1（縁）に正規化した値。
@@ -62,7 +62,7 @@ mod RadialBuiltin {
         let half = Int32.toFloat64(size()) / 2.0;
         let dx = Int32.toFloat64(x) + 0.5 - half;
         let dy = Int32.toFloat64(y) + 0.5 - half;
-        clamp01(Vec2.length({ x = dx, y = dy }) / half)
+        Num.clamp01(Vec2.length({ x = dx, y = dy }) / half)
 
     /// ARGB 1 画素を組む（shift 24/16/8/0 = A/R/G/B。SoftRaster.blendPixel と同じ配置）。
     def argb(a: Int32, r: Int32, g: Int32, b: Int32): Int32 =
@@ -73,8 +73,6 @@ mod RadialBuiltin {
 
     /// 0..1 を 0..255 の Int32 へ丸めてクランプする。
     def toByte(x: Float64): Int32 =
-        let v = Float64.tryToInt32(clamp01(x) * 255.0 + 0.5) |> Option.getWithDefault(0);
+        let v = Float64.tryToInt32(Num.clamp01(x) * 255.0 + 0.5) |> Option.getWithDefault(0);
         Int32.max(0, Int32.min(255, v))
-
-    def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
 }

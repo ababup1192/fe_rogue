@@ -326,10 +326,10 @@ mod RenderFrame {
         discard data.put(base + 7, f32(uvo#y));
         discard data.put(base + 8, f32(uvs#x));
         discard data.put(base + 9, f32(uvs#y));
-        discard data.put(base + 10, color#r);
-        discard data.put(base + 11, color#g);
-        discard data.put(base + 12, color#b);
-        discard data.put(base + 13, drawable#alpha);
+        discard data.put(base + 10, f32(color#r));
+        discard data.put(base + 11, f32(color#g));
+        discard data.put(base + 12, f32(color#b));
+        discard data.put(base + 13, f32(drawable#alpha));
         discard data.put(base + 14, if (useTex) 1.0f32 else 0.0f32);
         discard data.put(base + 15, if (sdf) 1.0f32 else 0.0f32);
         discard data.put(base + 18, f32(sx));
@@ -358,7 +358,7 @@ mod RenderFrame {
                 discard data.put(base + 37, 0.0f32)
             case Some(st) =>
                 // hatch の有効判定は drawSprite の hatchOn と同式(period<=0 は GLSL の mod が未定義なので無効扱い)。
-                let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0) 1.0f32 else 0.0f32;
+                let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0) 1.0f32 else 0.0f32;
                 let bc = st#borderColor;
                 let hc = st#stripeColor;
                 let cc = st#checkerColor;
@@ -366,22 +366,22 @@ mod RenderFrame {
                 discard data.put(base + 17, hatch);
                 discard data.put(base + 20, f32(st#cornerRadius));
                 discard data.put(base + 21, f32(st#borderWidth));
-                discard data.put(base + 22, bc#r);
-                discard data.put(base + 23, bc#g);
-                discard data.put(base + 24, bc#b);
-                discard data.put(base + 25, st#borderAlpha);
-                discard data.put(base + 26, hc#r);
-                discard data.put(base + 27, hc#g);
-                discard data.put(base + 28, hc#b);
-                discard data.put(base + 29, st#stripeAlpha);
+                discard data.put(base + 22, f32(bc#r));
+                discard data.put(base + 23, f32(bc#g));
+                discard data.put(base + 24, f32(bc#b));
+                discard data.put(base + 25, f32(st#borderAlpha));
+                discard data.put(base + 26, f32(hc#r));
+                discard data.put(base + 27, f32(hc#g));
+                discard data.put(base + 28, f32(hc#b));
+                discard data.put(base + 29, f32(st#stripeAlpha));
                 discard data.put(base + 30, f32(st#stripeWidth));
                 discard data.put(base + 31, f32(st#stripePeriod));
                 discard data.put(base + 32, Int32.toFloat32(st#stripeDir));
                 discard data.put(base + 33, f32(st#checkerCell));
-                discard data.put(base + 34, cc#r);
-                discard data.put(base + 35, cc#g);
-                discard data.put(base + 36, cc#b);
-                discard data.put(base + 37, st#checkerAlpha)
+                discard data.put(base + 34, f32(cc#r));
+                discard data.put(base + 35, f32(cc#g));
+                discard data.put(base + 36, f32(cc#b));
+                discard data.put(base + 37, f32(st#checkerAlpha))
         }
 
     // ── 詰め込みループの run 状態 ──────────────────────────────
@@ -809,7 +809,8 @@ mod RenderFrame {
                     GL11.glViewport(vpX, vpY, vpW, vpH);
                     GL11.glEnable(GL11.GL_SCISSOR_TEST);
                     GL11.glScissor(vpX, vpY, vpW, vpH);
-                    GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
+                    GL11.glClearColor(RenderUtil.f32(clearColor#r), RenderUtil.f32(clearColor#g),
+                                      RenderUtil.f32(clearColor#b), 1.0f32);
                     GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
                     GL11.glDisable(GL11.GL_SCISSOR_TEST)
                 case Some(op) =>
@@ -818,7 +819,7 @@ mod RenderFrame {
                     GL11.glViewport(vpX, vpY, vpW, vpH);
                     match op {
                         case RenderTarget.LoadOp.Clear(c) =>
-                            GL11.glClearColor(c#r, c#g, c#b, 1.0f32);
+                            GL11.glClearColor(RenderUtil.f32(c#r), RenderUtil.f32(c#g), RenderUtil.f32(c#b), 1.0f32);
                             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT)
                         case RenderTarget.LoadOp.ClearTransparent =>
                             GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 0.0f32);

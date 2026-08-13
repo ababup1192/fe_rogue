@@ -130,14 +130,14 @@ mod HeadlessRender {
         (drawables |> List.filter(d -> silhouetteKeeps(scope, d#zIndex)) |> List.map(blackenDrawable),
          polygons  |> List.filter(p -> silhouetteKeeps(scope, p#zIndex)) |> List.map(blackenPolygon))
 
-    def silhouetteInk(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+    def silhouetteInk(): Color = { r = 0.0, g = 0.0, b = 0.0 }
 
     /// Drawable を真っ黒の不透明に写す。texture は消さない — 絵の抜き（形）はテクスチャの
     /// α が持っていて、色は黒 tint の乗算で消えるため。blend は Normal にする（Add は黒を
     /// 足しても何も描かず、形ごと消える）。alpha を 1 に上げるのは、半透明の濃淡は塗りの
     /// 情報で、形の検査には雑音だから。
     def blackenDrawable(d: GameEngine.Drawable): GameEngine.Drawable =
-        { color = silhouetteInk(), alpha = 1.0f32, blend = DrawCmd.BlendMode.Normal,
+        { color = silhouetteInk(), alpha = 1.0, blend = DrawCmd.BlendMode.Normal,
           style = d#style |> Option.map(st ->
               { borderColor = silhouetteInk(), stripeColor = silhouetteInk(),
                 checkerColor = silhouetteInk() | st }) | d }
@@ -145,7 +145,7 @@ mod HeadlessRender {
     /// 多角形を真っ黒の不透明に写す。grad は外す — 頂点ごとの色は面の情報で、
     /// 残すと補間の縁が灰色に出てシルエットの縁が濁る。
     def blackenPolygon(p: GameEngine.PolygonRenderCmd): GameEngine.PolygonRenderCmd =
-        { color = silhouetteInk(), alpha = 1.0f32, blend = DrawCmd.BlendMode.Normal,
+        { color = silhouetteInk(), alpha = 1.0, blend = DrawCmd.BlendMode.Normal,
           grad = None | p }
 
     /// シルエット PNG を生成する（renderPng の変形版）。対象を黒・背景を白で <name>.png に書く。
@@ -155,7 +155,7 @@ mod HeadlessRender {
                           drawables: List[GameEngine.Drawable],
                           polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
         let (blackDrawables, blackPolygons) = silhouette(scope, drawables, polygons);
-        renderPng({ background = { r = 1.0f32, g = 1.0f32, b = 1.0f32 } | cfg },
+        renderPng({ background = { r = 1.0, g = 1.0, b = 1.0 } | cfg },
                   blackDrawables, blackPolygons, name)
 
     // ════════════════════════════════════════════════════════

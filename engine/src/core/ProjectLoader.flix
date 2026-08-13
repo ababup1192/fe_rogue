@@ -190,12 +190,6 @@ mod ProjectLoader {
             case _          => Err(err("'${key}' is not a number"))
         })
 
-    def getFloat32(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Float32] =
-        getField(map, key) |> Result.flatMap(v -> match v {
-            case JNumber(n) => Ok(n.floatValue())
-            case _          => Err(err("'${key}' is not a number"))
-        })
-
     def getBool(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Bool] =
         getField(map, key) |> Result.flatMap(v -> match v {
             case JBool(b) => Ok(b)
@@ -205,9 +199,9 @@ mod ProjectLoader {
     def readColor(elem: Util.Json.Json): Result[JsonError, Color] =
         forM (
             m <- matchObject(elem, "clearColor");
-            r <- getFloat32(m, "r");
-            g <- getFloat32(m, "g");
-            b <- getFloat32(m, "b")
+            r <- getFloat(m, "r");
+            g <- getFloat(m, "g");
+            b <- getFloat(m, "b")
         ) yield ({ r = r, g = g, b = b }: Color)
 
     def readTextures(rootDir: String, elem: Util.Json.Json):

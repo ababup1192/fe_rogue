@@ -238,9 +238,7 @@ mod View {
     /// マスの明度で色を沈める(cave 以外は素通し)。板を 1 枚だけ置く所で使う。
     def litColor(w: World.World, x: Int32, y: Int32, color: Color): Color =
         let (br, bg, bb) = LightGrid.brightnessAt(w#stage, w#light, x, y);
-        Color.rgb(Float32.toFloat64(color#r) * br,
-                  Float32.toFloat64(color#g) * bg,
-                  Float32.toFloat64(color#b) * bb)
+        Color.rgb(color#r * br, color#g * bg, color#b * bb)
 
     // ── 動く物(実機・描き出し共通)──
 

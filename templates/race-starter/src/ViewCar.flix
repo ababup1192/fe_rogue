@@ -92,7 +92,7 @@ mod ViewCar {
                 let quad = Render.Item.Sprite({
                     texture = spec#texture,
                     tint = spec#tint,
-                    alpha = 1.0f32,
+                    alpha = 1.0,
                     // Drawable の表示寸法 = テクスチャ全寸 × scale なので、
                     // 「コマ px × 実数 scale」になるよう辺長で割り戻す。
                     scale = { x = s * rect#size#x / sideF, y = s * rect#size#y / sideF },
@@ -168,7 +168,7 @@ mod ViewCar {
         let shadow = ViewRoad.shadowUnder({
                 at = { x = at#x + 2.0, y = at#y + 3.0 },
                 radii = { x = 17.0 * look#f * 0.55 / 2.0, y = 27.0 * look#f * 0.55 / 2.0 },
-                segs = 32, alpha = 0.28f32, z = look#z });
+                segs = 32, alpha = 0.28, z = look#z });
         shadow :: pxGridAt(carColor(w#palette, look#color), carGrid(w),
             { at = at, f = look#f, turn = look#turn, z = look#z })
 
@@ -261,8 +261,7 @@ mod ViewCar {
         let cMid = Color.mix(w#theme#flame, ThemeDoc.flameDeep(w#theme), p);
         let cOut = ThemeDoc.flameDeep(w#theme);
         let base = 1.45 * Float64.pow(base = 1.0 - p, 1.1);
-        let al = a -> Float64.truncateToFloat32(
-            Num.clamp01(base * (0.22 + 0.78 * shockRear(a))));
+        let al = a -> Num.clamp01(base * (0.22 + 0.78 * shockRear(a)));
         List.range(0, n) |> List.flatMap(i -> {
             let a0 = 2.0 * Vec2.pi() * Int32.toFloat64(i) / Int32.toFloat64(n);
             let a1 = 2.0 * Vec2.pi() * Int32.toFloat64(i + 1) / Int32.toFloat64(n);
@@ -275,8 +274,8 @@ mod ViewCar {
                       :: { pos = shockPt(c, r, a0, s#k1), color = s#c1, alpha = s#f1 * al(a0) }
                       :: Nil, z)
                       |> Render.blended(DrawCmd.BlendMode.Add) };
-            quad({ k0 = inK,  c0 = cIn,  f0 = 0.20f32, k1 = midK, c1 = cMid, f1 = 1.0f32 })
-                :: quad({ k0 = midK, c0 = cMid, f0 = 1.0f32,  k1 = 1.0, c1 = cOut, f1 = 0.0f32 })
+            quad({ k0 = inK,  c0 = cIn,  f0 = 0.20, k1 = midK, c1 = cMid, f1 = 1.0 })
+                :: quad({ k0 = midK, c0 = cMid, f0 = 1.0,  k1 = 1.0, c1 = cOut, f1 = 0.0 })
                 :: Nil
         })
 

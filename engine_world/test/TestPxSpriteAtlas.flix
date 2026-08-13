@@ -21,8 +21,8 @@ mod TestPxSpriteAtlas {
             "}" :: Nil))
             |> Option.getWithDefault(PxSpriteDoc.empty())
 
-    def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
-    def blue(): Color = { r = 0.0f32, g = 0.0f32, b = 1.0f32 }
+    def red(): Color = { r = 1.0, g = 0.0, b = 0.0 }
+    def blue(): Color = { r = 0.0, g = 0.0, b = 1.0 }
 
     def resolver(key: String): Color =
         if (key == "body") red() else blue()
@@ -93,7 +93,7 @@ mod TestPxSpriteAtlas {
     @Test
     def testArgbOfRounds(): Unit \ Assert =
         // 0.5 → 127.5+0.5 = 128。
-        let c: Color = { r = 0.5f32, g = 0.0f32, b = 1.0f32 };
+        let c: Color = { r = 0.5, g = 0.0, b = 1.0 };
         let p = PxSpriteAtlas.argbOf(c);
         let ch = shift -> Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, p), 255);
         Assert.assertEq(expected = (255, 128, 0, 255), (ch(24), ch(16), ch(8), ch(0)))

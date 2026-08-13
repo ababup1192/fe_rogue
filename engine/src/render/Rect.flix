@@ -6,17 +6,17 @@ pub enum Rect {
     case Rect({
         transform = Transform,
         visual = Visual,
-        alpha = Float32,
+        alpha = Float64,
         size = Vec2.Vec2,
         // 角丸半径（px、design 解像度）。0 で直角、>0 で BoxStyle 経由の角丸描画。
         cornerRadius = Float64,
         // 枠線（design px）。borderWidth<=0 または borderAlpha<=0 で枠なし。
         borderColor = Color,
-        borderAlpha = Float32,
+        borderAlpha = Float64,
         borderWidth = Float64,
         // 45° 斜線ハッチ。stripeWidth<=0 または stripeAlpha<=0 で無効。
         stripeColor = Color,
-        stripeAlpha = Float32,
+        stripeAlpha = Float64,
         stripeWidth = Float64,
         stripePeriod = Float64
     })
@@ -28,14 +28,14 @@ mod Rect {
         Rect.Rect({
             transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
             visual = Visual.setColor(color, Visual.default()),
-            alpha = 1.0f32,
+            alpha = 1.0,
             size = size,
             cornerRadius = 0.0,
-            borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
-            borderAlpha = 0.0f32,
+            borderColor = {r = 1.0, g = 1.0, b = 1.0},
+            borderAlpha = 0.0,
             borderWidth = 0.0,
-            stripeColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
-            stripeAlpha = 0.0f32,
+            stripeColor = {r = 1.0, g = 1.0, b = 1.0},
+            stripeAlpha = 0.0,
             stripeWidth = 0.0,
             stripePeriod = 0.0
         })
@@ -61,7 +61,7 @@ mod Rect {
         Rect.Rect({visual = f(r#visual) | r})
 
     /// alpha を設定する
-    pub def setAlpha(alpha: Float32, rect: Rect): Rect =
+    pub def setAlpha(alpha: Float64, rect: Rect): Rect =
         let Rect.Rect(r) = rect;
         Rect.Rect({ alpha = alpha | r })
 
@@ -76,7 +76,7 @@ mod Rect {
         Rect.Rect({ borderColor = color | r })
 
     /// 枠線の不透明度を設定する（0 で枠なし）。
-    pub def setBorderAlpha(alpha: Float32, rect: Rect): Rect =
+    pub def setBorderAlpha(alpha: Float64, rect: Rect): Rect =
         let Rect.Rect(r) = rect;
         Rect.Rect({ borderAlpha = alpha | r })
 
@@ -92,7 +92,7 @@ mod Rect {
 
     /// 45° 斜線ハッチを設定する。width<=0 または alpha<=0 で無効。
     /// 塗りの上に stripeColor の縞を over 合成する。
-    pub def setStripe(color: Color, alpha: Float32, width: Float64, period: Float64,
+    pub def setStripe(color: Color, alpha: Float64, width: Float64, period: Float64,
                       rect: Rect): Rect =
         let Rect.Rect(r) = rect;
         Rect.Rect({ stripeColor = color, stripeAlpha = alpha,
@@ -111,8 +111,8 @@ mod Rect {
         Rect.Rect({ size = size | r })
 
     /// 枠線＋角丸＋斜線ハッチをまとめた BoxStyle を作る。
-    def boxStyleOf(r: {cornerRadius = Float64, borderColor = Color, borderAlpha = Float32,
-                       borderWidth = Float64, stripeColor = Color, stripeAlpha = Float32,
+    def boxStyleOf(r: {cornerRadius = Float64, borderColor = Color, borderAlpha = Float64,
+                       borderWidth = Float64, stripeColor = Color, stripeAlpha = Float64,
                        stripeWidth = Float64, stripePeriod = Float64 | s}): GameEngine.BoxStyle =
         // Rect が持たない縞の向き・市松は defaultStyle の既定値のまま。
         {cornerRadius = r#cornerRadius, borderWidth = r#borderWidth,
@@ -124,8 +124,8 @@ mod Rect {
     /// Drawable に変換する（texture="" でテクスチャなしを示す）
     pub def toDrawable(rect: Rect, globalPos: Vec2.Vec2): GameEngine.Drawable =
         let Rect.Rect(r) = rect;
-        let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32)
-            or (r#borderWidth > 0.0 and r#borderAlpha > 0.0f32);
+        let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0)
+            or (r#borderWidth > 0.0 and r#borderAlpha > 0.0);
         {
             texture = "",
             position = globalPos,

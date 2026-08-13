@@ -47,7 +47,7 @@ mod TownMap {
                     case Some(r) =>
                         ({ px = { x = Int32.toFloat64(x) * t, y = Int32.toFloat64(y) * t },
                            srcX = r#position#x, srcY = r#position#y,
-                           flipH = false, flipV = false, alpha = 1.0f32,
+                           flipH = false, flipV = false, alpha = 1.0,
                            tint = TileLayer.noTint() }: TileData) :: Nil
                 }
             })

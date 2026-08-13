@@ -159,7 +159,7 @@ mod TestApp {
 
     def boxAtOrigin(): Render.PlacedItem =
         { at = { x = 0.0, y = 0.0 },
-          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, 0) }
+          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0, g = 0.0, b = 0.0 }, 0) }
 
     def atOf(items: List[Render.PlacedItem]): Option[(Float64, Float64)] =
         List.head(items) |> Option.map(p -> (p#at#x, p#at#y))
@@ -194,7 +194,7 @@ mod TestApp {
 
     def boxAtZ(z: Int32): Render.PlacedItem =
         { at = { x = 0.0, y = 0.0 },
-          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, z) }
+          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0, g = 0.0, b = 0.0 }, z) }
 
     def zAt(i: Int32, items: List[Render.PlacedItem]): Option[Int32] =
         List.head(List.drop(i, items)) |> Option.flatMap(p -> match p#item {

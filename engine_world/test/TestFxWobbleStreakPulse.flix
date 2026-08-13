@@ -4,7 +4,7 @@
 // 1 ビットも動かないこと、JSON を読み取れること・範囲外を loud に断ること。
 mod TestFxWobbleStreakPulse {
 
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     /// ばらつきゼロ・等速 10px/s・真右向きの基準 emitter（TestFxVocab と同じ）。
     def baseEmitter(): FxDoc.Emitter =
