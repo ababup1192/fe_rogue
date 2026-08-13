@@ -503,6 +503,9 @@ mod LwjglLayer {
         let textureKeyRef: Ref[Map[String, String], Static] = Ref.fresh(Static, Map.empty());
         // 見つからないと知らせたフォント名。同じ名前で毎フレーム鳴らさないための控え。
         let missingFontRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
+        // 見つからないと知らせたテクスチャ名（renderFrameMixed へ毎フレーム貸す）。
+        // フレームごとに作り直すと、同じ知らせが 60 回/秒 出てしまう。
+        let missingTextureRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
 
         // 静的多角形バッファのキャッシュ（キー → 焼いた VBO とレンジ目次）。テクスチャ registry と
         // 同じくエンジン内部に隠し、ゲームは GameEngine.StaticLayerCmd のキーと中身を宣言するだけ。
@@ -585,7 +588,8 @@ mod LwjglLayer {
             spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
             instMultiplyBlend = instMultiplyBlend,
             surfaces = Nil, drawSurface = drawSurface,
-            targetClear = None, targetNames = Set.empty()
+            targetClear = None, targetNames = Set.empty(),
+            texWarnLog = missingTextureRef
         };
         // 画面への 1 フレーム。静的レイヤーはここで resolve（キャッシュ照合・必要なら
         // 焼き直し）し、レンジ列を FrameArgs に載せる。None なら Nil（従来と同じ経路）。
@@ -695,10 +699,15 @@ mod LwjglLayer {
         let growTable = RenderGlyphGrow.newTable();
         List.forEach(entry -> {
             match Map.get(entry#name, gameAtlases) {
-                case None => ()
+                case None =>
+                    Log.warn("font: フォント '${entry#name}' のアトラスが焼けていない"
+                        + " — 起動時に焼かなかった字は後から足せない（project.json の fonts の path を確認）")
                 case Some(atlas) =>
                     match Map.get(atlas#textureName, registry) {
-                        case None => ()
+                        case None =>
+                            Log.warn("font: フォント '${entry#name}' のアトラス画像"
+                                + " '${atlas#textureName}' が registry に無い"
+                                + " — 起動時に焼かなかった字は後から足せない")
                         case Some(texInfo) =>
                             RenderGlyphGrow.register(growTable, atlas,
                                 { path = entry#path, texId = GpuHandle.textureIdInt(texInfo#id) })
@@ -743,6 +752,19 @@ mod LwjglLayer {
         println("  Loading sounds...");
         let audioRegistry = RenderAudio.loadAudioRegistry(config#soundManifest,
             (done, total) -> splash("loading sounds...", done, total));
+        // 知らせた音の名前の控え（missingFontRef と同じ「名前ごとに一度だけ」）。
+        // 何も知らせずに捨てると、名前の打ち間違いが「ずっと無音」としてしか現れない。
+        // 毎フレーム呼ばれる口なので、名前が registry にある間は Set を一度も触らない。
+        let missingSoundRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
+        let warnMissingSound = (op: String, name: String) -> {
+            let warned = Ref.get(missingSoundRef);
+            if (Set.memberOf(name, warned)) ()
+            else {
+                let _ = Log.warn("audio: 知らない音 '${name}' — ${op} は何もしない"
+                    + "（project.json の sounds に同名の宣言があるか確認）");
+                Ref.put(Set.insert(name, warned), missingSoundRef)
+            }
+        };
         // 注釈保存時のシャッター音（合成なのでゲーム側の音声マニフェストに依存しない）
         let shutterSource = buildShutterSource();
         println("  Audio ready");
@@ -878,21 +900,21 @@ mod LwjglLayer {
             def playAudio(name, k) = {
                 match Map.get(name, audioRegistry) {
                     case Some(src) => AL10.alSourceStop(src); AL10.alSourcePlay(src)
-                    case None      => ()
+                    case None      => warnMissingSound("playAudio", name)
                 };
                 k(())
             }
             def stopAudio(name, k) = {
                 match Map.get(name, audioRegistry) {
                     case Some(src) => AL10.alSourceStop(src)
-                    case None      => ()
+                    case None      => warnMissingSound("stopAudio", name)
                 };
                 k(())
             }
             def setVolume(name, volume, k) = {
                 match Map.get(name, audioRegistry) {
                     case Some(src) => AL10.alSourcef(src, AL10.AL_GAIN, volume)
-                    case None      => ()
+                    case None      => warnMissingSound("setVolume", name)
                 };
                 k(())
             }
@@ -900,7 +922,7 @@ mod LwjglLayer {
                 match Map.get(name, audioRegistry) {
                     // 0 以下は OpenAL がエラーにして音が止まるので、聞こえる下限で止める。
                     case Some(src) => AL10.alSourcef(src, AL10.AL_PITCH, Float32.max(0.01f32, pitch))
-                    case None      => ()
+                    case None      => warnMissingSound("setPitch", name)
                 };
                 k(())
             }
@@ -909,7 +931,7 @@ mod LwjglLayer {
                     case Some(src) =>
                         let v = if (loop) AL10.AL_TRUE else AL10.AL_FALSE;
                         AL10.alSourcei(src, AL10.AL_LOOPING, v)
-                    case None      => ()
+                    case None      => warnMissingSound("setLooping", name)
                 };
                 k(())
             }

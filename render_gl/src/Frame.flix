@@ -273,8 +273,24 @@ mod RenderFrame {
         targetClear = Option[RenderTarget.LoadOp],
         // レンダーターゲットのテクスチャ名の集合。GL のターゲットは行 0 が下で上下逆に
         // 格納されるため、この名前のスプライトだけ標本時に uv を上下反転する（emitSprite が見る）。
-        targetNames = Set[String]
+        targetNames = Set[String],
+        // テクスチャが registry に無くて描かなかった名前の控え。フレームをまたいで残るものを
+        // バックエンドが持って毎フレーム貸す — 毎フレーム作り直すと同じ知らせが 60 回/秒 出る。
+        texWarnLog = Ref[Set[String], Static]
     }
+
+    /// テクスチャが登録されていない描画物を飛ばしたことを、名前ごとに 1 度だけ知らせる。
+    /// 文面は headless 経路（engine_tools の SoftRaster.flix）と 1 字も変えない — 同じ壊れ方が
+    /// 別の字で出ると、実機と描き出しのどちらで起きたのかを grep で束ねられなくなる。
+    /// 見つかったときは Set も文字列も触らない（毎フレーム数千体を通る経路）。
+    def warnMissingTexture(warnLog: Ref[Set[String], Static], name: String): Unit \ IO =
+        let warned = Ref.get(warnLog);
+        if (Set.memberOf(name, warned)) ()
+        else {
+            let _ = Log.warn("texture '${name}' が見つからない — 描かない"
+                + "（project.json の textures に同名の宣言があるか確認）");
+            Ref.put(Set.insert(name, warned), warnLog)
+        }
 
     /// drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して、
     /// instance 属性 (38 floats・シェーダ loc1-10 と同並び) を入れ物の slot 番目へ直に書く
@@ -541,6 +557,7 @@ mod RenderFrame {
                    scaleX: Float64, scaleY: Float64,
                    registry: RenderAsset.TextureRegistry,
                    targetNames: Set[String],
+                   warnLog: Ref[Set[String], Static],
                    drawable: RenderType.Drawable): Unit \ IO =
         if (String.isEmpty(drawable#texture)) {
             pushSpriteItem(st, instData, scaleX, scaleY, 0,
@@ -561,8 +578,8 @@ mod RenderFrame {
                     pushSpriteItem(st, instData, scaleX, scaleY,
                                    GpuHandle.textureIdInt(texInfo#id),
                                    posX, posY, displayW, displayH, d, true, isFont)
-                // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
-                case None => ()
+                // texture 未登録は描かない。描かないだけなので run は途切れさせない。
+                case None => warnMissingTexture(warnLog, drawable#texture)
             }
         }
 
@@ -574,6 +591,7 @@ mod RenderFrame {
                          scaleX: Float64, scaleY: Float64,
                          registry: RenderAsset.TextureRegistry,
                          targetNames: Set[String],
+                         warnLog: Ref[Set[String], Static],
                          polyUniforms: RenderShader.PolyBatchUniforms,
                          drawable: RenderType.Drawable): Unit \ IO =
         if (String.isEmpty(drawable#texture)) {
@@ -595,7 +613,7 @@ mod RenderFrame {
                     drawMaskedOne(st, instData, scaleX, scaleY, polyUniforms,
                                   GpuHandle.textureIdInt(texInfo#id),
                                   posX, posY, displayW, displayH, d, true, isFont)
-                case None => ()
+                case None => warnMissingTexture(warnLog, drawable#texture)
             }
         }
 
@@ -682,6 +700,7 @@ mod RenderFrame {
                    scaleX: Float64, scaleY: Float64,
                    registry: RenderAsset.TextureRegistry,
                    targetNames: Set[String],
+                   warnLog: Ref[Set[String], Static],
                    tileUniforms: RenderShader.TileUniforms,
                    polyBatchUniforms: RenderShader.PolyBatchUniforms,
                    drawSurface: ShaderEffect.ShaderRenderCmd -> Unit \ IO,
@@ -707,20 +726,21 @@ mod RenderFrame {
                                                      tileUniforms,
                                                      tm#position, tm#tileSize, tm#tileScale,
                                                      tm#color, tm#tileCount)
-                            // texture 未登録は従来どおり描かない（穴も開けない）。
-                            case None => ()
+                            // texture 未登録は描かない（穴も開けない）。
+                            case None => warnMissingTexture(warnLog, tm#textureName)
                         }
                     case Merged.MSprite(drawable) =>
                         // スプライトが来たら溜まっている多角形 run を先に吐く（列順を守る）。
                         flushPolys(st, polyData, polyBatchUniforms);
                         if (List.isEmpty(drawable#mask))
-                            emitSprite(st, instData, scaleX, scaleY, registry, targetNames, drawable)
+                            emitSprite(st, instData, scaleX, scaleY, registry, targetNames,
+                                       warnLog, drawable)
                         else {
                             // mask 付きはステンシルの焼き込みが draw の前後に要るため、
                             // 一括 run に混ぜられない — 自分の run も吐いてから単発で描く。
                             flushSprites(st, instData);
                             emitSpriteMasked(st, instData, scaleX, scaleY, registry, targetNames,
-                                             polyBatchUniforms, drawable)
+                                             warnLog, polyBatchUniforms, drawable)
                         }
                     case Merged.MPoly(pc) =>
                         // 多角形が来たら溜まっているスプライト run を先に吐く（列順を守る）。
@@ -741,7 +761,7 @@ mod RenderFrame {
                         drawSurface(s)
                 };
                 emitMerged(st, instData, polyData, scaleX, scaleY, registry, targetNames,
-                           tileUniforms, polyBatchUniforms, drawSurface, rest)
+                           warnLog, tileUniforms, polyBatchUniforms, drawSurface, rest)
         }
 
     /// 多角形を三角形へほどいたときの頂点数の上限（1 個 n 頂点なら 3(n-2) 以下）。
@@ -851,7 +871,7 @@ mod RenderFrame {
             Array.put(vpH, 10, st);
             Array.put(tileShader, 26, st);
             emitMerged(st, instData, polyData, scaleX, scaleY, registry, args#targetNames,
-                       tileUniforms, polyBatchUniforms, drawSurface, sortedMerged);
+                       args#texWarnLog, tileUniforms, polyBatchUniforms, drawSurface, sortedMerged);
             // どちらか片方だけが非空（切替時に相手を吐いているため）。空 flush は no-op。
             flushSprites(st, instData);
             flushPolys(st, polyData, polyBatchUniforms);

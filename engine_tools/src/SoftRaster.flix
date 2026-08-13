@@ -167,6 +167,18 @@ mod SoftRaster {
     /// 欠け名の控えを新しく作る（コマ列の描き出しの前に 1 本作って持ち回る）。
     pub def freshTexWarnLog(): TexWarnLog \ IO = Ref.fresh(Static, Set.empty())
 
+    /// テクスチャが登録されていない Drawable を飛ばしたことを、名前ごとに 1 度だけ知らせる。
+    /// 文面は GL 経路（render_gl の Frame.flix）と 1 字も変えない — 同じ壊れ方が別の字で
+    /// 出ると、実機と描き出しのどちらで起きたのかを grep で束ねられなくなる。
+    def warnMissingTexture(warnLog: TexWarnLog, name: String): Unit \ IO =
+        let warned = Ref.get(warnLog);
+        if (Set.memberOf(name, warned)) ()
+        else {
+            let _ = Log.warn("texture '${name}' が見つからない — 描かない"
+                + "（project.json の textures に同名の宣言があるか確認）");
+            Ref.put(Set.insert(name, warned), warnLog)
+        }
+
     /// renderToImageFull の欠け名控えつき版。控えは知らせの回数にだけ効き、
     /// 描き出す画素には一切影響しない（バイト一致はそのまま）。
     pub def renderToImageLogged(req: RasterReq, surfaces: List[SurfaceCmd],
@@ -257,10 +269,10 @@ mod SoftRaster {
         List.forEach(item -> match item {
             case RItem.RDraw(d)  =>
                 if (d#blend == DrawCmd.BlendMode.Normal)
-                    withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
+                    withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d, warnLog))
                 else
                     blendedDraw(image, sf, d#blend, d#clip, drawableAabb(req#design, textures, d),
-                                gs -> drawDrawable(gs, sf, textures, fctx, d))
+                                gs -> drawDrawable(gs, sf, textures, fctx, d, warnLog))
             case RItem.RPoly(p) =>
                 if (not Option.isEmpty(p#grad))
                     drawGradPolygon(image, sf, req#design, p)
@@ -573,7 +585,8 @@ mod SoftRaster {
     /// 1 つの Drawable を描く。texture が空なら box、`font_` ならグリフを直接 drawString、
     /// それ以外はテクスチャ画像。
     def drawDrawable(g: Graphics2D, sf: Float64,
-                     textures: Map[String, BufferedImage], fctx: FontTable, d: GameEngine.Drawable): Unit \ IO =
+                     textures: Map[String, BufferedImage], fctx: FontTable, d: GameEngine.Drawable,
+                     warnLog: TexWarnLog): Unit \ IO =
         withRotation(g, sf, d#rotation, quadCenter(textures, fctx, d), () ->
             if (String.isEmpty(d#texture))
                 withMask(g, sf, d#position, d#scale, d#mask, () -> drawBox(g, sf, d))
@@ -582,7 +595,7 @@ mod SoftRaster {
                 drawGlyph(g, sf, fontFor(fctx, d), d)
             else
                 match Map.get(d#texture, textures) {
-                    case None      => ()
+                    case None      => warnMissingTexture(warnLog, d#texture)
                     case Some(img) =>
                         let size = { x = Int32.toFloat64(img.getWidth()) * d#scale#x,
                                      y = Int32.toFloat64(img.getHeight()) * d#scale#y };
