@@ -354,12 +354,12 @@ mod View {
     def enemyItems(vis: Rect2.Rect2, w: World.World): List[Render.PlacedItem] =
         w#enemies |> List.filter(e -> near(vis, e#pos)) |> List.flatMap(e -> {
             let first = two(w, 6.0);
-            let (sprite, frame) = match e#motion {
-                case Enemies.Motion.Walking(_)  => ("walker", if (first) "walk_0" else "walk_1")
-                case Enemies.Motion.Flying(_)   => ("flyer", if (first) "fly_0" else "fly_1")
-                case Enemies.Motion.Shooting(_) => ("shooter", if (first) "idle_0" else "idle_1")
+            let (sprite, frame) = match e#behavior {
+                case Enemies.Behavior.Walking(_)  => ("walker", if (first) "walk_0" else "walk_1")
+                case Enemies.Behavior.Flying(_)   => ("flyer", if (first) "fly_0" else "fly_1")
+                case Enemies.Behavior.Shooting(_) => ("shooter", if (first) "idle_0" else "idle_1")
             };
-            let feet = { x = e#pos#x, y = e#pos#y + Enemies.sizeOf(e#motion)#y * 0.5 };
+            let feet = { x = e#pos#x, y = e#pos#y + Enemies.sizeOf(e#behavior)#y * 0.5 };
             spriteAt(w, sprite, frame, feet, e#dir > 0.0, zActor())
         })
 

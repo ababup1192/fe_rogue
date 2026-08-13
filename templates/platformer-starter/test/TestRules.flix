@@ -6,6 +6,8 @@ mod TestRules {
 
     def r(): RulesDoc.Doc = RulesDoc.defaults()
 
+    def ed(): EnemyDoc.Doc = EnemyDoc.defaults()
+
     /// 平地に 1 行だけ置く定型の面。空 4 行 + その行 + 床 — 意味のある行だけ書く。
     def flat(row: String): List[String] =
         "........" :: "........" :: "........" :: "........" :: row :: "########" :: Nil
@@ -78,17 +80,20 @@ mod TestRules {
     def testStompKillsAndBounces(): Unit \ Assert =
         // 上から踏む: 敵は消え stompScore ぶん加点、hitstop = Doc、バウンドの初速 = stompBounceTiles から導出。
         let w = world(flat("..P..a.."));
-        let e = List.head(w#enemies)
-            |> Option.getWithDefault(Enemies.make(Enemies.Motion.Walking(0.0), { x = 5, y = 4 }));
-        let etop = e#pos#y - Enemies.sizeOf(Enemies.Motion.Walking(0.0))#y * 0.5;
-        let above = { body = { pos = { x = e#pos#x, y = etop - Physics.playerSize()#y * 0.5 - 2.0 },
-                               vel = { x = 0.0, y = 200.0 }, onGround = false }
-                    | w#player };
-        let w1 = World.step(idle(), dt(), { player = above | w });
+        let w1 = World.step(idle(), dt(), { player = stompingFrom(w) | w });
         Assert.assertEq(
             expected = (0, r()#stompScore, m()#hitstopSec,
                         Physics.launchVelocity(m(), m()#stompBounceTiles)),
             (List.length(w1#enemies), w1#score, w1#freeze, w1#player#body#vel#y))
+
+    /// 1 体目の敵の真上から踏みに降りている主役。
+    def stompingFrom(w: World.World): Player.State =
+        let fallback = Enemies.make(Enemies.Behavior.Walking(0.0), Stage.centerOf({ x = 5, y = 4 }));
+        let e = List.head(w#enemies) |> Option.getWithDefault(fallback);
+        let etop = e#pos#y - Enemies.sizeOf(e#behavior)#y * 0.5;
+        { body = { pos = { x = e#pos#x, y = etop - Physics.playerSize()#y * 0.5 - 2.0 },
+                   vel = { x = 0.0, y = 200.0 }, onGround = false }
+        | w#player }
 
     @Test
     def testSideTouchHurts(): Unit \ Assert =
@@ -100,16 +105,16 @@ mod TestRules {
 
     @Test
     def testFlyerBobsWithoutDrifting(): Unit \ Assert =
-        // 飛ぶ敵は湧いた高さを中心に上下するだけ: 横へ流れず、振れ幅は Doc の flyAmpTiles を超えない。
+        // 飛ぶ敵は湧いた高さを中心に上下するだけ: 横へ流れず、1/4 周期で Doc の flyAmpTiles ぶん振れる。
         let posOf = x -> List.head(x#enemies) |> Option.map(e -> e#pos)
             |> Option.getWithDefault({ x = 0.0, y = 0.0 });
         let w = world(flat("..P..b.."));
         let p0 = posOf(w);
-        // 1/4 周期 = 振れの頂点。
-        let p1 = posOf(stepN(ticksFor(EnemyDoc.defaults()#flyPeriod / 4.0), idle(), w));
-        let amp = EnemyDoc.defaults()#flyAmpTiles * Physics.tileSize();
-        Assert.assertEq(expected = (true, true, true),
-            (p1#x == p0#x, p1#y != p0#y, Float64.abs(p1#y - p0#y) <= amp))
+        let p1 = posOf(stepN(ticksFor(ed()#flyPeriod / 4.0), idle(), w));
+        let amp = ed()#flyAmpTiles * Physics.tileSize();
+        // 頂点の手前で止まるぶんの丸めだけ許す(1 tick ぶん = 2px 未満)。
+        Assert.assertEq(expected = (p0#x, true),
+            (p1#x, Float64.abs((p1#y - p0#y) - amp) < 2.0))
 
     @Test
     def testShooterFiresWhenInRange(): Unit \ Assert =

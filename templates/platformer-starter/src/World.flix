@@ -82,8 +82,8 @@ mod World {
 
     def enemiesOf(stage: Stage.Stage): List[Enemies.Enemy] =
         stage#enemies |> List.map(entry -> {
-            let (cell, motion) = entry;
-            Enemies.make(motion, cell)
+            let (cell, behavior) = entry;
+            Enemies.make(behavior, Stage.centerOf(cell))
         })
 
     /// マス cell の上に足を着けて立つ位置(体の中心)。
@@ -268,39 +268,30 @@ mod World {
         { enemies = enemies, shots = shots | w }
 
     /// 踏みつけ(上から)か被弾か。弾は常に被弾。
-    /// どの敵を踏んだかは List の index で持つ — 位置も種類も同じ敵が重なると値では区別できず、
-    /// 1 体を踏んだだけで巻き添えに消える。
+    /// 踏んだ敵と生き残りは 1 回の partition の裏表で取る — 消す敵を値の等値で探し直すと、
+    /// 踏む条件が位置以外(無敵の残り・体力)も見るようになった瞬間に別の敵を巻き添えにする。
     def combat(input: Input, w: World): World =
         let p = w#player;
         let bottom = p#body#pos#y + Physics.playerSize()#y * 0.5;
-        let stompable = entry -> {
-            let (_ix, e) = entry;
-            let etop = e#pos#y - Enemies.sizeOf(e#motion)#y * 0.5;
+        let touching = e -> touches(p, e#pos, Enemies.sizeOf(e#behavior));
+        let stompable = e -> {
+            let etop = e#pos#y - Enemies.sizeOf(e#behavior)#y * 0.5;
             p#body#vel#y > 40.0 and bottom - etop < 10.0
         };
-        let touching = w#enemies |> List.zipWithIndex |> List.filter(entry -> {
-            let (_ix, e) = entry;
-            touches(p, e#pos, Enemies.sizeOf(e#motion))
-        });
-        let (stomped, hurting) = touching |> List.partition(stompable);
+        let (stomped, alive) = w#enemies |> List.partition(e -> touching(e) and stompable(e));
+        let hurting = alive |> List.filter(touching);
         let w1 = if (List.isEmpty(stomped)) w else {
             // 踏みつけ: バウンド(押しっぱなしなら高く)+ hitstop + 星。
             let hTiles = if (input#jumpHeld) w#motion#jumpHeightTiles
                          else w#motion#stompBounceTiles;
             let vy = Physics.launchVelocity(w#motion, hTiles);
-            let deadIx = stomped |> List.map(fst) |> List.toSet;
             { player = Player.launch(vy, p),
-              enemies = w#enemies |> List.zipWithIndex |> List.filterMap(entry -> {
-                  let (ix, e) = entry;
-                  if (Set.memberOf(ix, deadIx)) None else Some(e)
-              }),
+              enemies = alive,
               score = w#score + w#rules#stompScore * List.length(stomped),
               stomps = w#stomps + List.length(stomped),
               freeze = w#motion#hitstopSec,
-              fx = stomped |> List.map(entry -> {
-                      let (_ix, e) = entry;
-                      ({ kind = "stomp", pos = e#pos, t0 = w#t }: Fx)
-                  }) ::: w#fx | w }
+              fx = List.map(e -> ({ kind = "stomp", pos = e#pos, t0 = w#t }: Fx), stomped)
+                  ::: w#fx | w }
         };
         let shotHit = w1#shots
             |> List.exists(s -> touches(p, s#pos, { x = 6.0, y = 6.0 }));

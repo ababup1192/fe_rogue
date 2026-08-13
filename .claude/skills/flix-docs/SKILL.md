@@ -69,6 +69,30 @@ def makeLine(pos: Vec2.Vec2, width: Float64, height: Float64, color: Color): Col
 def makeLine(line: {pos = Vec2.Vec2, size = Vec2.Vec2}, color: Color): ColorRect
 ```
 
+### 型の設計（データの持ち方）
+
+- **取りうる値が決まっている物（状態・モード・種別）は String で持たない。enum にする。**
+  文字列の等値で分岐すると網羅性チェックが効かず、打ち間違えが `else` に吸われて
+  別の値としてエラーも出ずに通る
+  - Doc(JSON) から来る値は String なので、**読み込む所で 1 回だけ enum へ変換**して
+    内側は enum で回す
+- **その case だけが使う値は、レコードに平らに並べず enum の payload へ入れる。**
+  並べると、どのフィールドがどの case の物か型から読めなくなる。
+  **どの case でも使う値はレコード側に残す**（payload へ動かさない）
+  - payload に**レコードは置けない**（`Eq` を derive できなくなる。理屈は
+    `docs/flix-conventions.md` の落とし穴）。値が 2 つ以上要るときは case へ並べるか、
+    `Eq` を derive した別の enum で包む
+
+```flix
+// OK: その case だけが使う値は payload へ / どの case でも使う値はレコードへ
+pub enum Playback with Eq, ToString {
+    case Stopped
+    case Playing(Float64)  // 再生した秒数
+    case Paused(Float64)   // 止めた時点の秒数
+}
+pub type alias Clip = { playback = Playback, name = String, volume = Float64 }
+```
+
 ### パイプスタイル
 
 - なるべくパイプスタイルを使い `|>` で一時変数を作らないこと
