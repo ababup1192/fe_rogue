@@ -68,14 +68,14 @@ mod TerrainDoc {
             |> Option.map(fromRoot)
 
     /// path の Doc を読む。読めない・壊れているときは defaults(fail-open)。
-    /// 読み込みを DocJson.loadOr に委譲し、壊れた JSON で倒れた事実は標準エラーへ 1 行出る。
+    /// 読み込みを DocJson.loadOr に委譲し、壊れた JSON で落ちた事実は標準エラーへ 1 行出る。
     pub def load(p: String): Doc \ Fs.FileRead =
         DocJson.loadOr(fromJson, defaults(), p)
 
     /// EntryDoc(文字列の色)→ Material.Spec(実色)。resolve は呼び側供給
     /// (rpg-starter なら key -> ThemeDoc.resolver(theme, key))。壊れた表記・存在しない
     /// @キーは resolve の未知キー既定(ThemeDoc.resolver ならマゼンタ = 描き忘れが目に
-    /// 見える)へ倒れ、例外は投げない — fail-open。
+    /// 見える)へ落ち、例外は投げない — fail-open。
     pub def specOf(resolve: String -> Color, e: EntryDoc): Material.Spec =
         { fill = colorOf(resolve, e#fill),
           edge = edgeKindOf(resolve, e#edge),
@@ -137,7 +137,7 @@ mod TerrainDoc {
     /// 混在していても uniform 先勝ちで ByNormal 側は読まない。(2) "uniform" が無く
     /// top / side / shade のいずれかがあれば ByNormal(欠けたキーは既定色=塗り色で埋める)。
     /// (3) どちらとも読めない(edge 欠落・オブジェクトでない等)は既定の縁 =
-    /// 塗りと同色の Uniform(実質フチ無しに近い)へ倒す — fail-open。
+    /// 塗りと同色の Uniform(実質フチ無しに近い)へ落とす — fail-open。
     def edgeOf(fill: String, obj: Map[String, Json]): EdgeRef =
         match Map.get("edge", obj) |> Option.flatMap(JsonCodec.expectObject) {
             case None => EdgeRef.Uniform(fill)
@@ -193,7 +193,7 @@ mod TerrainDoc {
 
     /// 色文字列 → 実色。"#rrggbb" はリテラル(UiDoc.colorOf 委譲)、"@key" は resolve(key)。
     /// 壊れた表記・壊れた @キーは resolve の未知キー既定(ThemeDoc.resolver ならマゼンタ =
-    /// 描き忘れが目に見える)へ倒す — fail-open。
+    /// 描き忘れが目に見える)へ落とす — fail-open。
     def colorOf(resolve: String -> Color, s: String): Color =
         if (String.startsWith(prefix = "@", s))
             resolve(String.drop(1, s))

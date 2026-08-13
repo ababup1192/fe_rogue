@@ -100,7 +100,7 @@ mod Terrain {
     /// 教科書用の1発 API: Doc 由来の表 + rows → 置き場所つき描画(origin で盤ずらし)。
     /// 返すのは table に載った地形(石垣・畑など)だけ — ベース床は含めない。
     /// 床は角の変化形を持たないベタ塗りで DualGrid の仕事ではなく、呼び側(View)が
-    /// 全セルに敷く — table に無い文字・未知文字が自動的に床へ倒れる fail-open は
+    /// 全セルに敷く — table に無い文字・未知文字が自動的に床へ落ちる fail-open は
     /// 「呼び側が下に床を敷いてある」ことで成立する。
     pub def fromRows(opts: { tileSize = Float64, origin = Vec2.Vec2,
                              styleMix = DualGrid.StyleMix },

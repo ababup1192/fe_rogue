@@ -864,7 +864,7 @@ mod TestUiDoc {
 
     @Test
     def testBoxSkinFailOpen(): Unit \ Assert =
-        // skin 名のテクスチャが引けないときは従来の Box 1 枚に静かに倒す（パネルは壊れない）。
+        // skin 名のテクスチャが引けないときは従来の Box 1 枚へ静かに落とす（パネルは壊れない）。
         let got = skinBoxOf(skinDoc()) |> Option.flatMap(b ->
             match UiExtract.boxPlacedItems(b, { x = 100.0, y = 40.0 }, _ -> None) {
                 case placed :: Nil => match placed#item {

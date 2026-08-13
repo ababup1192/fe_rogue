@@ -1063,7 +1063,7 @@ mod LwjglLayer {
                 match Map.get(name, Ref.get(fontAtlasesRef)) {
                     case Some(atlas) => k(atlas)
                     // 名前が合わないだけでゲームが落ちるより、組み込みフォントで出す方がまし。
-                    // ただし黙って倒れると打ち間違いに気付けないので、名前ごとに 1 度だけ知らせる。
+                    // ただし黙って既定へ落ちると打ち間違いに気付けないので、名前ごとに 1 度だけ知らせる。
                     case None =>
                         let warned = Ref.get(missingFontRef);
                         if (not Set.memberOf(name, warned)) {

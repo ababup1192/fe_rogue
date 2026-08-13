@@ -82,7 +82,7 @@ AGENTS.local.md に人の注文（/style-interview の聞き取り）があれ�
 - 光の側と影の側は `Color.warm` / `Color.cool` で色そのものを分ける（同じ色の明暗だけにしない）
 - 完全に静止した画面を出さない。静けさが画風なら、揺れを極小にする（ゼロにはしない）
 
-## engine のバージョンと、黙って倒れる罠
+## engine のバージョンと、黙って既定へ落ちる罠
 
 `[新]` 付きの部品は **0.13.0 から**。`PxSprite.sizeOf` / `Render.fadeAll` / `Color.hex` /
 `Num.*` / `Grid.dimsOfRows` は **0.14.0 から**。

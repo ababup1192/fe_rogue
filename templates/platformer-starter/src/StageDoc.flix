@@ -1,7 +1,7 @@
 // StageDoc — stages.stage.json(面データ)の宣言ドキュメント層。
 // 面は rows(文字格子・1 文字 = 1 タイル)で書く。どの文字が何かは note と
 // Stage モジュールの対応表が正。fail-open — 読めない・壊れているときは
-// defaults()(組み込みの小さな 1 面)へ倒し、ゲームは必ず起動する。
+// defaults()(組み込みの小さな 1 面)へ落とし、ゲームは必ず起動する。
 mod StageDoc {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JString}

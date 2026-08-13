@@ -50,7 +50,7 @@ rows = [ "WWW",     W を壁の質感に割り当てておくと、
 ```
 
 床（角の変化形を持たないベタ塗り）は DualGrid の仕事ではなく、呼び側（View）が全セルに
-敷く。表に無い文字・未知文字は自動的に床へ倒れる（fail-open）。実装例は
+敷く。表に無い文字・未知文字は自動的に床へ落ちる（fail-open）。実装例は
 `templates/rpg-starter`（`rpg.terrain.json` + View）。
 
 ## なぜチップ絵を描かないのか

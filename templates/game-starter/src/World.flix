@@ -29,7 +29,7 @@ mod World {
 
     /// 主人公の大きさ = 絵の大きさ。絵を描き替えたら当たりもついてくる
     /// （固定値にすると、絵だけ大きくして当たりが古いまま、という食い違いが出る）。
-    /// 絵がまだ読めていないときだけ 16×16 に倒す（fail-open）。
+    /// 絵がまだ読めていないときだけ 16×16 にする（fail-open）。
     pub def heroBox(w: World): Vec2.Vec2 =
         PxSprite.sizeOf(w#sprites, "hero", "idle", spriteScale())
             |> Option.getWithDefault({ x = 16.0, y = 16.0 })

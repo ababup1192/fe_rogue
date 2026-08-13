@@ -7,7 +7,7 @@ mod TestTerrainDoc {
 
     @Test
     def testTerrainBrokenJsonFallsBackToDefaults(): Unit \ Assert =
-        // 壊れた JSON は既定の表へ倒れる(ゲームは必ず起動する)。
+        // 壊れた JSON は既定の表へ落ちる(ゲームは必ず起動する)。
         let doc = TerrainDoc.fromJson("{ broken") |> Option.getWithDefault(TerrainDoc.defaults());
         Assert.assertEq(
             expected = (TerrainDoc.defaults()#styleMix#round,

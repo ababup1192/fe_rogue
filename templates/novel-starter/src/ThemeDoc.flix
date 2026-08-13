@@ -10,7 +10,7 @@ mod ThemeDoc {
     /// window = 雨の窓、accent = 灯り・金（差し色）、ink = 本文・表紙の文字色、
     /// rainCount = 窓の雨すじの本数、rainGlow = 雨すじの明るさ（0〜1。窓色を白に近づける度合い）。
     /// accentLight は novel.theme.json ではなく assets/ui/palette.json の宣言色
-    /// （スプライト legend の意味色キー。宣言が無ければ accent からの導出に倒れる）。
+    /// （スプライト legend の意味色キー。宣言が無ければ accent からの導出になる）。
     pub type alias Doc = {
         version = Int32,
         bg = Color,

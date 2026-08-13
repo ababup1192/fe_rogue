@@ -32,7 +32,7 @@ mod RawDraw {
         { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
           item = box(size, color, zIndex) }
 
-    /// items が空なら boxAt の仮色の板 1 枚に倒す fail-open。スプライトのコマ名違い・
+    /// items が空なら boxAt の仮色の板 1 枚にする fail-open。スプライトのコマ名違い・
     /// 読み込み失敗で画面に穴を開けない（板が出れば「絵が無い」と目で判る）ための関数 —
     /// 空でなければ items をそのまま返す。
     pub def orBoxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32,

@@ -125,7 +125,7 @@ mod PropsDoc {
           barPhaseStep = JsonCodec.floatOr("barPhaseStep", d#barPhaseStep, root),
           barHalfWidth = JsonCodec.floatOr("barHalfWidth", d#barHalfWidth, root) }
 
-    /// rows（置き場の表）を読む。配列でない・空のときは既定の置き場へ倒す。
+    /// rows（置き場の表）を読む。配列でない・空のときは既定の置き場を使う。
     def rowsOr(fallback: List[String], root: Map[String, Json]): List[String] =
         Map.get("rows", root)
             |> Option.flatMap(JsonCodec.decodeList(JsonCodec.expectString))

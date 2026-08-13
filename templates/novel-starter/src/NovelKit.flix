@@ -90,7 +90,7 @@ mod NovelKit {
     /// 本文の置き場所と最大幅を、パネル（novel_dialog/panel）の宣言から導く。
     /// x = パネル左 + 左 pad、y = パネル上 + 上 pad + 話者行のぶん、
     /// 幅 = パネル幅 - 左右 pad。パネルが見つからないときは既定の枠
-    /// （abs [12, 226]・幅 456・pad 10/5・話者 9px）と同じ値に倒す（fail-open）。
+    /// （abs [12, 226]・幅 456・pad 10/5・話者 9px）と同じ値にする（fail-open）。
     def bodyArea(ui: UiStore.UiWorld): { pos = Vec2.Vec2, maxWidth = Float64 } =
         let panelStyle = UiStore.idOf("${dialogPaths()#root}/panel", ui)
             |> Option.flatMap(id -> Map.get(id, ui#styles));

@@ -54,7 +54,7 @@ mod Controls {
 
     pub def smokeFxPath(): String = "assets/town.fx.json"
 
-    /// 水面のシェーダー Doc。読めない・知らない語彙は既製の水面（waterVeins）へ倒す
+    /// 水面のシェーダー Doc。読めない・知らない語彙は既製の水面（waterVeins）へ落とす
     /// — 知らない kind が 1 つあるだけで丸ごと既定値になるので、絵が別物なら語彙を疑う。
     def loadWaterShader(): ShaderDoc.Spec \ Fs.FileRead =
         ShaderJson.loadOr(ShaderDoc.waterVeins(), waterShaderPath())

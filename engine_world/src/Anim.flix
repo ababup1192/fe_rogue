@@ -14,7 +14,7 @@ mod Anim {
     }
 
     /// 時刻 t（ループは通し秒・単発は開始からの経過秒）でのコマ番号。
-    /// 負の t とコマ数 0 は 0 に倒す（安全側）。
+    /// 負の t とコマ数 0 は 0 にする（安全側）。
     pub def frameAt(clip: Clip, t: Float64): Int32 =
         if (clip#frames <= 0) 0
         else if (t < 0.0) 0

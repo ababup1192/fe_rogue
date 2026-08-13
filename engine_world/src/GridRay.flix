@@ -48,7 +48,7 @@ mod GridRay {
     /// goal が壁マスに掛かる物（松明など）のときは ignore 述語でそのマスを除く
     /// （無視が要らなければ `_ -> false`）。
     /// 点がどのマスに属するかは Grid.cellAtCentered の契約 — 境界 ±0.5 ちょうどの点は
-    /// + 側のマスに属する。fuel（歩数の保険）が尽きたときは「見える」側（false）に倒す
+    /// + 側のマスに属する。fuel（歩数の保険）が尽きたときは「見える」側（false）にする
     /// fail-open — 誤差の事故で急に視界が塞がるより、見え過ぎる方を選ぶ。
     pub def blocked(solidAt: Grid.Cell -> Bool, ignore: Grid.Cell -> Bool,
                     start: Vec2.Vec2, goal: Vec2.Vec2): Bool =

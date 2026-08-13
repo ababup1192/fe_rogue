@@ -702,7 +702,7 @@ export NG_TITLE
 # Flix は「バージョン名が同じなら取り直さない」ので誰も気づけず、engine のソースにも Release
 # にも在る def が「Undefined name」になる。
 # 判定は mtime なので、git checkout 直後は中身が同じでも古く見えることがある。空振りは
-# sync-engine-full を 1 回回せば済む側の失敗なので、見逃すよりそちらへ倒す。
+# sync-engine-full を 1 回回せば済む側の失敗なので、見逃すよりそちらを選ぶ。
 .PHONY: engine-full-fresh
 engine-full-fresh:
 	@if [ ! -f "$(ENGINE_FULL_FPKG_SRC)" ]; then \

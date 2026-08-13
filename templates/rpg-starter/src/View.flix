@@ -348,7 +348,7 @@ mod View {
 
     /// ドット絵 1 体を画面のどこにでも、好きな倍率で置く。大きさは絵から測るので
     /// （PxSprite.sizeOf）、絵を描き替えても置き位置がずれない。
-    /// スプライトが読めないときは添えられた色の四角に倒す（fail-open）。
+    /// スプライトが読めないときは添えられた色の四角にする（fail-open）。
     /// 同じ型の値が並ぶので名前で渡す。
     def spriteAt(w: World.World,
                  spec: { name = String, frame = String, center = Vec2.Vec2, flipX = Bool,

@@ -133,7 +133,7 @@ mod HeadlessRender {
     def silhouetteInk(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
 
     /// Drawable を真っ黒の不透明に写す。texture は消さない — 絵の抜き（形）はテクスチャの
-    /// α が持っていて、色は黒 tint の乗算で消えるため。blend は Normal に倒す（Add は黒を
+    /// α が持っていて、色は黒 tint の乗算で消えるため。blend は Normal にする（Add は黒を
     /// 足しても何も描かず、形ごと消える）。alpha を 1 に上げるのは、半透明の濃淡は塗りの
     /// 情報で、形の検査には雑音だから。
     def blackenDrawable(d: GameEngine.Drawable): GameEngine.Drawable =

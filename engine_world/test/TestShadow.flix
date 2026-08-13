@@ -1,5 +1,5 @@
 // Shadow のテスト。具体値は Python で独立に手計算し pin する（テスト内で再計算ロジックを
-// 組んで自己参照しない）。境界（光と辺が一直線）は「背面側に倒す」規約が一貫することを見る。
+// 組んで自己参照しない）。境界（光と辺が一直線）は「背面側として扱う」規約が一貫することを見る。
 
 mod TestShadow {
 
@@ -64,13 +64,13 @@ mod TestShadow {
         Assert.assertEq(expected = 4, List.length(quads))
 
     /// 光と辺が一直線（right 辺の中点 (5,0) の真上延長 (5,-100)）: 内積ちょうど0で
-    /// 規約どおり背面側に倒れ、right 辺も影四角形に含まれる（top は明確に前面のまま）。
+    /// 規約どおり背面側として扱われ、right 辺も影四角形に含まれる（top は明確に前面のまま）。
     @Test
     def testColinearLightBoundaryFallsToBackFace(): Unit \ Assert =
         let quads = Shadow.shadowQuads(at(5.0, -100.0), square(), 100.0);
         // colinear な配置では top(0,-1 法線)が最も光を向く前面、bottom/left/right寄りは背面
         // （3枚 = top だけが前面に残る）。
-        // ここでは「right が背面判定に入っている（境界を律儀に背面へ倒している）」ことも見る。
+        // ここでは「right が背面判定に入っている（境界を律儀に背面として扱っている）」ことも見る。
         Assert.assertEq(expected = (3, true),
             (List.length(quads),
              quadStartingAt(quads, 5.0, -5.0) |> Option.map(_ -> true) |> Option.getWithDefault(false)))

@@ -21,7 +21,7 @@ mod TestAnim {
             (Anim.frameAt(clip, 0.0), Anim.frameAt(clip, 0.1),
              Anim.frameAt(clip, 0.2), Anim.frameAt(clip, 100.0), Anim.frameAt(clip, 9999.0)))
 
-    /// 負の t とコマ数 0 は安全側の 0 に倒す。
+    /// 負の t とコマ数 0 は安全側の 0 にする。
     @Test
     def testFrameAtNegativeTimeAndZeroFramesFallBackToZero(): Unit \ Assert =
         let normal = loopClip();

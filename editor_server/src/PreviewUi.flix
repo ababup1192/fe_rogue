@@ -298,7 +298,7 @@ mod PreviewUi {
 
     /// 主 doc の解決済みパレット表 ("名前" → "#rrggbb")。paletteFile を dir 起点で読み、
     /// inline "palette" を上に重ねる (同名は inline 勝ち = UiDoc.load と同じ合成順)。
-    /// 読めない・形違いはその分だけ落として空側に倒す — この表は編集画面の色見本用で、
+    /// 読めない・形違いはその分だけ落として空側にする — この表は編集画面の色見本用で、
     /// ドキュメント自体の誤りはプレビュー本体 (parse) が名前パス付きで報告する。
     pub def resolvedPalette(dir: String, docJson: Json): Map[String, String] \ IO =
         match docJson {

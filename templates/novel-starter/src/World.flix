@@ -17,7 +17,7 @@
 // Doc が壊れていても止まらない（fail-open の 3 段階）:
 //   読めない → 既定値で起動（Controls.loadDocs / *Doc.defaults）
 //   一部が欠け → その欄だけ既定値（fromJson が欄ごとに拾う）
-//   型が違う   → その欄は既定値のまま（行き先の節が無ければ表紙へ倒れる 等）
+//   型が違う   → その欄は既定値のまま（行き先の節が無ければ表紙へ落ちる 等）
 // だからプレイヤーの前でクラッシュしない。台本の編集ミスは既定へ落ちて読みは続く。
 mod World {
 
@@ -189,7 +189,7 @@ mod World {
     // ── Doc の差し替え（保存即反映） ──
 
     /// 台本の差し替え。物語の途中なら現在地を読み直す（編集がその場で画面に出る）。
-    /// 現在地の節が消えていたら表紙へ倒れる（fail-open）。
+    /// 現在地の節が消えていたら表紙へ落ちる（fail-open）。
     pub def withStory(story: StoryDoc.Doc, w: World): World =
         let w1 = { story = story | w };
         match w1#phase {

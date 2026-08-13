@@ -346,7 +346,7 @@ mod World {
                 }
         }
 
-    /// 1 歩にかける秒数（walk マス/秒の逆数。1 未満の walk は 1 マス/秒に倒す）。
+    /// 1 歩にかける秒数（walk マス/秒の逆数。1 未満の walk は 1 マス/秒にする）。
     def stepInterval(w: World): Float64 =
         1.0 / Float64.max(1.0, w#kind#walk)
 

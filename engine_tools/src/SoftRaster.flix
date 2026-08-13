@@ -59,7 +59,7 @@ mod SoftRaster {
     /// テクスチャ名（"font_ui" / "font_girl" …）→ その本。セル座標 → codepoint の逆引き表は
     /// フォントごとに違う（別のフォントでも同じセルから詰まるので混ぜられない）ので、
     /// グリフを描く直前に Drawable#texture でこの表から 1 本選ぶ。
-    /// 知らないテクスチャ名は primary へ倒す（fail-open — 字が消えるより既定で出るほうがよい）。
+    /// 知らないテクスチャ名は primary を使う（fail-open — 字が消えるより既定で出るほうがよい）。
     type alias FontTable = { primary = FontCtx, byTexture = Map[String, FontCtx] }
 
     def fontFor(fonts: FontTable, d: GameEngine.Drawable): FontCtx =
@@ -223,7 +223,7 @@ mod SoftRaster {
         let fctx = buildFontTable(req, extraFonts);
         // tex 場（Field.Tex）が読む画素表。surfaces が実際に使う名前だけ 1 回で Vector 化する —
         // 画素ループの中で BufferedImage を触らない（getRGB を毎画素呼ぶと桁で遅い）。
-        // 無い名前は warnLog に控えて一度だけ知らせる（eval は純関数のまま黒 0.0 に倒す）。
+        // 無い名前は warnLog に控えて一度だけ知らせる（eval は純関数のまま黒 0.0 を返す）。
         let usedTexNames = surfaces
             |> List.flatMap(sc -> ShaderDoc.texNames(sc#spec))
             |> List.distinct;
@@ -459,7 +459,7 @@ mod SoftRaster {
     // ════════════════════════════════════════════════════════
 
     /// design 全体を覆う矩形（フォールバック用 — 外形が正確に分からない/計算コストに
-    /// 見合わない場合に安全側へ倒す。全面走査になるだけで結果は従来どおり正しい）。
+    /// 見合わない場合に安全側を選ぶ。全面走査になるだけで結果は従来どおり正しい）。
     def fullDesignRect(design: Vec2.Vec2): Rect2.Rect2 =
         { position = Vec2.zero(), size = design }
 

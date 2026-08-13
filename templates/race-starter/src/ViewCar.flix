@@ -139,7 +139,7 @@ mod ViewCar {
             }
         })
 
-    /// ライバルの車体色は index 順に A→B→C。台数が色数を超えたら A に倒す（fail-open）。
+    /// ライバルの車体色は index 順に A→B→C。台数が色数を超えたら A にする（fail-open）。
     def rivalColorOf(theme: ThemeDoc.Doc, i: Int32): Color =
         match i {
             case 0 => theme#rivalA

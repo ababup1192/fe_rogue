@@ -1135,7 +1135,7 @@
   `pub def circleAt(center: Vec2.Vec2, radius: Float64, color: Color, zIndex: Int32): PlacedItem`
 - 中心 center に置いた単色の矩形（PlacedItem）。左上で置きたいときは box を使う。
   `pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem`
-- items が空なら boxAt の仮色の板 1 枚に倒す fail-open。スプライトのコマ名違い・
+- items が空なら boxAt の仮色の板 1 枚にする fail-open。スプライトのコマ名違い・
   `pub def orBoxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32, items: List[PlacedItem]): List[PlacedItem]`
 - 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
   `pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item`

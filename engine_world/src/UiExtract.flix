@@ -166,7 +166,7 @@ mod UiExtract {
 
     /// box の PlacedItem 列（`at` は箱の左上からのずれ — 置き場所は呼び手が足す）。
     /// skin が無ければ従来の Box 1 枚。skin があればテクスチャを九分割した Sprite 群にする。
-    /// skin 名のテクスチャが引けないときは従来の Box に静かに倒す（fail-open — パネルは壊れない）。
+    /// skin 名のテクスチャが引けないときは従来の Box へ静かに落とす（fail-open — パネルは壊れない）。
     /// pub なのは UiDoc（Flex 経路）と extract（UiStore 経路）が同じ box 意味論で描くため —
     /// BoxComp→PlacedItem 変換の唯一の実装。
     pub def boxPlacedItems(box: UiWidget.BoxComp, size: Vec2.Vec2,

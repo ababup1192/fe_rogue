@@ -8,7 +8,7 @@ mod TestDocs {
 
     @Test
     def testMapBrokenJsonFallsBackToDefaults(): Unit \ Assert =
-        // 壊れた JSON は既定の間取りへ倒れる(ゲームは必ず起動する)。
+        // 壊れた JSON は既定の間取りへ落ちる(ゲームは必ず起動する)。
         let doc = MapDoc.fromJson("{ broken") |> Option.getWithDefault(MapDoc.defaults());
         Assert.assertEq(
             expected = (MapDoc.defaults()#start#x, MapDoc.defaults()#start#y, MapDoc.defaults()#goal),
@@ -53,7 +53,7 @@ mod TestDocs {
 
     @Test
     def testTownMapBrokenJsonFallsBackToDefaults(): Unit \ Assert =
-        // 壊れた JSON は既定の盤へ倒れる(街の絵は必ず出る)。
+        // 壊れた JSON は既定の盤へ落ちる(街の絵は必ず出る)。
         let doc = TownMapDoc.fromJson("{ broken") |> Option.getWithDefault(TownMapDoc.defaults());
         Assert.assertEq(
             expected = (TownMapDoc.rowCount(TownMapDoc.defaults()),

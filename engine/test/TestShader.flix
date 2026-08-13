@@ -1134,7 +1134,7 @@ def testTexJsonRoundTripGlslIdentical(): Unit \ Assert =
     };
     Assert.assertEq(expected = true, same)
 
-/// tex の chan 省略は R に倒れる（fail-open の既定）。
+/// tex の chan 省略は R になる（fail-open の既定）。
 @Test
 def testTexJsonDefaultChan(): Unit \ Assert =
     let json = "{\"name\":\"s\",\"out\":{\"kind\":\"fill\"," +

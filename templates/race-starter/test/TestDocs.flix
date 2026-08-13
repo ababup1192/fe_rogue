@@ -28,7 +28,7 @@ mod TestDocs {
 
     @Test
     def testRivalsBrokenJsonFallsBackToDefaults(): Unit \ Assert =
-        // 壊れた JSON は既定の 3 台へ倒れる。
+        // 壊れた JSON は既定の 3 台へ落ちる。
         let doc = RivalsDoc.fromJson("{ broken") |> Option.getWithDefault(RivalsDoc.defaults());
         Assert.assertEq(
             expected = List.length(RivalsDoc.defaults()#rows),

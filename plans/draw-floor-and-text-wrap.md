@@ -52,7 +52,7 @@
 
 ### A2. バージョン注記の更新(小・機械的)
 
-visual-dict SKILL.md「engine のバージョンと、黙って倒れる罠」に追記:
+visual-dict SKILL.md「engine のバージョンと、黙って既定へ落ちる罠」に追記:
 - 0.19.0 から: Pass(レンダーターゲット=別の紙)・bakeGifWithPasses・Fx 3 語彙
 - 0.20.0 から: 図形プリミティブは `RawDraw.*`(旧 `Render.box` 系は存在しない)
 

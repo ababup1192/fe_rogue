@@ -66,7 +66,7 @@ mod Controls {
             |> Result.getWithDefault(FxDoc.empty())
 
     /// fx.json の "@名前" が引けるテーマ色の表。ここに無い名前は fx 側でエラーになり
-    /// 空の効果へ倒れる（増やすときはこの表と theme を一緒に増やす）。
+    /// 空の効果へ落ちる（増やすときはこの表と theme を一緒に増やす）。
     def fxPalette(theme: ThemeDoc.Doc): Map[String, Color] =
         Map#{"smoke" => theme#smoke,
              "ash" => ThemeDoc.ash(theme),

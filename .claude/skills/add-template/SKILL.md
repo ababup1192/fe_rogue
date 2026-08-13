@@ -39,7 +39,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 ### 2. `reference/title.png` を必ず用意する
 
-Studio のジャンルカードのサムネイルは `GET /genesis/title` がこれを読む（無いと空絵に倒れる）。
+Studio のジャンルカードのサムネイルは `GET /genesis/title` がこれを読む（無いと空絵になる）。
 生成に `title` シーンを 1 枚足してリファレンス画像を更新する。
 
 更新は `make -C templates/<name> reference-update`。これが `gallery/*.png` を `reference/` へ写し、

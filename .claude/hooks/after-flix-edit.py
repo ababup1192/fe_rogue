@@ -148,7 +148,7 @@ def pid_alive(pkg):
         return False
     checkd = load_checkd(pkg)
     if not checkd:
-        return False  # 判定できない → 「居ない」に倒す (歯止めは too_busy が別に持つ)
+        return False  # 判定できない → 「居ない」とみなす (歯止めは too_busy が別に持つ)
     return checkd.pid_alive(pid)
 
 

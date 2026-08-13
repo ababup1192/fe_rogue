@@ -37,7 +37,7 @@ mod CourseDoc {
     /// 道幅 100% のときの半幅（px）。区間の width はこれに対する百分率。
     pub def baseHalfWidth(): Float64 = 50.0
 
-    /// 区間が 1 つも無いときに倒す先。直線が延々続くコースになる（画面に穴を開けない）。
+    /// 区間が 1 つも無いときの落とし先。直線が延々続くコースになる（画面に穴を開けない）。
     def straight(): Section =
         { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
 
@@ -91,7 +91,7 @@ mod CourseDoc {
     pub def rowCount(doc: Doc): Int32 =
         doc#sections |> List.foldLeft((acc, s) -> acc + lenOf(s), 0)
 
-    /// 区間の行数（0 以下は 1 行に倒す — 幅ゼロの区間で表が止まらないように）。
+    /// 区間の行数（0 以下は 1 行にする — 幅ゼロの区間で表が止まらないように）。
     def lenOf(s: Section): Int32 =
         Int32.max(1, s#len)
 
@@ -147,8 +147,8 @@ mod CourseDoc {
         { version = JsonCodec.intOr("version", d#version, root),
           sections = sectionsOr(d#sections, root) }
 
-    /// sections（区間の一覧）を読む。配列でない・空のときは既定のコースへ倒す。
-    /// 欄が欠けた区間は、その欄だけ「直線 1 行」の値へ倒す（区間ごと捨てない）。
+    /// sections（区間の一覧）を読む。配列でない・空のときは既定のコースを使う。
+    /// 欄が欠けた区間は、その欄だけ「直線 1 行」の値にする（区間ごと捨てない）。
     def sectionsOr(fallback: List[Section], root: Map[String, Json]): List[Section] =
         Map.get("sections", root)
             |> Option.flatMap(JsonCodec.decodeList(sectionOf))

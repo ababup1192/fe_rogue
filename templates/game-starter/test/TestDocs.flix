@@ -19,7 +19,7 @@ mod TestDocs {
     @Test
     def testKeysDropsUnknownNameAndEmptyActionFallsBack(): Unit \ Assert =
         // 書き間違い("Sinistra")はその 1 個だけ落ちる。全部知らない名前で空になった
-        // 操作(up)だけ既定へ倒れ、触っていない操作(down)は既定のまま。
+        // 操作(up)だけ既定へ落ち、触っていない操作(down)は既定のまま。
         let d = KeysDoc.fromJson("{\"left\": [\"Left\", \"Sinistra\"], \"up\": [\"Hop\"]}")
             |> Option.getWithDefault(KeysDoc.defaults());
         Assert.assertEq(

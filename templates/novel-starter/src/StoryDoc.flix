@@ -65,7 +65,7 @@ mod StoryDoc {
               |> Option.getWithDefault(d#sections) }
 
     /// 節 1 行。欠けたフィールドは行の中で既定へ落とす（行がオブジェクトでない台本は
-    /// decodeList が全体を None にし、defaults の台本へ倒れる）。
+    /// decodeList が全体を None にし、defaults の台本へ落ちる）。
     def sectionFromJson(json: Json): Option[Section] =
         JsonCodec.expectObject(json) |> Option.map(obj ->
             { id = JsonCodec.stringOr("id", "", obj),
