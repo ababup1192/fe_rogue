@@ -24,6 +24,10 @@
 
 mod ProjectLoader {
     use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool}
+    use Util.Json.JsonError
+    use Util.Json.JsonError.JsonError.Decode
+    use Util.Json.JsonError.DecodeErrorKind.TypeMismatch
+    use Util.Json.JsonPath
 
     /// project.json から組み立てた、engine 起動に渡すための設定。
     /// shape は engine の `GameEngine.EngineConfig` と完全一致させてあり、
@@ -52,9 +56,8 @@ mod ProjectLoader {
     }
 
     /// project.json を読んで Project を組み立てる。
-    /// 読み込み/JSON パース失敗時は Err(message) を返す (呼び出し側が dialog 表示・終了などを決める)。
-    /// JSON 中の型不一致など内部構造のエラーは依然 bug! でクラッシュする
-    /// (= 不正な project.json は開発者が直すべきもの)。
+    /// 読めない・JSON が崩れている・欄の型が違うときは Err(message) を返す
+    /// (呼び出し側が dialog 表示・終了などを決める)。
     pub def loadProject(rootDir: String): Result[String, Project] \ {Fs.FileRead} =
         let projectJsonPath = joinPath(rootDir, "project.json");
         let readResult = run { Fs.ReadFile.read(projectJsonPath) }
@@ -64,67 +67,86 @@ mod ProjectLoader {
             case Ok(content) =>
                 match (Util.Json.parse(String.trim(content)) |> Result.toOption) {
                     case None    => Err("JSON parse failed: ${projectJsonPath}")
-                    case Some(j) => Ok(buildProject(rootDir, j))
+                    case Some(j) =>
+                        buildProject(rootDir, j)
+                            |> Result.mapErr(e -> "${projectJsonPath}: ${describeErr(e)}")
                 }
         }
 
-    def buildProject(rootDir: String, json: Util.Json.Json): Project =
-        let root = matchObject(json, "root");
-        let title       = getString(root, "title");
-        let designW     = getInt(root, "designWidth");
-        let designH     = getInt(root, "designHeight");
-        // glyphs（任意）: 起動時にどの字を生成するか。
-        //   "auto"（既定）… 起動時は生成せず、出た字から順に生成する。起動が一番速い
-        //   "used"         … ソースとアセットに書いてある字を先に生成する。最初の画面で引っかからない
-        //   "all"          … フォントが持つ字を全部。日本語だと数十秒かかる
-        // どれでも、足りない字は出そうとしたときに追加生成される（消えることはない）。
-        let glyphs = match Map.get("glyphs", root) {
+    def buildProject(rootDir: String, json: Util.Json.Json): Result[JsonError, Project] =
+        forM (
+            root       <- matchObject(json, "root");
+            title      <- getString(root, "title");
+            designW    <- getInt(root, "designWidth");
+            designH    <- getInt(root, "designHeight");
+            window     <- resolveWindow(root, designW, designH);
+            clearJson  <- getField(root, "clearColor");
+            clearColor <- readColor(clearJson);
+            maxDelta   <- getFloat(root, "maxDeltaTime");
+            texJson    <- getField(root, "textures");
+            textures   <- readTextures(rootDir, texJson);
+            fontJson   <- getField(root, "fonts");
+            fonts      <- readFonts(rootDir, fontJson);
+            soundJson  <- getField(root, "sounds");
+            sounds     <- readSounds(rootDir, soundJson)
+        ) yield {
+            let config: ProjectConfig = {
+                rootDir         = rootDir,
+                glyphs          = getGlyphs(root),
+                designWidth     = designW,
+                designHeight    = designH,
+                windowWidth     = fst(window),
+                windowHeight    = snd(window),
+                title           = title,
+                textureManifest = textures,
+                fontManifest    = fonts,
+                soundManifest   = sounds,
+                clearColor      = clearColor,
+                maxDeltaTime    = maxDelta
+            };
+            { rootDir = rootDir, config = config }
+        }
+
+    /// glyphs（任意）: 起動時にどの字を生成するか。
+    ///   "auto"（既定）… 起動時は生成せず、出た字から順に生成する。起動が一番速い
+    ///   "used"         … ソースとアセットに書いてある字を先に生成する。最初の画面で引っかからない
+    ///   "all"          … フォントが持つ字を全部。日本語だと数十秒かかる
+    /// どれでも、足りない字は出そうとしたときに追加生成される（消えることはない）。
+    def getGlyphs(root: Map[String, Util.Json.Json]): String =
+        match Map.get("glyphs", root) {
             case Some(JString(g)) => g
             case _                => "auto"
-        };
-        // windowScale（任意）: あれば window = design × scale をロード時に解決し、
-        // windowWidth/windowHeight より優先する。アスペクト比を design に合わせたまま
-        // ウィンドウだけ拡大したいとき用（見た目そのままで画面を大きくする）。
+        }
+
+    /// windowScale（任意）: あれば window = design × scale をここで解決し、
+    /// windowWidth/windowHeight より優先する。アスペクト比を design に合わせたまま
+    /// ウィンドウだけ拡大したいとき用（見た目そのままで画面を大きくする）。
+    def resolveWindow(root: Map[String, Util.Json.Json], designW: Int32, designH: Int32):
+                        Result[JsonError, (Int32, Int32)] =
         let scaleOpt = match Map.get("windowScale", root) {
             case Some(JNumber(n)) => Some(n.doubleValue())
             case _                => None
         };
-        let (windowW, windowH) = match scaleOpt {
+        match scaleOpt {
             case Some(s) if s > 0.0 =>
-                (Float64.tryToInt32(Float64.round(Int32.toFloat64(designW) * s)) |> Option.getWithDefault(designW),
-                 Float64.tryToInt32(Float64.round(Int32.toFloat64(designH) * s)) |> Option.getWithDefault(designH))
-            case _ => (getInt(root, "windowWidth"), getInt(root, "windowHeight"))
-        };
-        let clearColor  = readColor(getField(root, "clearColor"));
-        let maxDelta    = getFloat(root, "maxDeltaTime");
-        let textures    = readTextures(rootDir, getField(root, "textures"));
-        let fonts       = readFonts(rootDir, getField(root, "fonts"));
-        let sounds      = readSounds(rootDir, getField(root, "sounds"));
-        let config: ProjectConfig = {
-            rootDir         = rootDir,
-            glyphs          = glyphs,
-            designWidth     = designW,
-            designHeight    = designH,
-            windowWidth     = windowW,
-            windowHeight    = windowH,
-            title           = title,
-            textureManifest = textures,
-            fontManifest    = fonts,
-            soundManifest   = sounds,
-            clearColor      = clearColor,
-            maxDeltaTime    = maxDelta
-        };
-        { rootDir = rootDir, config = config }
+                Ok((Float64.tryToInt32(Float64.round(Int32.toFloat64(designW) * s)) |> Option.getWithDefault(designW),
+                    Float64.tryToInt32(Float64.round(Int32.toFloat64(designH) * s)) |> Option.getWithDefault(designH)))
+            case _ =>
+                forM (
+                    w <- getInt(root, "windowWidth");
+                    h <- getInt(root, "windowHeight")
+                ) yield (w, h)
+        }
 
     // ========================================================================
 
     /// プロジェクトディレクトリを再帰的に走査して *.scene.json を列挙する。
     /// 返るパスは rootDir からの相対形 ("src/scenes/MenuScene.scene.json" 等)。
     /// IDE 側はこれを scene リストに表示し、クリックで loadScene に渡す。
-    pub def findSceneFiles(rootDir: String): List[String] \ Fs.Glob =
+    pub def findSceneFiles(rootDir: String): Result[String, List[String]] \ Fs.Glob =
         Fs.Glob.glob(rootDir, "**/*.scene.json")
-            |> Result.getWithDefault(Nil)
-            |> List.map(absPath ->
+            |> Result.mapErr(e -> "Failed to list *.scene.json under ${rootDir}: ${e}")
+            |> Result.map(List.map(absPath ->
                 // glob は絶対パス or rootDir 相対で返すので、rootDir プレフィックスを剥がす
                 if (String.startsWith({prefix = rootDir + "/"}, absPath))
                     absPath.substring(String.length(rootDir) + 1)
@@ -132,101 +154,115 @@ mod ProjectLoader {
                     absPath.substring(String.length(rootDir))
                 else
                     absPath
-            )
+            ))
 
     // ========================================================================
     // JSON 抽出ヘルパー
     // ========================================================================
 
-    def matchObject(elem: Util.Json.Json, ctx: String): Map[String, Util.Json.Json] =
+    def matchObject(elem: Util.Json.Json, ctx: String): Result[JsonError, Map[String, Util.Json.Json]] =
         match elem {
-            case JObject(m) => m
-            case _             => bug!("ProjectLoader: ${ctx} is not a JSON object")
+            case JObject(m) => Ok(m)
+            case _          => Err(err("${ctx} is not a JSON object"))
         }
 
-    def getField(map: Map[String, Util.Json.Json], key: String): Util.Json.Json =
+    def getField(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Util.Json.Json] =
         match Map.get(key, map) {
-            case Some(v) => v
-            case None    => bug!("ProjectLoader: missing key '${key}' in project.json")
+            case Some(v) => Ok(v)
+            case None    => Err(err("missing key '${key}'"))
         }
 
-    def getString(map: Map[String, Util.Json.Json], key: String): String =
-        match getField(map, key) {
-            case JString(s) => s
-            case _             => bug!("ProjectLoader: '${key}' is not a string")
-        }
+    def getString(map: Map[String, Util.Json.Json], key: String): Result[JsonError, String] =
+        getField(map, key) |> Result.flatMap(v -> match v {
+            case JString(s) => Ok(s)
+            case _          => Err(err("'${key}' is not a string"))
+        })
 
-    def getInt(map: Map[String, Util.Json.Json], key: String): Int32 =
-        match getField(map, key) {
-            case JNumber(n) => n.intValue()
-            case _             => bug!("ProjectLoader: '${key}' is not a number")
-        }
+    def getInt(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Int32] =
+        getField(map, key) |> Result.flatMap(v -> match v {
+            case JNumber(n) => Ok(n.intValue())
+            case _          => Err(err("'${key}' is not a number"))
+        })
 
-    def getFloat(map: Map[String, Util.Json.Json], key: String): Float64 =
-        match getField(map, key) {
-            case JNumber(n) => n.doubleValue()
-            case _             => bug!("ProjectLoader: '${key}' is not a number")
-        }
+    def getFloat(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Float64] =
+        getField(map, key) |> Result.flatMap(v -> match v {
+            case JNumber(n) => Ok(n.doubleValue())
+            case _          => Err(err("'${key}' is not a number"))
+        })
 
-    def getFloat32(map: Map[String, Util.Json.Json], key: String): Float32 =
-        match getField(map, key) {
-            case JNumber(n) => n.floatValue()
-            case _             => bug!("ProjectLoader: '${key}' is not a number")
-        }
+    def getFloat32(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Float32] =
+        getField(map, key) |> Result.flatMap(v -> match v {
+            case JNumber(n) => Ok(n.floatValue())
+            case _          => Err(err("'${key}' is not a number"))
+        })
 
-    def getBool(map: Map[String, Util.Json.Json], key: String): Bool =
-        match getField(map, key) {
-            case JBool(b) => b
-            case _           => bug!("ProjectLoader: '${key}' is not a boolean")
-        }
+    def getBool(map: Map[String, Util.Json.Json], key: String): Result[JsonError, Bool] =
+        getField(map, key) |> Result.flatMap(v -> match v {
+            case JBool(b) => Ok(b)
+            case _        => Err(err("'${key}' is not a boolean"))
+        })
 
-    def readColor(elem: Util.Json.Json): Color =
-        let m = matchObject(elem, "clearColor");
-        { r = getFloat32(m, "r"), g = getFloat32(m, "g"), b = getFloat32(m, "b") }
+    def readColor(elem: Util.Json.Json): Result[JsonError, Color] =
+        forM (
+            m <- matchObject(elem, "clearColor");
+            r <- getFloat32(m, "r");
+            g <- getFloat32(m, "g");
+            b <- getFloat32(m, "b")
+        ) yield ({ r = r, g = g, b = b }: Color)
 
     def readTextures(rootDir: String, elem: Util.Json.Json):
-                       List[{name = String, path = String, hasAlpha = Bool}] =
+                       Result[JsonError, List[{name = String, path = String, hasAlpha = Bool}]] =
         match elem {
             case JArray(v) =>
-                Vector.toList(v) |> List.map(item ->
-                    let m = matchObject(item, "texture entry");
-                    {
-                        name     = getString(m, "name"),
-                        path     = joinPath(rootDir, getString(m, "path")),
-                        hasAlpha = getBool(m, "hasAlpha")
-                    }
+                Vector.toList(v) |> Result.traverse(item ->
+                    forM (
+                        m        <- matchObject(item, "texture entry");
+                        name     <- getString(m, "name");
+                        path     <- getString(m, "path");
+                        hasAlpha <- getBool(m, "hasAlpha")
+                    ) yield { name = name, path = joinPath(rootDir, path), hasAlpha = hasAlpha }
                 )
-            case _ => bug!("ProjectLoader: 'textures' is not an array")
+            case _ => Err(err("'textures' is not an array"))
         }
 
     def readFonts(rootDir: String, elem: Util.Json.Json):
-                    List[{name = String, path = String, fontSize = Float64}] =
+                    Result[JsonError, List[{name = String, path = String, fontSize = Float64}]] =
         match elem {
             case JArray(v) =>
-                Vector.toList(v) |> List.map(item ->
-                    let m = matchObject(item, "font entry");
-                    {
-                        name     = getString(m, "name"),
-                        path     = joinPath(rootDir, getString(m, "path")),
-                        fontSize = getFloat(m, "fontSize")
-                    }
+                Vector.toList(v) |> Result.traverse(item ->
+                    forM (
+                        m        <- matchObject(item, "font entry");
+                        name     <- getString(m, "name");
+                        path     <- getString(m, "path");
+                        fontSize <- getFloat(m, "fontSize")
+                    ) yield { name = name, path = joinPath(rootDir, path), fontSize = fontSize }
                 )
-            case _ => bug!("ProjectLoader: 'fonts' is not an array")
+            case _ => Err(err("'fonts' is not an array"))
         }
 
     def readSounds(rootDir: String, elem: Util.Json.Json):
-                     List[{name = String, path = String, looping = Bool}] =
+                     Result[JsonError, List[{name = String, path = String, looping = Bool}]] =
         match elem {
             case JArray(v) =>
-                Vector.toList(v) |> List.map(item ->
-                    let m = matchObject(item, "sound entry");
-                    {
-                        name    = getString(m, "name"),
-                        path    = joinPath(rootDir, getString(m, "path")),
-                        looping = getBool(m, "looping")
-                    }
+                Vector.toList(v) |> Result.traverse(item ->
+                    forM (
+                        m       <- matchObject(item, "sound entry");
+                        name    <- getString(m, "name");
+                        path    <- getString(m, "path");
+                        looping <- getBool(m, "looping")
+                    ) yield { name = name, path = joinPath(rootDir, path), looping = looping }
                 )
-            case _ => bug!("ProjectLoader: 'sounds' is not an array")
+            case _ => Err(err("'sounds' is not an array"))
+        }
+
+    def err(msg: String): JsonError =
+        Decode(JsonPath.empty(), TypeMismatch(msg))
+
+    /// err が詰めた説明文を、コンテナの定型句を剥がして返す。
+    def describeErr(e: JsonError): String =
+        match e {
+            case Decode(_, TypeMismatch(msg)) => msg
+            case other                        => "${other}"
         }
 
     /// パスを単純連結する (rootDir + "/" + relative)。

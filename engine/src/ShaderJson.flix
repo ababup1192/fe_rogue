@@ -20,7 +20,6 @@
 // 色は "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）。WorleyOut は "f1"/"f2"/"f2mf1"、Axis は "u"/"v"。
 
 mod ShaderJson {
-    import java.lang.System
     import java.math.{BigDecimal => JBigDecimal}
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JNumber, JString}
@@ -837,13 +836,10 @@ mod ShaderJson {
             case Err(e)   => warnFellBack(fallback, path, e)
         }
 
-    /// 落ちた理由を知らせてから fallback を返す。効果は `unsafe IO` で隠す
-    /// （呼び側の効果行を警告のために広げない）。
+    /// 落ちた理由を知らせてから fallback を返す。
     def warnFellBack(fallback: ShaderDoc.Spec, path: String, e: JsonError): ShaderDoc.Spec =
-        unsafe IO {
-            System.err.println("shader fail-open: ${path} を既定の面へ落としました — ${describeErr(e)}");
-            fallback
-        }
+        let _ = Log.fellBack("shader", path, "既定の面", describeErr(e));
+        fallback
 
     /// err が詰めた説明文を、コンテナの定型句（"type mismatch: expected"）を剥がして返す。
     def describeErr(e: JsonError): String =

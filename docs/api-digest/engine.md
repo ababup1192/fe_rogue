@@ -350,6 +350,12 @@
 - アトラスにベイクする全コードポイントを 1 行の文字列として返す。
   `pub def text(): String`
 
+## Log — `engine/src/core/Log.flix`
+- stderr へ 1 行。効果は `unsafe IO` で隠す
+  `pub def warn(line: String): Unit`
+- 既定値へ替えた事実を定型文で 1 行知らせる。
+  `pub def fellBack(domain: String, subject: String, fallback: String, reason: String): Unit`
+
 ## Num — `engine/src/core/Num.flix`
 - 0 以上 1 以下に収める。濃さ・進み具合・混ぜ具合など「0〜1 のはずの値」を
   `pub def clamp01(x: Float64): Float64`
@@ -393,7 +399,7 @@
 - project.json を読んで Project を組み立てる。
   `pub def loadProject(rootDir: String): Result[String, Project] \ {Fs.FileRead}`
 - プロジェクトディレクトリを再帰的に走査して *.scene.json を列挙する。
-  `pub def findSceneFiles(rootDir: String): List[String] \ Fs.Glob`
+  `pub def findSceneFiles(rootDir: String): Result[String, List[String]] \ Fs.Glob`
 
 ## Projection — `engine/src/render/drawable/Projection.flix`
 - ビュー変換: screenPos = worldPos * scale - offset。

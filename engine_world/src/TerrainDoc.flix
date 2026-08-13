@@ -7,7 +7,6 @@
 // edge は uniform 先勝ち(いずれも壊れ扱いにせず静かに受け入れる)。
 
 mod TerrainDoc {
-    import java.lang.System
     use Util.Json.Json
 
     /// 縁の色の決め方(Material.EdgeKind の色を文字列参照にした Doc 形)。
@@ -79,31 +78,25 @@ mod TerrainDoc {
     def decodeWithWarnings(text: String): Option[Doc] =
         fromJson(text) |> Option.map(doc -> warnDroppedPresets(text, warnEntries(doc)))
 
-    /// 壊れた色表記・知らない style 名を標準エラーへ 1 行ずつ知らせてから doc を返す。
-    /// 効果は `unsafe IO` で隠す（DocJson.warnFellBack と同じ流儀 — 知らせるために
-    /// 呼び側の効果行を広げない）。
+    /// 壊れた色表記・知らない style 名を 1 行ずつ知らせてから doc を返す。
     def warnEntries(doc: Doc): Doc =
-        unsafe IO {
-            doc#entries |> List.forEach(e -> {
-                colorRefsOf(e) |> List.filter(s -> not isKnownColorRef(s)) |> List.distinct
-                    |> List.forEach(s -> System.err.println("terrain fail-open: '${e#char}' の色 '${s}' を resolver の未知キー既定に替えました — #rrggbb でも @キー でもありません"));
-                if (isKnownStyle(e#style))
-                    ()
-                else
-                    System.err.println("terrain fail-open: '${e#char}' の style '${e#style}' を styleMix の混ぜに替えました — 知らない名前です")
-            });
-            doc
-        }
+        let _ = doc#entries |> List.forEach(e -> {
+            let _ = colorRefsOf(e) |> List.filter(s -> not isKnownColorRef(s)) |> List.distinct
+                |> List.forEach(s -> Log.fellBack("terrain", "'${e#char}' の色 '${s}'", "resolver の未知キー既定", "#rrggbb でも @キー でもありません"));
+            if (isKnownStyle(e#style))
+                ()
+            else
+                Log.fellBack("terrain", "'${e#char}' の style '${e#style}'", "styleMix の混ぜ", "知らない名前です")
+        });
+        doc
 
-    /// 捨てた preset 名を標準エラーへ 1 行ずつ知らせてから doc を返す。名前を元のテキストから
+    /// 捨てた preset 名を 1 行ずつ知らせてから doc を返す。名前を元のテキストから
     /// 拾い直すのは、decode が未知の preset を落とした後の Doc には名前が残らないため。
     def warnDroppedPresets(text: String, doc: Doc): Doc =
-        unsafe IO {
-            presetNamesIn(text) |> List.filter(name -> not isKnownPreset(name))
-                |> List.forEach(name ->
-                    System.err.println("terrain fail-open: preset '${name}' を捨てました — 知らない名前なので表面の演出は出ません"));
-            doc
-        }
+        let _ = presetNamesIn(text) |> List.filter(name -> not isKnownPreset(name))
+            |> List.forEach(name ->
+                Log.warn("terrain fail-open: preset '${name}' を捨てました — 知らない名前なので表面の演出は出ません"));
+        doc
 
     /// 生の JSON に書かれている surface の preset 名を全部拾う。
     def presetNamesIn(text: String): List[String] =

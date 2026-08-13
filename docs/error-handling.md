@@ -42,6 +42,11 @@
 
 文面はそろえる: `<領域> fail-open: <path> を<既定値の名前>に替えました — <理由>`
 
+**自分で `System.err.println` を呼ばない。`Log.fellBack(領域, 対象, 既定値の名前, 理由)` を呼ぶ**
+（engine/src/core/Log.flix）。定型に収まらない 1 行だけ `Log.warn` を使う。効果は `Log` の中で
+`unsafe IO` に隠してあるので、知らせるために呼ぶ側の効果行が広がることはない
+（戻り値が純粋な `Unit` なので、文を並べるときは `let _ = Log.fellBack(..);` と書く）。
+
 ## 決まり 4 — `Err` の中身の型
 
 - JSON / Doc 由来 → `Util.Json.JsonError`

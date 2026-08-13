@@ -10,7 +10,6 @@
 //   - `jsonError(Root, Set#{...})`
 //   - `parse(text)` (Option 返し)
 mod DocJson {
-    import java.lang.System
     use IoError.IoError
     use IoError.ErrorKind
     use Util.Json.Json
@@ -79,15 +78,11 @@ mod DocJson {
             }
         }
 
-    /// 既定値へ落とした事実を標準エラーへ 1 行知らせてから fallback を返す。stdout は描き出しの
-    /// ログが使うので混ぜない。呼ばれるのは読み込み・リロード時だけで毎フレームは
-    /// 通らない。効果は `unsafe IO` で隠す（JsonCodec と同じ流儀 — 呼び側の効果行を
-    /// 警告のために広げない）。
+    /// 既定値へ替えた事実を 1 行知らせてから fallback を返す。呼ばれるのは読み込み・
+    /// リロード時だけで毎フレームは通らない。
     def warnFellBack(fallback: a, path: String, reason: String): a =
-        unsafe IO {
-            System.err.println("doc fail-open: ${path} を丸ごと既定値へ落としました — ${reason}");
-            fallback
-        }
+        let _ = Log.fellBack("doc", path, "丸ごと既定値", reason);
+        fallback
 
     /// path のファイルを読んで JSON にする。読めない・崩れているときは Err で返す。
     pub def readJson(path: String): Result[JsonError, Json] \ Fs.FileRead =
