@@ -50,8 +50,7 @@ rows = [ "WWW",     W を壁の質感に割り当てておくと、
 ```
 
 床（角の変化形を持たないベタ塗り）は DualGrid の仕事ではなく、呼び側（View）が全セルに
-敷く。表に無い文字・未知文字は自動的に床へ落ちる（fail-open）。実装例は
-`templates/rpg-starter`（`rpg.terrain.json` + View）。
+敷く。表に無い文字・未知文字は自動的に床へ落ちる（fail-open）。
 
 ## なぜチップ絵を描かないのか
 
@@ -60,8 +59,16 @@ rows = [ "WWW",     W を壁の質感に割り当てておくと、
   種を持たず毎回同じ。gallery/ vs reference/ のバイト比較（bench）が安定する。
 - **テーマ替えが1箇所** — 「石垣」「氷」「溶岩」は同じ幾何に別の Material を着せるだけ。
 
+## 見本はこのリポジトリに無い
+
+`DualGrid` / `Material` / `Terrain` / `TerrainDoc` を呼ぶコードも `.terrain.json` も、
+このリポジトリには 1 つも無い（`templates/` にも `bench/` にも無い）。使うときは
+`engine_world/src/DualGrid.flix` / `Material.flix` / `Terrain.flix` / `TerrainDoc.flix` の
+冒頭 doc コメントと `engine_world/test/TestTerrainDoc.flix`（Doc の形）を写経元にする。
+描画の導出を守るスナップショットも無いので、絵の確認は自分のゲーム側でやる。
+
 ## 関連
 
 - 逆引き: `docs/module-index.md`（「チップ絵なしでマップ地形を描く」→ DualGrid / Material）
-- Doc の書き方: `docs/doc-conventions.md`（`*.terrain.json` の実例）
+- Doc の外形規約: `docs/doc-conventions.md`（`*.terrain.json` の取り決め）
 - ゆらぎの決定性: `engine_world/src/Hash01.flix`

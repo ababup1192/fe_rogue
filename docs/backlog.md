@@ -17,21 +17,29 @@
 
 ## デュアルグリッド地形の昇格（2026-07 完了）に伴う積み残し
 
-- **editor_server の engine 0.8.0 追随** — トリガー: **Studio マップエディタが
+- **リポジトリ内に地形経路の見本が無い** — トリガー: **engine_world の
+  `DualGrid` / `Material` / `Terrain` / `TerrainDoc` を編集する時点**。この 4 つを呼ぶ
+  コードは `templates/` にも `bench/` にも 0 件で、`.terrain.json` も 0 件。
+  `engine_world/test/TestTerrainDoc.flix` は JSON デコードだけを見ており、描画の導出を
+  守るスナップショットも無い（値を取り違えても `make test-engine_world` も SHA も緑になる）。
+  経路を現役で使っているのは外部の独立リポジトリ（internet_dungeon / dq_map / kaidan /
+  harvest_hollow）なので、ここを直しても壊れは repo 内に出ない。触るときは外部リポジトリで
+  絵を見るか、テンプレへ地形の場面を足して絵の SHA で守る（後者は `.terrain.json` と
+  テンプレ側の配線ごと足す数日仕事）。
+  - 最終確認日: 2026-08-13
+
+- **editor_server の engine 追随** — トリガー: **Studio マップエディタが
   `TerrainDoc.palette` を呼ぶ実装を開始する時点**。flix_ge_studio/server は
-  `flix_engine_core` / `flix_engine_world` / `flix_engine_tools` を 0.7.1 固定で
+  `flix_engine_core` / `flix_engine_world` / `flix_engine_tools` を古いバージョンで固定
   参照しており（全量 sync は API 乖離で現状不可という既知の状況）、パレット供給口
   `TerrainDoc.palette` を server から呼ぶにはこの追随が要る。マップエディタ実装計画の
-  開始時に「editor_server 0.8.0 追随」を別計画として起票する。あわせて rows の
+  開始時に、その時点の engine バージョンへの追随を別計画として起票する。あわせて rows の
   保存形式の固定（文字列配列・SetOp 全置換 = 既存 Main.elm の実装形を正とする）を、
   その起票するマップエディタ側計画の requirements に転記し、承認条件とする。
 
-- **lighten / darken の重複を一本化** — トリガー: **engine に共有の
-  `Color.lighten` / `Color.darken` が入った時点**。現状は白/黒へ近づける同じ式の線形補間が
-  3 箇所に散っている（engine `TerrainDoc` の private 実装・rpg-starter `ThemeDoc` の
-  pub def・dungeon `Surfaces` 相当）。engine が template の ThemeDoc に依存する向きは
-  作れないためやむなく重複している。共有ユーティリティが engine の Color に入ったら
-  `TerrainDoc` / `ThemeDoc`（/ dungeon の Surfaces）をそれへ移して一本化する。
+- **lighten / darken の重複を一本化** — **解消済み**（2026-08-13 確認）。engine の
+  `Color.lighten` / `Color.darken` が source of truth で、`TerrainDoc` はそれを直接呼ぶ。
+  rpg-starter の `ThemeDoc.lighten` / `darken` は `Color` へ委譲するだけの薄い別名。
 
 - **dungeon の Surfaces を engine Terrain へ移す移行** — 将来計画（定期見直し）。
   dungeon は当面 engine の `DualGrid` / `Material` を呼ぶだけに留め、セル種→質感の表

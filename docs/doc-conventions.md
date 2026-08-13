@@ -164,7 +164,7 @@ flix_ge_dungeon の assets/ がこの規約の実例になっている:
 （飾り）、`*.shader.json`（水・マグマの面）。project.json の editor 宣言と
 セットで、エディタ・ホットリロード・テストが全部この形の上で動く。
 
-templates/rpg-starter の assets/ も実例:
-`rpg.terrain.json` + `terrain.schema.json`（セル文字→質感の表。色は `#rrggbb` か
-`@キー` のテーマ参照。`entries[].char` は一意・重複は先勝ち）。`rows` を塗るだけで
-DualGrid の角の変化形が自動生成される「地形」Doc の書き方の見本になっている。
+`*.terrain.json`（セル文字→質感の表。色は `#rrggbb` か `@キー` のテーマ参照）は
+**このリポジトリ内に見本が無い**。書き方は `engine_world/src/TerrainDoc.flix` の
+冒頭 doc コメントと `engine_world/test/TestTerrainDoc.flix` を見る。仕組みは
+[dual-grid.md](dual-grid.md)。
