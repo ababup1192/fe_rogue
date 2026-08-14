@@ -15,7 +15,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 | 煙・雪・葉・木くず | `Fx`/`FxDoc`(fx.json) | emitter 種の追加のみ(新モジュール禁止) |
 | 風揺れ | `Sway` | 無し |
 | 夜のとばり・ビネット・寒色 | `Render.shaderFill` 全画面1枚+blend Multiply | ShaderDoc.Field に `radial` 程度 |
-| ギャラリー/リファレンス画像 | HeadlessRender + make render/reference-check/reference-update | コンタクトシートのターゲット追加 |
+| ギャラリー/リファレンス画像 | HeadlessRender + make render-all/reference-check/reference-update | コンタクトシートのターゲット追加 |
 | エディタ編集 | editor_server の Preview* の並び | PreviewSprite 追加 |
 | 性能計測 | bench/sprite_stress(A/B背中合わせの流儀) | シナリオ1本追加 |
 

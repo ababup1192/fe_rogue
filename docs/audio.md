@@ -161,7 +161,7 @@ App.make(initialWorld)
 | `sequence(voices)` | 複数の声を順につなげる。上昇音・下降音・ファンファーレのような音階の並びを作る |
 
 ゲーム側は `src/render/SfxRender.flix` に「音のデザイン」だけを書き、`SceneRender.all` から
-`renderAll` を呼んで `assets/sfx/` へ WAV を書き出す（`make render`）。合成と WAV エンコードは
+`renderAll` を呼んで `assets/sfx/` へ WAV を書き出す（`make render-all`）。合成と WAV エンコードは
 engine_tools 側の `SfxSynth.wavBytes` / `writeBytes` / `renderSet` が持つので、ゲーム側は
 波形の足し算だけ書けばよい。
 

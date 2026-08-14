@@ -1,9 +1,11 @@
 // SceneRender — ゲーム画面を画面なしで PNG に生成する（スナップショット比較・目視批評用）。
-// 実行: flix run --entrypoint SceneRender.all → gallery/title.png .. gallery/s3_crash.png
+// 実行: make render-all → gallery/title.png .. gallery/s7_bar.png
+//       make render SHOT=s1_drift → debug/s1_drift.png（1 枚だけ）
 // すべて決定的な場面（時計 t は場面ごとに固定値を入れる — 実時間も乱数も見ない）。
 // World を直接組み、実機と同じ描画経路（View.frame → Render.draw → HeadlessRender.renderPng）で生成する。
 mod SceneRender {
     import java.io.File
+    import java.lang.System
 
     def design(): Vec2.Vec2 = { x = 240.0, y = 360.0 }
 
@@ -20,12 +22,61 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    pub def shotNames(): List[String] =
+        "title" :: "s1_drift" :: "s2_nitro" :: "s3_crash" :: "s4_uturn"
+            :: "s5_gate" :: "s6_rail" :: "s7_bar" :: Nil
+
+    /// 名前 → その場面の World。shotNames と対で保つ。名前で引く形にしてあるので、
+    /// SHOT で 1 枚だけ生成するときに残りの場面は組まない。
+    def sceneOf(name: String, w0: World.World): Option[World.World] =
+        match name {
+            // title: ジャンルカードの顔（Title 画面）。Studio が reference/title.png を /genesis/title で
+            // 読み、「レース」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
+            case "title"    => Some({ t = 2.2 | w0 })
+            // s1: S 字をドリフト中（タイヤ痕・白煙・ゲージ半分）。この絵が遊びの顔。
+            case "s1_drift" => Some(driftScene(w0))
+            // s2: 直線でニトロ発動中（炎とスピード感・前方にライバル 1 台）。
+            case "s2_nitro" => Some(nitroScene(w0))
+            // s3: 障害物に当たった直後（スピン中・閃光と火花）。
+            case "s3_crash" => Some(crashScene(w0))
+            // s4: 左の U 字の入口（道が巻き込んで画面の外へ消える所）。急カーブの絵の顔。
+            case "s4_uturn" => Some(uturnScene(w0))
+            // s5: 登りの頂上ぎわで土管ゲートへ差し掛かる所（坂とゲートの絵の顔）。
+            case "s5_gate"  => Some(gateScene(w0))
+            // s6: 左 U 字の外側のガードレールに擦り付けて曲がっている所（火花が散る）。
+            case "s6_rail"  => Some(railScene(w0))
+            // s7: 長い直線の振り子バーが左へ振れきる手前（残った右の隙間を抜けに行く所）。
+            case "s7_bar"   => Some(barScene(w0))
+            case _          => None
+        }
+
     /// SceneRender.all の中身。生成した PNG のパス列を返す — 走行中のゲームへの POST /render も呼ぶ。
     /// 効果音も同じ入口で生成する（絵と音を別の手順にしない）。返すのは目で見る物だけなので
-    /// WAV はパス列に載せない。
+    /// WAV はパス列に載せない。1 枚だけ描き出す one() では鳴らす物は作り直さない。
     pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
         run { SfxRender.renderAll() } with Fs.FileRead.runWithIO;
+        shotsInto("gallery", _ -> true)
+
+    /// SHOT で指した場面だけを debug/ へ生成する（スナップショットを汚さない）。
+    /// 実行: make render SHOT=s1_drift
+    pub def one(): Unit \ IO =
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// keep が真を返す場面だけを outDir へ生成し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         // 実機が GPU へ上げるのと同じアトラス画素を PNG に落とし、regionRect 付き Sprite を
@@ -33,27 +84,15 @@ mod SceneRender {
         let images = PxSpriteAtlas.asImages(
             { texture = World.atlasName(), baked = w0#atlas } :: Nil);
         let cfg = { texturePath = HeadlessRender.imagePngs("debug", images)
-                    | cfgOf("gallery", atlas, w0#theme#grass) };
+                    | cfgOf(outDir, atlas, w0#theme#grass) };
         let texInfo = HeadlessRender.imageTextureInfo(images);
         let ctx = App.viewCtxOf(atlas, design());
-        // title: ジャンルカードの顔（Title 画面）。Studio が reference/title.png を /genesis/title で
-        // 読み、「レース」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
-        let t = shoot(cfg, texInfo, ctx, { t = 2.2 | w0 }, "title");
-        // s1: S 字をドリフト中（タイヤ痕・白煙・ゲージ半分）。この絵が遊びの顔。
-        let s1 = shoot(cfg, texInfo, ctx, driftScene(w0), "s1_drift");
-        // s2: 直線でニトロ発動中（炎とスピード感・前方にライバル 1 台）。
-        let s2 = shoot(cfg, texInfo, ctx, nitroScene(w0), "s2_nitro");
-        // s3: 障害物に当たった直後（スピン中・閃光と火花）。
-        let s3 = shoot(cfg, texInfo, ctx, crashScene(w0), "s3_crash");
-        // s4: 左の U 字の入口（道が巻き込んで画面の外へ消える所）。急カーブの絵の顔。
-        let s4 = shoot(cfg, texInfo, ctx, uturnScene(w0), "s4_uturn");
-        // s5: 登りの頂上ぎわで土管ゲートへ差し掛かる所（坂とゲートの絵の顔）。
-        let s5 = shoot(cfg, texInfo, ctx, gateScene(w0), "s5_gate");
-        // s6: 左 U 字の外側のガードレールに擦り付けて曲がっている所（火花が散る）。
-        let s6 = shoot(cfg, texInfo, ctx, railScene(w0), "s6_rail");
-        // s7: 長い直線の振り子バーが左へ振れきる手前（残った右の隙間を抜けに行く所）。
-        let s7 = shoot(cfg, texInfo, ctx, barScene(w0), "s7_bar");
-        t :: s1 :: s2 :: s3 :: s4 :: s5 :: s6 :: s7 :: Nil
+        shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, texInfo, ctx, w, name)))
+
+    def envOr(key: String, fallback: String): String \ IO =
+        let value = System.getenv(key);
+        if (Object.isNull(value)) fallback else value
 
     // ── 決定的な場面の脚本（乱数を回さず World を直接組む） ──
     // 立ち位置は「道の中心からの横ずれ（px）」で書く。区間表を差し替えても、

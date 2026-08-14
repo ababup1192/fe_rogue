@@ -86,7 +86,9 @@
 ## make の入口
 
 - `make run` / `make debug`（watchFile・F8 有効）/ `make check`（型検査・一番速い確認）
-- `make test` / `make render`（決定的な絵を描き出す）/ `make reference-check`（gallery/ vs reference/ のバイト比較）
+- `make test` / `make render SHOT=<場面名>`（その場面 1 枚だけ描き出す。既定の手はこれ）/
+  `make render-all`（決定的な絵を全部描き出す。素の `make render` は使い方を出して失敗する）/
+  `make reference-check`（gallery/ vs reference/ のバイト比較）
 - `make reference-update`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
   `make gallery-sounds` の sounds.png / music.png）で**目と耳で確かめて**批評する。

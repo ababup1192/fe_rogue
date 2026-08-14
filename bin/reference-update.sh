@@ -9,13 +9,13 @@ set -eu
 cd "${1:-.}"
 
 if [ ! -d gallery ]; then
-	echo "error: gallery/ がありません。先に make render を実行してください" >&2
+	echo "error: gallery/ がありません。先に make render-all を実行してください" >&2
 	exit 1
 fi
 
 count=$(find gallery -maxdepth 1 -name '*.png' | wc -l | tr -d ' ')
 if [ "$count" -eq 0 ]; then
-	echo "error: gallery/*.png が 1 枚もありません。先に make render を実行してください" >&2
+	echo "error: gallery/*.png が 1 枚もありません。先に make render-all を実行してください" >&2
 	exit 1
 fi
 

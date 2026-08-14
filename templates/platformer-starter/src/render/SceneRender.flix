@@ -1,5 +1,6 @@
 // SceneRender — ゲーム画面を画面なしで PNG に描き出す(スナップショット比較用)。
-// 実行: make render → gallery/*.png(title / hill / cave / tower)
+// 実行: make render-all → gallery/*.png(title / hill / cave / tower)
+//       make render SHOT=cave → debug/cave.png(1 枚だけ)
 // 時刻 t は固定値 — 空・コイン・旗・動く床がこの t だけで決まるので、
 // 何度描き出しても同じ PNG が出る(スナップショットのバイト比較が成り立つ)。
 mod SceneRender {
@@ -47,42 +48,63 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
-    /// 調整中の 1 枚だけを debug/ へ描き出す(スナップショットを汚さない)。
-    /// 実行: make shot STAGE=1 — 洞窟のように 1 枚が重い面を見ながら直すとき、
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    pub def shotNames(): List[String] =
+        "title" :: "hill" :: "cave" :: "tower" :: Nil
+
+    /// 名前 → (その場面の World, HUD を重ねるか)。shotNames と対で保つ。
+    /// 名前で引く形にしてあるので、SHOT で 1 枚だけ描くときに残りの面は組まない。
+    def sceneOf(name: String, w0: World.World): Option[(World.World, Bool)] =
+        match name {
+            // title は Studio のジャンルカードの顔(GET /genesis/title が読む)と、
+            // HUD 経路のリグレッション検知を兼ねる — 丘を HUD ごと描き出す。
+            // 「夕方の丘を走って跳ぶ」が 1 枚で伝わる場面を選んでいる。
+            case "title" => Some((withT(w0), true))
+            case "hill"  => Some((withT(w0), false))
+            case "cave"  => Some((withT(World.loadStage(1, w0)), false))
+            case "tower" => Some((withT(World.loadStage(2, w0)), false))
+            case _       => None
+        }
+
+    /// SHOT で指した場面だけを debug/ へ描き出す(スナップショットを汚さない)。
+    /// 実行: make render SHOT=cave — 洞窟のように 1 枚が重い面を見ながら直すとき、
     /// 4 枚まとめて描き出し直すのを待たずに済む。
     pub def one(): Unit \ IO =
-        discard (new File("debug")).mkdirs();
-        let ix = envOr("STAGE", "0") |> Int32.fromString |> Option.getWithDefault(0);
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// SceneRender.all の中身。走行中の POST /render(App.onRenderRequest)もこれを呼べる。
+    pub def allShots(): List[String] \ IO =
+        shotsInto("gallery", _ -> true)
+
+    /// keep が真を返す場面だけを outDir へ描き出し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         let images = atlasImages(w0);
-        let cfg = { outDir = "debug",
+        let cfg = { outDir = outDir,
                     texturePath = HeadlessRender.imagePngs("debug", images)
                     | cfgOf(atlas, Theme.resolve(w0#theme, "ink")) };
-        let w = withT(World.loadStage(ix, w0));
-        discard shoot(cfg, HeadlessRender.imageTextureInfo(images), atlas, w, "shot")
-
-    /// 決定的な 4 場面。走行中の POST /render(App.onRenderRequest)もこれを呼べる。
-    pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
-        let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
-        let w0 = loadWorld();
-        let images = atlasImages(w0);
-        let cfg = { texturePath = HeadlessRender.imagePngs("debug", images)
-                    | cfgOf(atlas, Theme.resolve(w0#theme, "ink")) };
         let texInfo = HeadlessRender.imageTextureInfo(images);
-        let hill = withT(w0);
-        let cave = withT(World.loadStage(1, w0));
-        let tower = withT(World.loadStage(2, w0));
-        // title は Studio のジャンルカードの顔(GET /genesis/title が読む)と、
-        // HUD 経路のリグレッション検知を兼ねる — 丘を HUD ごと描き出す。
-        // 「夕方の丘を走って跳ぶ」が 1 枚で伝わる場面を選んでいる。
-        shootWith(cfg, texInfo, atlas, hill, "title",
-                View.hud(App.viewCtxOf(atlas, design()), hill))
-            :: shoot(cfg, texInfo, atlas, hill, "hill")
-            :: shoot(cfg, texInfo, atlas, cave, "cave")
-            :: shoot(cfg, texInfo, atlas, tower, "tower")
-            :: Nil
+        let ctx = App.viewCtxOf(atlas, design());
+        shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            match sceneOf(name, w0) {
+                case None => None
+                case Some((w, hud)) =>
+                    Some(shootWith(cfg, texInfo, atlas, w, name,
+                        if (hud) View.hud(ctx, w) else Nil))
+            })
 
     /// カメラを面の中へ収める(実機の App.withCameraBounds と同じ役)。
     /// 面が画面より小さい軸は中央に置く。
@@ -97,11 +119,7 @@ mod SceneRender {
     /// カメラ中心 = World.cameraFocus。visible をその矩形にして View.frame(全動的)を呼び、
     /// ワールド座標の絵を画面座標へ平行移動する。視差レイヤは実機
     /// (CameraRig.parallaxCenter)と同じ式で「見かけのカメラ」を作って重ねる。
-    def shoot(cfg: HeadlessRender.RenderConfig, texInfo: String -> Option[GameEngine.TextureInfo],
-              atlas: FontAtlas, w: World.World, name: String): String \ IO =
-        shootWith(cfg, texInfo, atlas, w, name, Nil)
-
-    /// shoot の HUD 付き版。extras は画面座標のまま最後へ重ねる(実機の withHudView と同じ)。
+    /// extras は画面座標のまま最後へ重ねる(実機の withHudView と同じ)。
     def shootWith(cfg: HeadlessRender.RenderConfig, texInfo: String -> Option[GameEngine.TextureInfo],
                   atlas: FontAtlas, w: World.World, name: String,
                   extras: List[Render.PlacedItem]): String \ IO =

@@ -56,7 +56,7 @@ WORDS だけが持つ(この表には置かない)。
 
 | UI の言葉 | English | 意味 | コード側の名前・実体 |
 |---|---|---|---|
-| 描き出す | Render | シーンから PNG/GIF を作る操作。UI では「焼く」と書かない(bake はフォント・テクスチャのアトラスを前もって作ることだけを指す) | `make render` / `POST /render` |
+| 描き出す | Render | シーンから PNG/GIF を作る操作。UI では「焼く」と書かない(bake はフォント・テクスチャのアトラスを前もって作ることだけを指す) | `make render-all` / `POST /render` |
 | ラフ | Sketch | 人が手で描く下書き。生成された絵と見比べる相手 | `draft/sketch/<名前>/` |
 | アノテーションチケット | Annotation ticket | 絵の上で矩形を囲って一言書いた直しの依頼。済んだら archive/ へ下げる | `debug/annotations/` |
 | リファレンス画像 | Reference image | 前に「これで正しい」と決めた画面の絵。いまの絵と比べて、変わっていたら知らせる | `templates/*/reference/` |

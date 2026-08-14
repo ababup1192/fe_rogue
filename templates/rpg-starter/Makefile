@@ -4,8 +4,9 @@
 #   make test   … テストを実行する（記録は .test-logs/）
 #   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
-#   make render   … ギャラリー PNG を描き出す（決定的。先に palette を作り直す）
-#   make palette … Studio 用の色の写し(assets/rpg.palette.json)を作り直す
+#   make render-all … ギャラリーの絵を全部描き出す（決定的。palette は入力が新しいときだけ作り直す）
+#   make render SHOT=walk … その場面だけ debug/walk.png へ描き出す（複数は SHOT="title walk"）
+#   make palette … Studio 用の色の写し(assets/rpg.palette.json)を無条件に作り直す
 #   make reference-check  … 生成した絵をリファレンス画像とバイト比較する
 #   make reference-update … いまの gallery をリファレンス画像として更新する
 #   make atelier-preview … atelier/ の候補と assets/ の現行を debug/atelier/ に描き出す
@@ -38,7 +39,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check render render-town render-town-scene render-house render-motion render-seam reference-check reference-update atelier-preview palette api hooks check-docs-sync
+.PHONY: status run debug test build check render render-all render-town render-town-scene render-house render-motion render-seam reference-check reference-update atelier-preview palette api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -86,11 +87,39 @@ api:
 	if [ -n "$$out" ]; then printf '%s\n' "$$out"; \
 	else echo "[api] '$(Q)' に当たりなし。$(ENGINE)/docs/module-index.md で別名を探す"; fi
 
+# Studio 用の色の写し。入力（テーマ・sprite の Doc と、色を解く側のコード）が
+# 写しより新しいときだけ作り直す。flix run は 1 回ごとにパッケージ全体をコンパイルし直すので、
+# render のたびに無条件で走らせると、絵を描くのと同じだけのコンパイル時間を二重に払う。
+# 入力の洗い出しに漏れがあったときは `make palette` で無条件に作り直す。
+PALETTE      := assets/rpg.palette.json
+PALETTE_DEPS := assets/rpg.theme.json assets/rpg.sprite.json assets/town.sprite.json \
+                src/Palette.flix src/ThemeDoc.flix
+
+$(PALETTE): $(PALETTE_DEPS)
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+
 palette:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
 
-render: palette
+# 描き出せる場面の名前（source of truth は SceneRender.shotNames。ここは使い方に出す写し）。
+SHOTS := title walk talk door battle clear terrain_grain
+
+render-all: $(PALETTE)
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.all
+
+# 1 枚だけ debug/<場面>.png へ描き出す（gallery/ は render-all だけが書く）。
+# palette は Studio の編集画面が読む写しで絵には効かないので、ここでは作り直さない。
+# 下の render-town … render-seam は gallery に無い検分用の絵（1 つで数枚出る）なので SHOT に混ぜない。
+render:
+	@if [ -z "$(SHOT)" ]; then \
+		echo "usage: make render SHOT=<場面>          1 枚だけ debug/<場面>.png へ描き出す"; \
+		echo "       make render SHOT=\"title walk\"    何枚か"; \
+		echo "       make render-all                  全部 gallery/ へ描き出す"; \
+		echo "  場面: $(SHOTS)"; \
+		echo "  街の検分（gallery の外）: make render-town / render-town-scene / render-house / render-motion / render-seam"; \
+		exit 1; \
+	fi
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" SHOT="$(SHOT)" $(FLIX) run --entrypoint SceneRender.one
 
 render-town:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.town
@@ -107,10 +136,10 @@ render-motion:
 render-seam:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.seam
 
-reference-check: render
+reference-check: render-all
 	"$(ENGINE)/bin/reference-check.sh"
 
-reference-update:
+reference-update: render-all
 	"$(ENGINE)/bin/reference-update.sh"
 
 atelier-preview:

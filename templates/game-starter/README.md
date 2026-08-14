@@ -16,7 +16,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
 | `make palette` | Studio 用の色の写し(`assets/__NAME__.palette.json`)を作り直す |
-| `make render`   | ギャラリー PNG を描き出す（決定的） |
+| `make render-all`   | ギャラリー PNG を全部描き出す（決定的） |
+| `make render SHOT=main` | その場面だけ `debug/main.png` へ描き出す |
 | `make reference-check`  | 描き出した絵をリファレンス画像とバイト比較する |
 | `make reference-update` | いまの gallery をリファレンス画像として更新する |
 | `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に描き出す |
@@ -55,7 +56,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 
 - **画風は最初に決めて `AGENTS.local.md` に書く**。この骨組みの見た目は一例で、
   そのまま引き継ぐ物ではありません（決め方は `.claude/skills/visual-dict`）。
-- `make render` で `gallery/` に決定的な PNG を描き出し、`make reference-update` で更新、`make reference-check` で防護。
+- `make render-all` で `gallery/` に決定的な PNG を描き出し、`make reference-update` で更新、`make reference-check` で防護。
 - 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に描き出して目視。
 
 ## AI エージェント向け指針の配布（sync-agents）

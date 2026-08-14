@@ -1,6 +1,6 @@
 ---
 name: render-loop
-description: "絵を直すときの進め方。ヘッドレス生成で場面を生成して目視で批評し、一度に 1 つだけ直して前後を並べて見せるループを出す。絵・演出・手触りを直すとき、「見た目を直して」「ここが変」と言われたとき、make render / make diff を使うとき、どこから直すか候補を出すときに使う。"
+description: "絵を直すときの進め方。ヘッドレス生成で場面を生成して目視で批評し、一度に 1 つだけ直して前後を並べて見せるループを出す。絵・演出・手触りを直すとき、「見た目を直して」「ここが変」と言われたとき、make render SHOT= / make render-all / make diff を使うとき、どこから直すか候補を出すときに使う。"
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -24,6 +24,30 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 - 機械的リファクタ（分割・Doc 化）は「前後の PNG バイト一致」で見た目不変を証明する
 - リグレッション防護はリファレンス画像（`gallery/` vs `reference/` のバイト比較）に任せる
+
+## 描き出すのは触った 1 枚だけ
+
+ゲーム側（テンプレ側）の描き出しは 3 つに分かれている。**既定の手は「1 枚だけ」**:
+
+| やりたいこと | コマンド |
+|---|---|
+| 直した場面 1 枚だけ | `make render SHOT=title` |
+| 何枚か | `make render SHOT="title walk clear"` |
+| 全部（リファレンス画像と突き合わせる直前） | `make render-all` |
+
+素の `make render` は使い方を出して失敗する。**どの場面を見たいかは自分で決めてから打つ。**
+
+ループ中に全部描き直すと、直した 1 か所を見るのに他の場面のコンパイルと生成の時間を丸ごと払う。
+`make render-all` を打つのは `make reference-check` でハッシュを突き合わせる直前と、
+リリース前・engine を直した後の退行検知だけ。
+
+## 描き出すのは触ったテンプレだけ
+
+engine リポでテンプレを横断するときも同じで、ルートの `make render-all` は全テンプレを
+描き直して実時間 150 秒かかる。ループを回している間は
+`make render-changed`（git で変更のあったテンプレだけ。engine 側を直したときは全テンプレが対象）を使う。
+ルート側も素の `make render` は使い方を出して失敗する（全部なら `make render-all`・並列なら
+`render-par`・変更のあったテンプレだけなら `render-changed`）。
 
 ## 一度に 1 つだけ直す
 
@@ -64,7 +88,7 @@ docs/headless-render-recipe.md。リファレンス画像の更新は `make -C t
 
 ```
 - [ ] 1. 壊れている物（落ちる・黒い穴・スナップショット退行）が無いか見た。あれば聴かずに直す
-- [ ] 2. 描き出して目視した（make render DIR=<game>）
+- [ ] 2. 直す場面を 1 枚だけ描き出して目視した（make -C <game> render SHOT=<場面名>）
 - [ ] 3. 候補を 3 つまでに絞って人に出した（1 つ 1 行 + 絵か再現手順）
 - [ ] 4. 選ばれた 1 つだけを直した（他に手を広げていない）
 - [ ] 5. make diff DIR=<game> で前後を並べて見せた

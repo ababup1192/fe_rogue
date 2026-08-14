@@ -107,7 +107,7 @@ mod Controls {
         World.withFx(loadFx(w#theme), w)
 
     /// 効果音のつまみの読み直し。ここで届くのは鳴らす間隔だけ —— 音量・高さ・長さは
-    /// 生成した WAV に入っているので、make render で生成し直して起動し直すまで変わらない。
+    /// 生成した WAV に入っているので、make render-all で生成し直して起動し直すまで変わらない。
     pub def reloadSfxTune(w: World.World): World.World \ Fs.FileRead =
         World.withSfxTune(SfxTuneDoc.load(SfxTuneDoc.path()), w)
 

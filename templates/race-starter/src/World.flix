@@ -708,7 +708,7 @@ mod World {
     pub def atlasKey(w: World): String = "gen${w#atlasGen}"
 
     /// 効果音のつまみ。走らせたまま効くのは鳴らす間隔だけで、音量・高さ・長さは
-    /// 生成した WAV に入っている（make render で生成し直して起動し直すと届く）。
+    /// 生成した WAV に入っている（make render-all で生成し直して起動し直すと届く）。
     pub def withSfxTune(sfxtune: SfxTuneDoc.Doc, w: World): World = { sfxtune = sfxtune | w }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。Studio の「表示中」バッジの材料。

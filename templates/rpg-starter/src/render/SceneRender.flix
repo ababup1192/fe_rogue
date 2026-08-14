@@ -1,6 +1,7 @@
 // SceneRender — ゲーム画面を画面なしで PNG に描き出す（スナップショット比較用と、アトリエ候補のプレビュー用）。
-// 実行: flix run --entrypoint SceneRender.all → gallery/title.png・walk.png・talk.png・door.png・clear.png
-//       flix run --entrypoint SceneRender.atelier → debug/atelier/*.png（スナップショットの外）
+// 実行: make render-all → gallery/title.png・walk.png・talk.png・door.png・battle.png・clear.png・terrain_grain.png
+//       make render SHOT=walk → debug/walk.png（1 枚だけ）
+//       make atelier-preview → debug/atelier/*.png（スナップショットの外）
 // 場面の作り方は 2 通りを使い分ける:
 //   - 主人公の動き（歩く・話す・扉の前に立つ）は World の規則（stepOnce / confirm）で作る
 //     — 実機と同じ経路を通った絵になる。
@@ -8,6 +9,7 @@
 //     — 間取りを編集しても描き出しの脚本を書き直さずに済む。
 mod SceneRender {
     import java.io.File
+    import java.lang.System
 
     def design(): Vec2.Vec2 = { x = World.width(), y = World.height() }
 
@@ -26,10 +28,58 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    pub def shotNames(): List[String] =
+        "title" :: "walk" :: "talk" :: "door" :: "battle" :: "clear"
+            :: "terrain_grain" :: Nil
+
+    /// 名前 → その場面の World。shotNames と対で保つ。名前で引く形にしてあるので、
+    /// SHOT で 1 枚だけ描くときに残りの場面は歩かせない。
+    /// terrain_grain だけは World を持たない別の絵なので、ここでは None（shotsInto が描く）。
+    def sceneOf(name: String, w0: World.World): Option[World.World] =
+        match name {
+            // 表紙: 里の一角に幕、その上に題と一行。
+            case "title"  => Some(w0)
+            // 歩き: start から 3 歩（規則で歩く。3 歩 = 歩きのコマが出る奇数）。
+            case "walk"   => Some(World.confirm(w0)
+                |> World.stepOnce(Dir4.Right) |> World.stepOnce(Dir4.Right)
+                |> World.stepOnce(Dir4.Down))
+            // 会話: いちばん後ろの住人（間取りの Doc の並びの末尾）の隣に立って話しかけ、
+            // 文字送りを全部出す（settle）。
+            case "talk"   => Some(talkScene(World.confirm(w0)))
+            // 扉前: 閉じた木戸に向いて立つ。
+            case "door"   => Some(doorScene(World.confirm(w0)))
+            // 戦い: 魔物と向き合い、1 回殴り合った直後（下のウィンドウに打ち合いの結果が出ている）。
+            case "battle" => Some(battleScene(World.confirm(w0)))
+            // クリア: 薬草がそろい、灯りが全部ともった里。
+            case "clear"  => Some(clearScene(World.confirm(w0)))
+            case _        => None
+        }
+
     /// SceneRender.all の中身。描き出した PNG のパス列を返す — 走行中のゲームへの POST /render
     /// （Main の App.onRenderRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
     pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
+        shotsInto("gallery", _ -> true)
+
+    /// SHOT で指した場面だけを debug/ へ描き出す（スナップショットを汚さない）。
+    /// 実行: make render SHOT=walk
+    pub def one(): Unit \ IO =
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// keep が真を返す場面だけを outDir へ描き出し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         // 地面のタイルと建物は 1 枚のアトラスから貼る。SoftRaster はファイルからしか
@@ -38,27 +88,20 @@ mod SceneRender {
         let images = PxSpriteAtlas.asImages(
             { texture = TownMap.textureName(), baked = w0#townAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
-        let cfg = { texturePath = texPaths | cfgOf("gallery", atlas, w0#theme#sky) };
-        // 表紙: 里の一角に幕、その上に題と一行。
-        let title = shoot(cfg, atlas, images, w0, "title");
-        // 歩き: start から 3 歩（規則で歩く。3 歩 = 歩きのコマが出る奇数）。
-        let playing = World.confirm(w0);
-        let walking = playing |> World.stepOnce(Dir4.Right) |> World.stepOnce(Dir4.Right)
-            |> World.stepOnce(Dir4.Down);
-        let walk = shoot(cfg, atlas, images, walking, "walk");
-        // 会話: いちばん後ろの住人（間取りの Doc の並びの末尾）の隣に立って話しかけ、
-        // 文字送りを全部出す（settle）。
-        let talk = shoot(cfg, atlas, images, talkScene(playing), "talk");
-        // 扉前: 閉じた木戸に向いて立つ。
-        let door = shoot(cfg, atlas, images, doorScene(playing), "door");
-        // 戦い: 魔物と向き合い、1 回殴り合った直後（下のウィンドウに打ち合いの結果が出ている）。
-        let fight = shoot(cfg, atlas, images, battleScene(playing), "battle");
-        // クリア: 薬草がそろい、灯りが全部ともった里。
-        let clear = shoot(cfg, atlas, images, clearScene(playing), "clear");
+        let cfg = { texturePath = texPaths | cfgOf(outDir, atlas, w0#theme#sky) };
+        let shots = shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, atlas, images, w, name)));
         // 地面の質感: assets/rpg.terrain.json の表で土・石垣・水路・畑を敷いた 1 枚。
-        let terrainDoc = run { TerrainDoc.load(terrainPath()) } with Fs.FileRead.runWithIO;
-        let terrain = terrainShot({ texturePath = Map.empty() | cfg }, w0#theme, terrainDoc);
-        title :: walk :: talk :: door :: fight :: clear :: terrain :: Nil
+        if (not keep("terrain_grain")) shots
+        else {
+            let terrainDoc = run { TerrainDoc.load(terrainPath()) } with Fs.FileRead.runWithIO;
+            let terrain = terrainShot({ texturePath = Map.empty() | cfg }, w0#theme, terrainDoc);
+            List.append(shots, terrain :: Nil)
+        }
+
+    def envOr(key: String, fallback: String): String \ IO =
+        let value = System.getenv(key);
+        if (Object.isNull(value)) fallback else value
 
     /// 魔物と出会い、「たたかう」を 1 回選んだ直後。歩数も打ち合いも規則どおりに進める
     /// （World を手で組まない = 規則が変わればこの絵も一緒に変わる）。

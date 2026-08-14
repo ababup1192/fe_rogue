@@ -47,7 +47,7 @@ make debug   # 保存即反映(watchFile)+ F1 一括リロード + F8 付きで�
 どれも `*.schema.json` を持ち、`project.json` の `editor.resources[]` に宣言してあるので
 Studio(エディタ)のフォームからも編集できる。ドット絵の意味色キーの実色は
 `assets/px.palette.json`(`make palette` の生成物)が Studio に教える —
-**色を変えたら焼き直す**(`make render` の前に自動で走る)。忘れると編集画面だけ仮色になり、
+**色を変えたら焼き直す**(`make render-all` の前に自動で走る)。忘れると編集画面だけ仮色になり、
 実機と配色が食い違う。
 
 ## 検証
@@ -56,7 +56,8 @@ Studio(エディタ)のフォームからも編集できる。ドット絵の意
 make test     # ルール(手触り・収支・ギミック)と Doc 橋渡しのテスト
 make stages   # 面の静的検査 — 罠ゼロ(BFS)と流れ(平地の単調・見せ場の空き)
 make playtest # bot に通しで遊ばせて「走れるか・詰まらないか」を測る
-make render     # 決定的な 4 場面を gallery/ に描き出す(hill / cave / tower / hud)
+make render-all # 決定的な 4 場面を gallery/ に描き出す(title / hill / cave / tower)
+make render SHOT=cave # その場面だけ debug/cave.png へ描き出す(複数は SHOT="hill cave")
 make reference-check    # 描き出した絵を reference/ とバイト比較(リグレッション検知)
 make reference-update   # いまの gallery を新しい基準として更新する
 make probe    # 面の読み込み・1 tick・1 フレームの部品数を測る(重い一手の切り分け)
