@@ -21,7 +21,10 @@ allowed-tools: Read, Grep, Glob, Bash
 **`gallery/` は git 管理外なので `git status` では見えない。** 生成した絵の一致は
 `make reference-check` の SHA 突き合わせで見る。
 
-1. `make render-par`（不審なら逐次の `make render`）
+1. ルートの `make render-par`（不審なら逐次の `make render-all`）。どちらも各テンプレで
+   全量の `make render-all` を打つ。テンプレ 1 本だけ確かめたいときは
+   `make -C templates/<name> render-all`（`make render SHOT=<場面名>` は 1 枚だけなので
+   リリースの全量ゲートには使わない）
 2. `git status` で assets/sfx の差分ゼロを確認（音や素材の退行はここに出る）
 3. `for d in templates/*/; do make -C "$d" bench; done` で全テンプレの絵が基準と一致するか確認
 4. 基準を持たない絵は、生成し直した `gallery/` を自分で目視する
@@ -62,6 +65,6 @@ tag は現在の HEAD SHA に固定される。
 - **`make release` は未コミットで中断する**: `gallery/` や `NOTES.md` は git 管理外なので
   `git status` に出ない＝残っていても邪魔しない。出ている差分だけ全部コミットする
 
-**全量ゲート**は `make test-par`（全パッケージ並列・壁時計 ≈ 最遅パッケージ 1 本分・ログは `.test-logs/`）。
+**全量ゲート**は `make test-par`（全パッケージ並列・実時間 ≈ 最遅パッケージ 1 本分・ログは `.test-logs/`）。
 併せて `make gl-parity` を回して A 段階の全一致（全 scene 0 px）を確認する（GL と SoftRaster の絵の退行はテストに出ない）。
 並列版に不審な挙動があれば逐次へフォールバックする（`make test` / `make release TEST=test`）。

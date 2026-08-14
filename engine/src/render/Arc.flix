@@ -10,7 +10,7 @@ pub enum Arc {
     case Arc({
         transform = Transform,     // 位置・回転・スケール・せん断
         visual = Visual,           // 色変調・可視性・描画順
-        alpha = Float32,
+        alpha = Float64,
         radius = Float64,      // 外周半径（px）
         width = Float64,       // リングの太さ（px）。内半径 = radius - width（0 未満は中心まで塗る扇形）
         startAngle = Float64,  // 円弧開始角（ラジアン）
@@ -33,7 +33,7 @@ mod Arc {
         Arc.Arc({
             transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
             visual = Visual.setColor(color, Visual.default()),
-            alpha = 1.0f32,
+            alpha = 1.0,
             radius = radius,
             width = width,
             startAngle = startAngle,
@@ -95,10 +95,10 @@ mod Arc {
         let Arc.Arc(r) = arc;
         Arc.Arc({segments = Int32.max(1, segments) | r})
 
-    pub def getAlpha(arc: Arc): Float32 =
+    pub def getAlpha(arc: Arc): Float64 =
         let Arc.Arc(r) = arc; r#alpha
 
-    pub def setAlpha(alpha: Float32, arc: Arc): Arc =
+    pub def setAlpha(alpha: Float64, arc: Arc): Arc =
         let Arc.Arc(r) = arc;
         Arc.Arc({alpha = alpha | r})
 

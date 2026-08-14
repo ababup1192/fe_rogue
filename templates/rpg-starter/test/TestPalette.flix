@@ -6,7 +6,7 @@ mod TestPalette {
 
     @Test
     def testPaletteMirrorIsFresh(): Unit \ {Assert, IO} =
-        // 食い違ったら `make palette`（`make render` でも作り直される）。
+        // 食い違ったら `make palette`（`make render-all` でも作り直される）。
         // 写しは 1 枚で、rpg と town 両方の sprite Doc の legend を束ねる。
         let (rpg, town, theme) = run {
             (PxSpriteDoc.load(World.spritePath()),

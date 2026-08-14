@@ -20,7 +20,6 @@
 // 色は "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）。WorleyOut は "f1"/"f2"/"f2mf1"、Axis は "u"/"v"。
 
 mod ShaderJson {
-    import java.lang.System
     import java.math.{BigDecimal => JBigDecimal}
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JNumber, JString}
@@ -515,7 +514,7 @@ mod ShaderJson {
             case JString(s)  => parseHexColor(s)
             case JObject(m)  =>
                 forM (r <- numAt("r", m); g <- numAt("g", m); b <- numAt("b", m))
-                    yield ({ r = f32(r), g = f32(g), b = f32(b) }: Color)
+                    yield ({ r = unit01(r), g = unit01(g), b = unit01(b) }: Color)
             case _ => Err(err("color must be \"#rrggbb\" or {r,g,b}"))
         }
 
@@ -526,9 +525,9 @@ mod ShaderJson {
                     hexByte(String.slice({ start = 2 }, { end = 4 }, hex)),
                     hexByte(String.slice({ start = 4 }, { end = 6 }, hex))) {
             case (Some(r), Some(g), Some(b)) =>
-                Ok({ r = f32(Int32.toFloat64(r) / 255.0),
-                     g = f32(Int32.toFloat64(g) / 255.0),
-                     b = f32(Int32.toFloat64(b) / 255.0) })
+                Ok({ r = Int32.toFloat64(r) / 255.0,
+                     g = Int32.toFloat64(g) / 255.0,
+                     b = Int32.toFloat64(b) / 255.0 })
             case _ => Err(err("color hex has non-hex digits: '${s}'"))
         }
 
@@ -591,8 +590,8 @@ mod ShaderJson {
     def err(msg: String): JsonError =
         Decode(JsonPath.empty(), TypeMismatch(msg))
 
-    def f32(x: Float64): Float32 =
-        Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
+    def unit01(x: Float64): Float64 =
+        Float64.max(0.0, Float64.min(1.0, x))
 
     // ========================================================================
     // toJson（Spec → Json・往復テスト用）
@@ -783,9 +782,7 @@ mod ShaderJson {
         }
 
     def colorToJson(c: Color): Json =
-        JObject(Map#{ "r" => num(Float32.toFloat64(c#r)),
-                      "g" => num(Float32.toFloat64(c#g)),
-                      "b" => num(Float32.toFloat64(c#b)) })
+        JObject(Map#{ "r" => num(c#r), "g" => num(c#g), "b" => num(c#b) })
 
     def vec2ToJson(v: Vec2.Vec2): Json =
         JObject(Map#{ "x" => num(v#x), "y" => num(v#y) })
@@ -837,13 +834,10 @@ mod ShaderJson {
             case Err(e)   => warnFellBack(fallback, path, e)
         }
 
-    /// 落ちた理由を知らせてから fallback を返す。効果は `unsafe IO` で隠す
-    /// （呼び側の効果行を警告のために広げない）。
+    /// 落ちた理由を知らせてから fallback を返す。
     def warnFellBack(fallback: ShaderDoc.Spec, path: String, e: JsonError): ShaderDoc.Spec =
-        unsafe IO {
-            System.err.println("shader fail-open: ${path} を既定の面へ落としました — ${describeErr(e)}");
-            fallback
-        }
+        let _ = Log.fellBack("shader", path, "既定の面", describeErr(e));
+        fallback
 
     /// err が詰めた説明文を、コンテナの定型句（"type mismatch: expected"）を剥がして返す。
     def describeErr(e: JsonError): String =

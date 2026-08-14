@@ -369,7 +369,7 @@ mod App {
 
     /// 鳴り続けてほしい音 1 本の宣言。name は project.json の sounds の論理名、
     /// volume は音量 0.0〜1.0、pitch は高さ（1.0 = 元のまま・2.0 で 1 オクターブ上）。
-    pub type alias Sustain = { name = String, volume = Float32, pitch = Float32 }
+    pub type alias Sustain = { name = String, volume = Float64, pitch = Float64 }
 
     /// 「このフレームで鳴り続けていてほしい音」を World から導く関数を繋ぐ。
     /// 宣言に載っている間その音は鳴り続け（ループ再生）、載らなくなったフレームで止まる。
@@ -385,12 +385,18 @@ mod App {
     /// RemoteDebug / App 本体の内部 API — ゲームからは呼ばない。
     pub def sustainOps(prev: List[String], next: List[Sustain]):
             { start = List[Sustain], keep = List[Sustain], stop = List[String] } =
-        let fresh = next |> List.foldLeft((acc, s) ->
-            if (List.exists(x -> x#name == s#name, acc)) acc else List.append(acc, s :: Nil), Nil);
-        let living = List.map(s -> s#name, fresh);
-        { start = List.filter(s -> not List.memberOf(s#name, prev), fresh),
-          keep  = List.filter(s -> List.memberOf(s#name, prev), fresh),
-          stop  = List.filter(n -> not List.memberOf(n, living), List.distinct(prev)) }
+        // 重複の判定は Set で、列そのものは逆順に積んで最後に 1 回戻す。宣言の並びは
+        // start / keep / stop の順にそのまま出るので、Set の並びで組み直してはいけない。
+        let (rev, _) = next |> List.foldLeft((acc, s) -> {
+            let (kept, seen) = acc;
+            if (Set.memberOf(s#name, seen)) acc else (s :: kept, Set.insert(s#name, seen))
+        }, (Nil, Set.empty()));
+        let fresh = List.reverse(rev);
+        let living = fresh |> List.map(s -> s#name) |> List.toSet;
+        let prevNames = List.toSet(prev);
+        { start = List.filter(s -> not Set.memberOf(s#name, prevNames), fresh),
+          keep  = List.filter(s -> Set.memberOf(s#name, prevNames), fresh),
+          stop  = List.filter(n -> not Set.memberOf(n, living), List.distinct(prev)) }
 
     /// 終了判定を差し替える。既定は「Escape のエッジで終了」だが、モーダル表示中は
     /// Escape をパネル閉じに使いたい、といったゲームはここで自分の条件を宣言する。
@@ -631,7 +637,7 @@ mod App {
     /// effect で状態を持つゲームも同じ launch を使う。前者は Main で LwjglLayer + Fs を張り、後者は加えて
     /// 自分の effect ハンドラ束を張った内側で呼ぶ。
     /// デバッグ有効（withDebug）かつ環境変数 DEBUG_HTTP_PORT があれば、リモートデバッグの
-    /// HTTP 口も一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
+    /// HTTP エンドポイントも一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
     pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO) =
         let init = app#init;
         // 下ごしらえの間、画面には読み込み中の起動画面が出たまま残る（描き直さないので止まって見えるが、
@@ -648,15 +654,60 @@ mod App {
         // キーと同じく、起動時にすでに押されているボタンは一度離すまでエッジにならない。
         // カーソルの「前の位置」はまだ無い（None）ので、最初のフレームの mouseMoved は false。
         // 固定ステップの状態（持ち越し秒と未消費エッジ）は空から始める。
-        loop(app, world0, InputEvent.currentKeys(),
-             GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
-             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0, Nil, freshTileCache(), None);
+        loop(app, { world = world0, prevKeys = InputEvent.currentKeys(),
+                    prevMouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
+                    prevCursor = None, anno = Annotate.initial(), history = Nil,
+                    bridge = bridge, remoteHold = false, stepState = freshStepState(),
+                    watchState = watch0, sustaining = Nil, tileCache = freshTileCache(),
+                    glyphSeen = None });
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
     /// World は不変値なので、保持しているのは共有構造への参照だけで軽い。
     /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
     pub def historyLimit(): Int32 = 300
+
+    /// loop が次のフレームへ渡し続ける物。app（不変）は入れない — 状態に混ぜると
+    /// 「フレームごとに変わりうる物」に見える。
+    // 平らな 1 枚にしている。種類ごとに入れ子へ畳むと、更新が
+    // { debug = { hold = x | st#debug } | st } になって呼ぶ側が短くならない。
+    type alias LoopState[w] = {
+        world = w,
+        prevKeys = Set[GameEngine.Key], prevMouseDown = Bool, prevCursor = Option[Vec2.Vec2],
+        anno = Annotate.State, history = List[w],
+        bridge = Option[RemoteDebug.Bridge], remoteHold = Bool,
+        stepState = StepState, watchState = WatchState, sustaining = List[String],
+        tileCache = TileCache, glyphSeen = Option[Int64]
+    }
+
+    /// リモートコマンドを捌いた後に残る 3 つの進み方。
+    /// loop から切り出した内部 API — ゲームからは呼ばない。
+    pub enum Branch with Eq, ToString {
+        /// 時間が止まっている。World には触れず、凍結した絵の上で注釈とスクラブだけが動く
+        case Paused
+        /// 停止を抜けるフレーム。スクラブ位置の World から再開するので、まだ World を進めない
+        case Resuming
+        /// ふつうのフレーム。World を進めて描く
+        case Running
+    }
+
+    /// F8 と停止状態から、このフレームの進み方と「F8 が今トグルされたか」を決める。
+    ///
+    /// - `remoteHold`（HTTP 側が停止の主導権を持っている間）は F8 を殺す。/resume で戻す
+    /// - デバッグ機能が使えない構成（canDebug が偽）でも F8 は効かない
+    /// - 停止を抜けるフレームは Running でなく Resuming。ここで World を進めると、
+    ///   スクラブで巻き戻した瞬間が 1 フレーム分だけ飛ぶ
+    ///
+    /// loop から切り出した内部 API — ゲームからは呼ばない。
+    pub def decideBranch(input: { f8Pressed = Bool, canDebug = Bool,
+                                  remoteHold = Bool, wasPaused = Bool }):
+                        { branch = Branch, toggled = Bool } =
+        let toggled = input#f8Pressed and input#canDebug and not input#remoteHold;
+        let pausedNow = if (toggled) not input#wasPaused else input#wasPaused;
+        let branch = if (pausedNow) Branch.Paused
+                     else if (input#wasPaused) Branch.Resuming
+                     else Branch.Running;
+        { branch = branch, toggled = toggled }
 
     /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リモートコマンド → リロード →
     /// 更新系システム（advanceFrame。World を進める）→ 音（進んだ World から）→
@@ -672,77 +723,85 @@ mod App {
     /// 停止中もキーと dt は毎フレーム読み続けるので、解除時に押しっぱなしキーの
     /// 誤エッジや巨大な dt は発生しない。
     ///
-    /// bridge はリモートデバッグの HTTP 口（無効なら None）。remoteHold が真の間は
-    /// HTTP 側が停止の主導権を持つので、F8 での解除は効かない（/resume で戻す）。
+    /// bridge はリモートデバッグの HTTP エンドポイント（無効なら None）。どの分岐に入るかの規則は
+    /// decideBranch（テストで pin してある）。
     ///
     /// stepState は withFixedStep の持ち回し（持ち越し秒 + 未消費エッジ。未使用なら初期値のまま）。
     /// 一時停止中・リモート処理中・一時停止からの再開フレームはどの分岐でも world を進めないので
     /// stepState も動かさず素通しする（巻き戻すのは World の見た目であって、貯まっていた
     /// 実時間の端数や取り置いたエッジではない）。watchState（watchFile の保存検知）も同じ扱い —
     /// World に触れない分岐では監視も動かさず素通しする。
-    def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
-             prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
-             bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
-             stepState: StepState, watchState: WatchState, sustaining: List[String],
-             tileCache: TileCache, glyphSeen: Option[Int64]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO) =
+    def loop(app: App[w, ef], st: LoopState[w]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
-        let frame = frameOf(prev = prevKeys, current = currentKeys, readDt(),
+        let frame = frameOf(prev = st#prevKeys, current = currentKeys, readDt(),
                             GameEngine.Game.getViewportRect()#size,
-                            { prevCursor = prevCursor, cursor = cursorNow },
-                            { prevDown = prevMouseDown, down = mouseDown,
+                            { prevCursor = st#prevCursor, cursor = cursorNow },
+                            { prevDown = st#prevMouseDown, down = mouseDown,
                               wheel = GameEngine.Game.consumeScrollDelta() });
         let wantsQuit = app#quit;
-        if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
+        if (GameEngine.Game.shouldClose() or wantsQuit(frame, st#world)) ()
         else {
-            let remoteRaw = match bridge {
+            // 入力の持ち越しはどの分岐でも同じなので、ここで 1 度だけ差し替える。
+            let carried = { prevKeys = currentKeys, prevMouseDown = mouseDown,
+                            prevCursor = Some(cursorNow) | st };
+            let remoteRaw = match st#bridge {
                 case Some(b) => RemoteDebug.pollRequest(b)
                 case None    => None
             };
-            match (remoteRaw, bridge) {
+            match (remoteRaw, st#bridge) {
                 case (Some(raw), Some(b)) =>
                     // リモートコマンドを処理した実フレームは通常の進行を休む
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = RemoteDebug.handleRemote(app, b, raw,
-                        { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState, sustaining, tileCache, glyphSeen)
+                        { world = st#world, anno = st#anno, history = st#history, hold = st#remoteHold });
+                    loop(app, { world = next#world, anno = next#anno, history = next#history,
+                                remoteHold = next#hold | carried })
                 case _ => {
-                    let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
-                    let pausedNow = if (toggled) not anno#paused else anno#paused;
+                    let decided = decideBranch({ f8Pressed = justPressed(GameEngine.Key.F8, frame),
+                                                 canDebug = canDebug(app), remoteHold = st#remoteHold,
+                                                 wasPaused = st#anno#paused });
                     // デバッグモードの出入りをウィンドウタイトルとカーソル形状で示す
                     // （停止中は正確に囲うための十字カーソル）
-                    if (toggled) {
+                    if (decided#toggled) {
+                        let pausedNow = decided#branch == Branch.Paused;
                         GameEngine.Game.setDebugBadge(pausedNow);
                         GameEngine.Game.setCursor(
                             if (pausedNow) GameEngine.Cursor.Crosshair else GameEngine.Cursor.Default)
                     } else ();
-                    if (pausedNow) {
-                        let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState, sustaining, tileCache, glyphSeen)
-                    } else if (anno#paused) {
-                        // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
-                        // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
-                        let resumed = resumePoint(anno, history, world);
-                        let (cache1, seen1) = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), tileCache, glyphSeen);
-                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState, sustaining, cache1, seen1)
-                    } else {
-                        let (watched, nextWatchState, watchFired) = applyWatch(app, frame#dt, watchState, world);
-                        let (reloaded, reloadFired) = applyReload(app, frame, watched);
-                        let (advanced, nextStepState) = advanceFrame(app, frame, stepState, reloaded);
-                        playSounds(app, reloaded, advanced);
-                        let nextSustaining = applySustained(app, sustaining, advanced);
-                        // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
-                        let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, anno) else anno;
-                        // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
-                        let (cache1, seen1) = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
-                                                          bumpTileGen(watchFired or reloadFired, tileCache),
-                                                          glyphSeen);
-                        // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
-                        let nextHistory = if (canDebug(app))
-                                              List.take(historyLimit(), advanced :: history)
-                                          else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState, nextSustaining, cache1, seen1)
+                    match decided#branch {
+                        case Branch.Paused =>
+                            let nextAnno = pausedStep(app, st#world, st#history, frame, { paused = true | st#anno });
+                            loop(app, { anno = nextAnno | carried })
+                        case Branch.Resuming =>
+                            // スクラブ位置の World から再開する。巻き戻したぶんの履歴と
+                            // フレーム番号も、そこを現在として数え直す。
+                            let resumed = resumePoint(st#anno, st#history, st#world);
+                            let (cache1, seen1) = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), st#tileCache, st#glyphSeen);
+                            loop(app, { world = resumed#world, anno = resumed#anno, history = resumed#history,
+                                        tileCache = cache1, glyphSeen = seen1 | carried })
+                        case Branch.Running =>
+                            let (watched, nextWatchState, watchFired) = applyWatch(app, frame#dt, st#watchState, st#world);
+                            let (reloaded, reloadFired) = applyReload(app, frame, watched);
+                            let (advanced, nextStepState) = advanceFrame(app, frame, st#stepState, reloaded);
+                            playSounds(app, reloaded, advanced);
+                            let nextSustaining = applySustained(app, st#sustaining, advanced);
+                            // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
+                            let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, st#anno) else st#anno;
+                            // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
+                            let (cache1, seen1) = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
+                                                              bumpTileGen(watchFired or reloadFired, st#tileCache),
+                                                              st#glyphSeen);
+                            // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
+                            let nextHistory = if (canDebug(app))
+                                                  List.take(historyLimit(), advanced :: st#history)
+                                              else Nil;
+                            loop(app, { world = advanced, history = nextHistory,
+                                        anno = { frame = measuredAnno#frame + 1i64 | measuredAnno },
+                                        stepState = nextStepState, watchState = nextWatchState,
+                                        sustaining = nextSustaining, tileCache = cache1,
+                                        glyphSeen = seen1 | carried })
                     }
                 }
             }
@@ -1183,7 +1242,7 @@ mod App {
                         tileSize    = spec#tileSet#atlasSource#tileSize,
                         position    = pos,
                         tileScale   = scale,
-                        color       = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                        color       = { r = 1.0, g = 1.0, b = 1.0 },
                         zIndex      = spec#zIndex,
                         tileVaoId   = vao,
                         tileCount   = count };

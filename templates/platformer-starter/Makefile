@@ -4,9 +4,9 @@
 #   make test   … テストを実行する（記録は .test-logs/）
 #   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
-#   make render   … ギャラリー PNG を描き出す（決定的）
-#   make palette … Studio 用の色の写し(assets/px.palette.json)を作り直す
-#   make shot STAGE=1 … 調整中の 1 面だけ debug/shot.png へ描き出す（スナップショットを汚さない）
+#   make render-all … ギャラリーの絵を全部描き出す（決定的。palette は入力が新しいときだけ作り直す）
+#   make render SHOT=cave … その場面だけ debug/cave.png へ描き出す（複数は SHOT="hill cave"）
+#   make palette … Studio 用の色の写し(assets/px.palette.json)を無条件に作り直す
 #   make reference-check  … 生成した絵をリファレンス画像とバイト比較する
 #   make reference-update … いまの gallery をリファレンス画像として更新する
 #   make stages … 面の罠ゼロ(BFS)と流れを機械検査する
@@ -43,7 +43,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check render shot reference-check reference-update stages checkpoints playtest probe loc palette api hooks check-docs-sync
+.PHONY: status run debug test build check render render-all reference-check reference-update stages checkpoints playtest probe loc palette api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -93,19 +93,42 @@ api:
 
 # Studio のドット絵エディタに legend の意味色キーの実色を教える写し（生成物）。
 # 色を変えたら焼き直す — 忘れると編集画面だけ仮色になり、実機と配色が食い違う。
+# 入力（テーマ・sprite の Doc と、色を解く側のコード）が写しより新しいときだけ作り直す。
+# flix run は 1 回ごとにパッケージ全体をコンパイルし直すので、render のたびに無条件で
+# 走らせると、絵を描くのと同じだけのコンパイル時間を二重に払う。
+# 入力の洗い出しに漏れがあったときは `make palette` で無条件に作り直す。
+PALETTE      := assets/px.palette.json
+PALETTE_DEPS := assets/platformer.theme.json assets/px.sprite.json \
+                src/Palette.flix src/Theme.flix
+
+$(PALETTE): $(PALETTE_DEPS)
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+
 palette:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
 
-render: palette
+# 描き出せる場面の名前（source of truth は SceneRender.shotNames。ここは使い方に出す写し）。
+SHOTS := title hill cave tower
+
+render-all: $(PALETTE)
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.all
 
-shot:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" STAGE=$(STAGE) $(FLIX) run --entrypoint SceneRender.one
+# 1 枚だけ debug/<場面>.png へ描き出す（gallery/ は render-all だけが書く）。
+# palette は Studio の編集画面が読む写しで絵には効かないので、ここでは作り直さない。
+render:
+	@if [ -z "$(SHOT)" ]; then \
+		echo "usage: make render SHOT=<場面>      1 枚だけ debug/<場面>.png へ描き出す"; \
+		echo "       make render SHOT=\"hill cave\"  何枚か"; \
+		echo "       make render-all               全部 gallery/ へ描き出す"; \
+		echo "  場面: $(SHOTS)"; \
+		exit 1; \
+	fi
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" SHOT="$(SHOT)" $(FLIX) run --entrypoint SceneRender.one
 
-reference-check: render
+reference-check: render-all
 	"$(ENGINE)/bin/reference-check.sh"
 
-reference-update:
+reference-update: render-all
 	"$(ENGINE)/bin/reference-update.sh"
 
 stages:

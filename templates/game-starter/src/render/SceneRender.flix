@@ -1,8 +1,10 @@
 // SceneRender — ゲーム画面を画面なしで PNG に生成する（スナップショット比較用と、アトリエ候補のプレビュー用）。
-// 実行: flix run --entrypoint SceneRender.all → gallery/main.png
-//       flix run --entrypoint SceneRender.atelier → debug/atelier/*.png（スナップショットの外）
+// 実行: make render-all → gallery/main.png
+//       make render SHOT=main → debug/main.png（1 枚だけ）
+//       make atelier-preview → debug/atelier/*.png（スナップショットの外）
 mod SceneRender {
     import java.io.File
+    import java.lang.System
 
     def design(): Vec2.Vec2 = { x = World.width(), y = World.height() }
 
@@ -31,15 +33,53 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    /// 場面を足したら、ここと sceneOf と Makefile の SHOTS を一緒に足す。
+    pub def shotNames(): List[String] =
+        "main" :: Nil
+
+    /// 名前 → その場面の World。shotNames と対で保つ。名前で引く形にしてあるので、
+    /// SHOT で 1 枚だけ生成するときに残りの場面は組まない。
+    def sceneOf(name: String, w0: World.World): Option[World.World] =
+        match name {
+            case "main" => Some(w0)
+            case _      => None
+        }
+
     /// SceneRender.all の中身。生成した PNG のパス列を返す — 走行中のゲームへの POST /render
     /// （Main の App.onRenderRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
     pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
+        shotsInto("gallery", _ -> true)
+
+    /// SHOT で指した場面だけを debug/ へ生成する（スナップショットを汚さない）。
+    /// 実行: make render SHOT=main
+    pub def one(): Unit \ IO =
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// keep が真を返す場面だけを outDir へ生成し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
-        let cfg = cfgOf("gallery", atlas, w0#theme#bg);
+        let cfg = cfgOf(outDir, atlas, w0#theme#bg);
         let ctx = App.viewCtxOf(atlas, design());
-        shoot(cfg, ctx, w0, "main") :: Nil
+        shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, ctx, w, name)))
+
+    def envOr(key: String, fallback: String): String \ IO =
+        let value = System.getenv(key);
+        if (Object.isNull(value)) fallback else value
 
     /// 1 場面を PNG に生成し、生成したファイルパスを返す。
     /// 宣言シェーダーの面は draw に渡さず（渡すと代表色のベタ塗りになる）、

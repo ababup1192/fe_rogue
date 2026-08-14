@@ -381,7 +381,7 @@ mod RemoteDebug {
            else "[rendered]\n" + String.intercalate("\n", paths) + "\n")
 
     /// 描き出しの実体（App.onRenderRequest）を登録していないゲームへの応答。
-    /// Studio はこの error 行を見て自前の描き出し起動（make render 等）へフォールバックする。
+    /// Studio はこの error 行を見て自前の描き出し起動（make render-all 等）へフォールバックする。
     pub def renderUnsupportedText(): String =
         "error: render not supported (game does not wire App.onRenderRequest)\n"
 

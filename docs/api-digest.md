@@ -1,4 +1,4 @@
-<!-- engine v0.24.0 / 生成: 2026-08-13 -->
+<!-- engine v0.24.0 / 生成: 2026-08-14 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト
@@ -14,6 +14,6 @@ grep 代わりの重い作業になってしまうため）。調べたいモジ
 [module-index.md](module-index.md) を先に引く。
 | パッケージ | モジュール数 | 宣言数 | ファイル |
 |---|---|---|---|
-| engine | 43 | 412 | [api-digest/engine.md](api-digest/engine.md) |
-| engine_world | 94 | 948 | [api-digest/engine_world.md](api-digest/engine_world.md) |
+| engine | 45 | 451 | [api-digest/engine.md](api-digest/engine.md) |
+| engine_world | 94 | 956 | [api-digest/engine_world.md](api-digest/engine_world.md) |
 | engine_tools | 12 | 100 | [api-digest/engine_tools.md](api-digest/engine_tools.md) |

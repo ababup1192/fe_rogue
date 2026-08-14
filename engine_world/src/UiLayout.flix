@@ -64,6 +64,16 @@ mod UiLayout {
         visible  = Map[EntityId, Bool]
     }
 
+    /// パス1・パス2 の内部ヘルパーが引き回す入力。LayoutInput の parents / order は
+    /// 入口で `kids`（親 → 子の一覧・order 昇順）に畳んであるので、ここには残さない。
+    /// 子を持たない親は kids に載らない（引く側は空リスト扱いにする）。
+    type alias IndexedInput = {
+        styles   = Map[EntityId, Style],
+        measures = Map[EntityId, Vec2.Vec2],
+        visible  = Map[EntityId, Bool],
+        kids     = Map[EntityId, List[EntityId]]
+    }
+
     // ========================================================================
     // 公開 API
     // ========================================================================
@@ -71,12 +81,21 @@ mod UiLayout {
     /// レイアウトを解決し、各 entity の画面絶対矩形を返す。
     /// root には rootRect（viewport 等）をそのまま割り当て、子孫へ再帰配置する。
     pub def computeLayout(input: LayoutInput, root: EntityId, rootRect: Rect2.Rect2): Map[EntityId, Rect2.Rect2] =
-        assignRect(root, rootRect, input, Map.empty())
+        let indexed = ({styles = input#styles, measures = input#measures, visible = input#visible,
+                        kids = buildChildIndex(input)}: IndexedInput);
+        assignRect(root, rootRect, indexed, Map.empty())
+
+    /// 「親 → 子の一覧（order 昇順）」の索引。
+    /// UiHierarchy にも同じ物があるが、あちらは private なのでここでも作る（pub 面を増やさない）。
+    def buildChildIndex(input: LayoutInput): Map[EntityId, List[EntityId]] =
+        input#parents
+            |> Map.foldLeftWithKey((acc, id, p) -> Map.insertWith((_, kids) -> id :: kids, p, id :: Nil, acc), Map.empty())
+            |> Map.map(kids -> List.sortBy(id -> Option.getWithDefault(0, Map.get(id, input#order)), kids))
 
     /// 可視な子だけを order 順に返す（visible=false の子はレイアウトから除外＝display:none 相当）。
     /// visible 未登録の子は可視扱い。フロー内・フロー外（abs）を問わず、隠した子は配置対象から外れる。
-    def visibleChildrenOf(id: EntityId, input: LayoutInput): List[EntityId] =
-        UiHierarchy.childrenOf(id, input#parents, input#order)
+    def visibleChildrenOf(id: EntityId, input: IndexedInput): List[EntityId] =
+        Option.getWithDefault(Nil, Map.get(id, input#kids))
             |> List.filter(child -> Option.getWithDefault(true, Map.get(child, input#visible)))
 
     // ========================================================================
@@ -85,7 +104,7 @@ mod UiLayout {
 
     /// entity の内在サイズ（幅・高さ）。width/height が Px なら固定値、
     /// それ以外（Auto/Grow）はコンテンツ由来サイズを使う。
-    def intrinsicSizeOf(id: EntityId, input: LayoutInput): Vec2.Vec2 =
+    def intrinsicSizeOf(id: EntityId, input: IndexedInput): Vec2.Vec2 =
         let style = styleOf(id, input#styles);
         let content = contentSizeOf(id, style, input);
         {x = axisIntrinsic(style#width, content#x), y = axisIntrinsic(style#height, content#y)}
@@ -101,7 +120,7 @@ mod UiLayout {
     /// entity のコンテンツ由来サイズ（パディング込み）。
     /// 子を持たなければテキスト実寸（無ければ 0）、持てば主軸に沿った子の合計 + gap、交差軸は子の最大。
     /// abs=Some の子はフロー外なのでコンテンツ集計に含めない。
-    def contentSizeOf(id: EntityId, style: Style, input: LayoutInput): Vec2.Vec2 =
+    def contentSizeOf(id: EntityId, style: Style, input: IndexedInput): Vec2.Vec2 =
         let flowChildren = visibleChildrenOf(id, input)
             |> List.filter(child -> Option.isEmpty(styleOf(child, input#styles)#abs));
         let inner = match flowChildren {
@@ -122,7 +141,7 @@ mod UiLayout {
     // ========================================================================
 
     /// entity に rect を確定し、子孫へ再帰的に配置していく。
-    def assignRect(id: EntityId, rect: Rect2.Rect2, input: LayoutInput,
+    def assignRect(id: EntityId, rect: Rect2.Rect2, input: IndexedInput,
                    acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
         let acc1 = Map.insert(id, rect, acc);
         let style = styleOf(id, input#styles);
@@ -142,7 +161,7 @@ mod UiLayout {
 
     /// フロー内の子を主軸に沿って配置する。
     def layoutFlow(style: Style, contentPos: Vec2.Vec2, contentSize: Vec2.Vec2, flowChildren: List[EntityId],
-                   input: LayoutInput, acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+                   input: IndexedInput, acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
         let dir = style#dir;
         let contentMain = mainOf(dir, contentSize);
         let contentCross = crossOf(dir, contentSize);
@@ -176,7 +195,7 @@ mod UiLayout {
     /// 次の行へ。行の高さはその行の子の最大。行内は左詰め（mainAlign / crossAlign は効かない）。
     /// Grow も使わない（幅が確定している前提）。
     def layoutWrap(style: Style, contentPos: Vec2.Vec2, contentSize: Vec2.Vec2, flowChildren: List[EntityId],
-                   input: LayoutInput, acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+                   input: IndexedInput, acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
         let sized = List.map(child -> (child, intrinsicSizeOf(child, input)), flowChildren);
         let rows = splitRows(style#gap, contentSize#x, sized);
         let result = List.foldLeft((st, row) -> {
@@ -213,7 +232,7 @@ mod UiLayout {
         List.reverse(lastRows)
 
     /// フロー外（abs）の子を親コンテンツ原点 + オフセットに内在サイズで配置する。
-    def layoutAbs(child: EntityId, contentPos: Vec2.Vec2, input: LayoutInput,
+    def layoutAbs(child: EntityId, contentPos: Vec2.Vec2, input: IndexedInput,
                   acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
         let offset = Option.getWithDefault({x = 0.0, y = 0.0}, styleOf(child, input#styles)#abs);
         let size = intrinsicSizeOf(child, input);
@@ -240,7 +259,7 @@ mod UiLayout {
         if (totalWeight > 0.0) Float64.max(0.0, free) * (weight / totalWeight) else 0.0
 
     /// 子の主軸ベースサイズと Grow 重みの組。Px は固定値、Auto は内在サイズ、Grow は base0 + 重み。
-    def baseMainOf(child: EntityId, dir: Dir, input: LayoutInput): (Float64, Float64) =
+    def baseMainOf(child: EntityId, dir: Dir, input: IndexedInput): (Float64, Float64) =
         match mainSpecOf(dir, styleOf(child, input#styles)) {
             case SizeSpec.Px(v)   => (v, 0.0)
             case SizeSpec.Auto    => (mainOf(dir, intrinsicSizeOf(child, input)), 0.0)
@@ -249,7 +268,7 @@ mod UiLayout {
 
     /// 子の交差軸サイズ。Stretch なら親の交差サイズいっぱい、それ以外は子の指定（Px/Auto/Grow）に従う。
     def crossSizeOf(child: EntityId, dir: Dir, crossAlign: CrossAlign, contentCross: Float64,
-                    input: LayoutInput): Float64 =
+                    input: IndexedInput): Float64 =
         match crossAlign {
             case CrossAlign.Stretch => contentCross
             case _ => match crossSpecOf(dir, styleOf(child, input#styles)) {

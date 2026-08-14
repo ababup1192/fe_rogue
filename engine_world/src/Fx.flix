@@ -129,7 +129,7 @@ mod Fx {
             let pos = if (emitter#wobble#amp#x == 0.0 and emitter#wobble#amp#y == 0.0) straight
                       else Vec2.add(straight, wobbleOffset(emitter#wobble, rand, age));
             let size = emitter#size * curveValue(emitter#sizeOver, i, u);
-            let alpha = clamp01(curveValue(emitter#alphaOver, i, u));
+            let alpha = Num.clamp01(curveValue(emitter#alphaOver, i, u));
             if (size <= 0.0 or alpha <= 0.0) Nil
             else {
                 let color = gradient(emitter#color, u);
@@ -234,25 +234,22 @@ mod Fx {
     /// 1〜N 色の並びを u（0..1）で線形に混ぜた色。1 色ならその色のまま。
     def gradient(colors: List[Color], u: Float64): Color =
         match colors {
-            case Nil         => { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+            case Nil         => { r = 1.0, g = 1.0, b = 1.0 }
             case c :: Nil    => c
             case _ :: _ :: _ =>
                 let n = List.length(colors);
-                let pos = clamp01(u) * Int32.toFloat64(n - 1);
+                let pos = Num.clamp01(u) * Int32.toFloat64(n - 1);
                 let idx = stepOf(pos) |> Int32.min(n - 2);
                 let frac = pos - Int32.toFloat64(idx);
-                let a = List.nth(idx, colors) |> Option.getWithDefault({ r = 1.0f32, g = 1.0f32, b = 1.0f32 });
+                let a = List.nth(idx, colors) |> Option.getWithDefault({ r = 1.0, g = 1.0, b = 1.0 });
                 let b = List.nth(idx + 1, colors) |> Option.getWithDefault(a);
                 { r = mixCh(a#r, b#r, frac), g = mixCh(a#g, b#g, frac), b = mixCh(a#b, b#b, frac) }
         }
 
-    def mixCh(a: Float32, b: Float32, frac: Float64): Float32 =
-        let av = Float32.toFloat64(a);
-        let bv = Float32.toFloat64(b);
-        Float64.truncateToFloat32(av + (bv - av) * frac)
-
-    def clamp01(x: Float64): Float64 =
-        Float64.max(0.0, Float64.min(1.0, x))
+    def mixCh(a: Float64, b: Float64, frac: Float64): Float64 =
+        let av = Float32.toFloat64(RenderUtil.f32(a));
+        let bv = Float32.toFloat64(RenderUtil.f32(b));
+        Float32.toFloat64(RenderUtil.f32(av + (bv - av) * frac))
 
     // ── 決定論の乱数（splitmix64 系のハッシュ）──
     // flix-random は engine_world の依存に無いので、仕上げ混合だけ同じ式を private に持つ。

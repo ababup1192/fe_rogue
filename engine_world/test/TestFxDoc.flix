@@ -43,7 +43,7 @@ mod TestFxDoc {
     def blendTag(b: DrawCmd.BlendMode): String =
         match b { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" }
 
-    def colorTuple(c: Color): (Float32, Float32, Float32) =
+    def colorTuple(c: Color): (Float64, Float64, Float64) =
         (c#r, c#g, c#b)
 
     /// 相談で承認した explosion スペック（fx.json 語彙の正の形）。
@@ -107,7 +107,7 @@ mod TestFxDoc {
     /// 色グラデの端: 先頭 #fff7c0 と末尾 #69323a（16 進 → 0..1 の丸めは 1/255 の分数）。
     @Test
     def testParseColorEnds(): Unit \ Assert =
-        let ch = (v: Int32) -> Float64.truncateToFloat32(Int32.toFloat64(v) / 255.0);
+        let ch = (v: Int32) -> Int32.toFloat64(v) / 255.0;
         let got = parseDoc(explosionDoc()) |> Option.flatMap(firstEmitter)
             |> Option.map(em -> (List.head(em#color) |> Option.map(colorTuple),
                                  List.last(em#color) |> Option.map(colorTuple)));

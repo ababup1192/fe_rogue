@@ -4,7 +4,7 @@
 mod TestFxVocab {
     use Util.Json.Json
 
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     /// ばらつきゼロ・等速 10px/s・真右向きの基準 emitter（TestFxSample と同じ）。
     def baseEmitter(): FxDoc.Emitter =
@@ -173,8 +173,8 @@ mod TestFxVocab {
         let text = "{ \"name\": \"smoke\", \"duration\": 60, \"emitters\": [ {" +
             " \"name\": \"puffs\", \"count\": 15, \"mode\": \"loop\", \"size\": 4," +
             " \"color\": [\"@smoke\", \"@pale\"], \"life\": { \"base\": 3 } } ] }";
-        let palette = Map#{ "smoke" => ({ r = 0.5f32, g = 0.5f32, b = 0.55f32 }: Color),
-                            "pale" => ({ r = 0.9f32, g = 0.92f32, b = 0.95f32 }: Color) };
+        let palette = Map#{ "smoke" => ({ r = 0.5, g = 0.5, b = 0.55 }: Color),
+                            "pale" => ({ r = 0.9, g = 0.92, b = 0.95 }: Color) };
         let withPalette = Util.Json.parse(text) |> Result.flatMap(FxDoc.parseWith(palette));
         let firstColor = match withPalette {
             case Ok(spec) => match spec#emitters {
@@ -184,7 +184,7 @@ mod TestFxVocab {
             case Err(_) => None
         };
         let without = parseText(text);
-        Assert.assertEq(expected = (Some(0.5f32), true), (firstColor, Result.isErr(without)))
+        Assert.assertEq(expected = (Some(0.5), true), (firstColor, Result.isErr(without)))
 
     /// 新フィールド省略時の既定（burst・点発生・無加速・seed 0）。
     @Test

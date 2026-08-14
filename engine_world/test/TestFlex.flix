@@ -148,7 +148,7 @@ mod TestFlex {
 
     @Test
     def testPlacePassesRectsToDrawInTreeOrder(): Unit \ Assert =
-        def mark(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
+        def mark(): Color = { r = 1.0, g = 1.0, b = 1.0 };
         let root = Flex.box(Flex.rowStyle(),
                Flex.leaf({ x = 30.0, y = 10.0 },
                          r -> ({ at = r#position, item = RawDraw.box(r#size, mark(), 1) }) :: Nil)

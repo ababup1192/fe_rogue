@@ -1,17 +1,18 @@
 // Color — 3 チャンネル sRGB-linear カラー (alpha は別途持つ運用)
 //
-// Float32 ベース。GL の uniform に直接渡せるレンジ 0.0〜1.0。
+// Float64 ベース。レンジ 0.0〜1.0。GL の uniform や AWT へ渡す Float32 化はバックエンドの入り口でやる。
 // engine（契約層）の共有型なので、フロントのシーングラフとバックエンド（render_gl）が同じ色定義を見る。
+//
+// 混ぜる・明暗を付ける計算は Float32 に落としてから行う。バックエンドが Float32 で受け取るので、
+// ここを Float64 のまま計算すると丸めの回数がバックエンドとずれて 8bit 量子化の境目が動く。
 
-pub type alias Color = {r = Float32, g = Float32, b = Float32}
+pub type alias Color = {r = Float64, g = Float64, b = Float64}
 
 mod Color {
 
-    /// 0〜1 の 3 つ組から色を作る。Float64 のまま書けるので、色を計算で導くときに使う。
+    /// 0〜1 の 3 つ組から色を作る。
     pub def rgb(r: Float64, g: Float64, b: Float64): Color =
-        { r = Float64.truncateToFloat32(r),
-          g = Float64.truncateToFloat32(g),
-          b = Float64.truncateToFloat32(b) }
+        { r = r, g = g, b = b }
 
     /// 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段階で配られるので、
     /// 255 で割った 6 桁の小数を書き写さずに済む。
@@ -34,19 +35,23 @@ mod Color {
     /// 2 色の間を t（0〜1）で混ぜる。lighten（白へ）/ darken（黒へ）が「片方が決め打ち」
     /// なのに対し、こちらは任意の 2 色をつなぐ（グラデーションの段階・状態の移り変わり）。
     pub def mix(a: Color, b: Color, t: Float64): Color =
-        let k = Float64.truncateToFloat32(t);
-        { r = a#r + (b#r - a#r) * k,
-          g = a#g + (b#g - a#g) * k,
-          b = a#b + (b#b - a#b) * k }
+        let k = f32(t);
+        { r = wide(f32(a#r) + (f32(b#r) - f32(a#r)) * k),
+          g = wide(f32(a#g) + (f32(b#g) - f32(a#g)) * k),
+          b = wide(f32(a#b) + (f32(b#b) - f32(a#b)) * k) }
 
     /// 3 チャンネルを組にして取り出す。Color は record なので **そのままでは比べられない**
     /// （Flix の record は Eq を持てない）。比べたい・並べ替えたい・Map の鍵にしたいときは
     /// これを通す。テストで色を pin するときの定石でもある。
-    pub def channels(color: Color): (Float32, Float32, Float32) =
+    pub def channels(color: Color): (Float64, Float64, Float64) =
         (color#r, color#g, color#b)
 
-    def byte(v: Int32): Float32 =
-        Float64.truncateToFloat32(Int32.toFloat64(v) / 255.0)
+    def byte(v: Int32): Float64 =
+        Int32.toFloat64(v) / 255.0
+
+    def f32(v: Float64): Float32 = RenderUtil.f32(v)
+
+    def wide(v: Float32): Float64 = Float32.toFloat64(v)
 
     def byteOf(hi: Char, lo: Char): Option[Int32] =
         forM (h <- nibble(hi); l <- nibble(lo)) yield h * 16 + l
@@ -61,34 +66,34 @@ mod Color {
     /// 色を白へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
     /// 既存ゲームと同じ色を保つため、amountをFloat32へ変えてから各チャンネルを補間する。
     pub def lighten(color: Color, amount: Float64): Color =
-        let value = Float64.truncateToFloat32(amount);
-        { r = color#r + (1.0f32 - color#r) * value,
-          g = color#g + (1.0f32 - color#g) * value,
-          b = color#b + (1.0f32 - color#b) * value }
+        let value = f32(amount);
+        { r = wide(f32(color#r) + (1.0f32 - f32(color#r)) * value),
+          g = wide(f32(color#g) + (1.0f32 - f32(color#g)) * value),
+          b = wide(f32(color#b) + (1.0f32 - f32(color#b)) * value) }
 
     /// 色を黒へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
     /// 丸め順を保つため、Float64で残す割合を求めてからFloat32へ変える。
     pub def darken(color: Color, amount: Float64): Color =
-        let remaining = Float64.truncateToFloat32(1.0 - amount);
-        { r = color#r * remaining,
-          g = color#g * remaining,
-          b = color#b * remaining }
+        let remaining = f32(1.0 - amount);
+        { r = wide(f32(color#r) * remaining),
+          g = wide(f32(color#g) * remaining),
+          b = wide(f32(color#b) * remaining) }
 
     /// 暖色（黄寄り）へ amount だけ近づける。lighten と対で使う。
     /// 明暗だけで塗ると面が塊に見えるので、光の当たる側は暖色・影の側は寒色へずらす。
     /// 離れて見ると 2 色が混ざり、実際に使った色数より多くの階調があるように見える。
     pub def warm(color: Color, amount: Float64): Color =
-        let t = Float64.truncateToFloat32(amount);
-        { r = pin01(color#r + t * 0.30f32),
-          g = pin01(color#g + t * 0.18f32),
-          b = pin01(color#b - t * 0.14f32) }
+        let t = f32(amount);
+        { r = wide(pin01(f32(color#r) + t * 0.30f32)),
+          g = wide(pin01(f32(color#g) + t * 0.18f32)),
+          b = wide(pin01(f32(color#b) - t * 0.14f32)) }
 
     /// 寒色（青寄り）へ amount だけ近づける（warm の対）。影の側に使う。
     pub def cool(color: Color, amount: Float64): Color =
-        let t = Float64.truncateToFloat32(amount);
-        { r = pin01(color#r - t * 0.18f32),
-          g = pin01(color#g - t * 0.06f32),
-          b = pin01(color#b + t * 0.16f32) }
+        let t = f32(amount);
+        { r = wide(pin01(f32(color#r) - t * 0.18f32)),
+          g = wide(pin01(f32(color#g) - t * 0.06f32)),
+          b = wide(pin01(f32(color#b) + t * 0.16f32)) }
 
     def pin01(v: Float32): Float32 = Float32.max(0.0f32, Float32.min(1.0f32, v))
 
@@ -96,8 +101,8 @@ mod Color {
     /// 敏感だから — 平均だと同じ数字の赤と緑が違う明るさに見える。緑だけ倍に数える。
     /// 「明るいところだけ / 暗いところだけを拾う」判断に使う（映り込み・しきい処理）。
     pub def brightness(color: Color): Float64 =
-        (Float32.toFloat64(color#r) + Float32.toFloat64(color#g) * 2.0
-            + Float32.toFloat64(color#b)) / 4.0
+        (wide(f32(color#r)) + wide(f32(color#g)) * 2.0
+            + wide(f32(color#b))) / 4.0
 
     /// HSV から色を作る。h は色相（1 周 = 1.0・0 = 赤・範囲外は折り返し）、s は鮮やかさ、
     /// v は明るさ（どちらも 0〜1）。「値に沿って色相を流す」（虹のグラデーション・
@@ -118,7 +123,7 @@ mod Color {
             else (spec#v, p, q);
         { r = clamp01(r), g = clamp01(g), b = clamp01(b) }
 
-    /// GL に渡せる 0〜1 の Float32 へ収める。
-    def clamp01(x: Float64): Float32 =
-        Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
+    /// 0〜1 へ収める。
+    def clamp01(x: Float64): Float64 =
+        Float64.max(0.0, Float64.min(1.0, x))
 }

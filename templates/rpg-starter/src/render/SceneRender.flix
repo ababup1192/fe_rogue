@@ -1,6 +1,7 @@
 // SceneRender — ゲーム画面を画面なしで PNG に描き出す（スナップショット比較用と、アトリエ候補のプレビュー用）。
-// 実行: flix run --entrypoint SceneRender.all → gallery/title.png・walk.png・talk.png・door.png・clear.png
-//       flix run --entrypoint SceneRender.atelier → debug/atelier/*.png（スナップショットの外）
+// 実行: make render-all → gallery/title.png・walk.png・talk.png・door.png・battle.png・clear.png・terrain_grain.png
+//       make render SHOT=walk → debug/walk.png（1 枚だけ）
+//       make atelier-preview → debug/atelier/*.png（スナップショットの外）
 // 場面の作り方は 2 通りを使い分ける:
 //   - 主人公の動き（歩く・話す・扉の前に立つ）は World の規則（stepOnce / confirm）で作る
 //     — 実機と同じ経路を通った絵になる。
@@ -8,6 +9,7 @@
 //     — 間取りを編集しても描き出しの脚本を書き直さずに済む。
 mod SceneRender {
     import java.io.File
+    import java.lang.System
 
     def design(): Vec2.Vec2 = { x = World.width(), y = World.height() }
 
@@ -26,10 +28,58 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    pub def shotNames(): List[String] =
+        "title" :: "walk" :: "talk" :: "door" :: "battle" :: "clear"
+            :: "terrain_grain" :: Nil
+
+    /// 名前 → その場面の World。shotNames と対で保つ。名前で引く形にしてあるので、
+    /// SHOT で 1 枚だけ描くときに残りの場面は歩かせない。
+    /// terrain_grain だけは World を持たない別の絵なので、ここでは None（shotsInto が描く）。
+    def sceneOf(name: String, w0: World.World): Option[World.World] =
+        match name {
+            // 表紙: 里の一角に幕、その上に題と一行。
+            case "title"  => Some(w0)
+            // 歩き: start から 3 歩（規則で歩く。3 歩 = 歩きのコマが出る奇数）。
+            case "walk"   => Some(World.confirm(w0)
+                |> World.stepOnce(Dir4.Right) |> World.stepOnce(Dir4.Right)
+                |> World.stepOnce(Dir4.Down))
+            // 会話: いちばん後ろの住人（間取りの Doc の並びの末尾）の隣に立って話しかけ、
+            // 文字送りを全部出す（settle）。
+            case "talk"   => Some(talkScene(World.confirm(w0)))
+            // 扉前: 閉じた木戸に向いて立つ。
+            case "door"   => Some(doorScene(World.confirm(w0)))
+            // 戦い: 魔物と向き合い、1 回殴り合った直後（下のウィンドウに打ち合いの結果が出ている）。
+            case "battle" => Some(battleScene(World.confirm(w0)))
+            // クリア: 薬草がそろい、灯りが全部ともった里。
+            case "clear"  => Some(clearScene(World.confirm(w0)))
+            case _        => None
+        }
+
     /// SceneRender.all の中身。描き出した PNG のパス列を返す — 走行中のゲームへの POST /render
     /// （Main の App.onRenderRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
     pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
+        shotsInto("gallery", _ -> true)
+
+    /// SHOT で指した場面だけを debug/ へ描き出す（スナップショットを汚さない）。
+    /// 実行: make render SHOT=walk
+    pub def one(): Unit \ IO =
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// keep が真を返す場面だけを outDir へ描き出し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         // 地面のタイルと建物は 1 枚のアトラスから貼る。SoftRaster はファイルからしか
@@ -38,24 +88,20 @@ mod SceneRender {
         let images = PxSpriteAtlas.asImages(
             { texture = TownMap.textureName(), baked = w0#townAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
-        let cfg = { texturePath = texPaths | cfgOf("gallery", atlas, w0#theme#sky) };
-        // 表紙: 里の一角に幕、その上に題と一行。
-        let title = shoot(cfg, atlas, images, w0, "title");
-        // 歩き: start から 3 歩（規則で歩く。3 歩 = 歩きのコマが出る奇数）。
-        let playing = World.confirm(w0);
-        let walking = playing |> World.stepOnce(Dir4.Right) |> World.stepOnce(Dir4.Right)
-            |> World.stepOnce(Dir4.Down);
-        let walk = shoot(cfg, atlas, images, walking, "walk");
-        // 会話: いちばん後ろの住人（間取りの Doc の並びの末尾）の隣に立って話しかけ、
-        // 文字送りを全部出す（settle）。
-        let talk = shoot(cfg, atlas, images, talkScene(playing), "talk");
-        // 扉前: 閉じた木戸に向いて立つ。
-        let door = shoot(cfg, atlas, images, doorScene(playing), "door");
-        // 戦い: 魔物と向き合い、1 回殴り合った直後（下のウィンドウに打ち合いの結果が出ている）。
-        let fight = shoot(cfg, atlas, images, battleScene(playing), "battle");
-        // クリア: 薬草がそろい、灯りが全部ともった里。
-        let clear = shoot(cfg, atlas, images, clearScene(playing), "clear");
-        title :: walk :: talk :: door :: fight :: clear :: Nil
+        let cfg = { texturePath = texPaths | cfgOf(outDir, atlas, w0#theme#sky) };
+        let shots = shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, atlas, images, w, name)));
+        // 地面の質感: assets/rpg.terrain.json の表で土・石垣・水路・畑を敷いた 1 枚。
+        if (not keep("terrain_grain")) shots
+        else {
+            let terrainDoc = run { TerrainDoc.load(terrainPath()) } with Fs.FileRead.runWithIO;
+            let terrain = terrainShot({ texturePath = Map.empty() | cfg }, w0#theme, terrainDoc);
+            List.append(shots, terrain :: Nil)
+        }
+
+    def envOr(key: String, fallback: String): String \ IO =
+        let value = System.getenv(key);
+        if (Object.isNull(value)) fallback else value
 
     /// 魔物と出会い、「たたかう」を 1 回選んだ直後。歩数も打ち合いも規則どおりに進める
     /// （World を手で組まない = 規則が変わればこの絵も一緒に変わる）。
@@ -148,6 +194,95 @@ mod SceneRender {
             Render.drawWith(HeadlessRender.imageTextureInfo(images), Render.withoutShaders(items));
         HeadlessRender.renderPngWith(cfg, drawables, polygons, surfaces, name);
         let path = "${cfg#outDir}/${name}.png";
+        println("rendered: ${path}");
+        path
+
+    // ── 地面の質感（terrain の表で敷いた 1 枚） ──
+    // 遊ぶ画面（World / View）はこの経路を通らない。表は assets/rpg.terrain.json、
+    // 盤の文字はこの場面だけの脚本。
+
+    def terrainPath(): String = "assets/rpg.terrain.json"
+
+    /// 石垣が三方を囲む城下町の一角。西の門から入った土の道が畑のあいだを東へ抜け、
+    /// 途中で南へ折れて細くなり、水路の渡し場へ下りる。対岸にも畑が並ぶ。
+    /// 道は幅 2 マス以上と幅 1 マスを両方持つ — 粒が細い形でも中央へ潰れずに
+    /// 散るかを 1 枚で見るため。
+    def terrainRows(): List[String] =
+           "###################"
+        :: "###################"
+        :: "##               ##"
+        :: ".............    ##"
+        :: ".............    ##"
+        :: "##,,,,,,   .. ,,,##"
+        :: "##,,,,,,   .. ,,,##"
+        :: "##,,,,,,   .. ,,,##"
+        :: "##,,,,,,   .     ##"
+        :: "##         .     ##"
+        :: "~~~~~~~~~~~~~~~~~~~"
+        :: "~~~~~~~~~~~~~~~~~~~"
+        :: "  ,,,,,   ,,,,,    "
+        :: "  ,,,,,   ,,,,,    "
+        :: Nil
+
+    /// Doc の表 → Terrain の表。char ごとにセル集合を引き、spec と重なり順を並べる。
+    /// Terrain.fromRows は使わない — あれは spec#surface を見ないので粒が 1 粒も出ない。
+    def terrainEntries(theme: ThemeDoc.Doc, doc: TerrainDoc.Doc,
+                       rows: List[String]): List[Terrain.Entry] =
+        doc#entries |> List.map(e -> {
+            let cells = Terrain.cellsOf(ch -> ch == e#char, rows);
+            { flagsAt = Terrain.flagsOf(cells), cells = cells,
+              spec = TerrainDoc.specOf(key -> ThemeDoc.resolver(theme, key), e),
+              z = { fill = 10, stroke = 11, surface = 12 } }
+        })
+
+    /// 時刻を見ない粒か。
+    /// twinkleRate == 0.0 だけでは足りない — Bubble は period で時刻が入るので、
+    /// twinkleRate が 0 でも粒は動く。
+    def isStaticFx(fx: Material.SurfaceFx): Bool =
+        match fx#shape {
+            case Material.SurfaceShape.Bubble => fx#period <= 0.0
+            case _                            => fx#twinkleRate == 0.0
+        }
+
+    /// entry の粒を、条件に合う fx だけへ絞った entry。
+    def withSurfaceFxs(keep: Material.SurfaceFx -> Bool, e: Terrain.Entry): Terrain.Entry =
+        { spec = { surface = e#spec#surface |> List.filter(keep) | e#spec } | e }
+
+    /// 地面の質感を gallery/terrain_grain.png に描き出す。時刻は 2.1 で固定
+    /// （水路のきらめきが時刻を持つので、揺れない絵にするには据える必要がある）。
+    def terrainShot(cfg: HeadlessRender.RenderConfig, theme: ThemeDoc.Doc,
+                    doc: TerrainDoc.Doc): String \ IO =
+        let rows = terrainRows();
+        let tile = World.tileSize();
+        let origin = { x = 8.0, y = 8.0 };
+        let cols = rows |> List.map(String.length) |> List.foldLeft(Int32.max, 0);
+        let entries = terrainEntries(theme, doc, rows);
+        // 芝の下地（表に載らない文字はここへ落ちる）。奥ほど深い緑・手前ほど明るい黄緑。
+        let ground = { at = Vec2.zero(),
+                       item = Render.vgrad(cfg#design,
+                           { top = ThemeDoc.resolver(theme, "grassDeep"),
+                             bottom = ThemeDoc.resolver(theme, "grassBright") }, 0) } :: Nil;
+        let statics = Terrain.staticItems({ tileSize = tile, styleMix = doc#styleMix },
+            entries, Terrain.cornersOf(cols, List.length(rows)));
+        // 時刻を見ない粒（grain）はマスの並びだけで決まるので、entry ごとに 1 回だけ組んで
+        // 持ち回る。毎フレーム描くゲームは、これを World か Ref に置いて使い回す。
+        let prebuiltSurface = entries |> List.map(e ->
+            Terrain.surfaceItems(tile, withSurfaceFxs(isStaticFx, e) :: Nil, 0.0));
+        let animatedEntries = entries |> List.map(e ->
+            withSurfaceFxs(fx -> not isStaticFx(fx), e));
+        // 静的な表と動的な表を丸ごと連結しない — surface の z は全 entry 共通 12 で、
+        // 同じ z の中は入力順で描かれるので、entry をまたいで並べ替えると重なりが変わる。
+        // 粒には origin が掛からない（Terrain.fromRows と違い surfaceItems は素の座標）。
+        // 掛け直さないと塗りだけがずれて、粒が盤の外へ取り残される。
+        let surface = List.zip(prebuiltSurface, animatedEntries) |> List.flatMap(pair -> {
+            let (prebuilt, e) = pair;
+            List.append(prebuilt, Terrain.surfaceItems(tile, e :: Nil, 2.1))
+        });
+        let items = List.append(ground,
+            Render.movedAll(origin, List.append(statics, surface)));
+        let (drawables, polygons) = Render.draw(items);
+        HeadlessRender.renderPng(cfg, drawables, polygons, "terrain_grain");
+        let path = "${cfg#outDir}/terrain_grain.png";
         println("rendered: ${path}");
         path
 

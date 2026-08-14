@@ -3,7 +3,7 @@
 
 mod TestTransition {
 
-    def black(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+    def black(): Color = { r = 0.0, g = 0.0, b = 0.0 }
 
     def viewport(): Vec2.Vec2 = { x = 160.0, y = 120.0 }
 
@@ -12,7 +12,7 @@ mod TestTransition {
         { kind = kind, t = t, viewport = viewport(), color = black(), z = Transition.defaultZ() }
 
     /// PlacedItem から Box の (幅, 高さ, alpha) を取り出す（Transition.itemsAt は Box しか返さない）。
-    def boxOf(placed: Render.PlacedItem): Option[(Float64, Float64, Float32)] =
+    def boxOf(placed: Render.PlacedItem): Option[(Float64, Float64, Float64)] =
         match placed#item {
             case Render.Item.Box(b) => Some((b#size#x, b#size#y, b#alpha))
             case _                  => None
@@ -37,7 +37,7 @@ mod TestTransition {
     @Test
     def testFadeOutAtHalf(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.FadeOut, 0.5));
-        Assert.assertEq(expected = (1, Some((160.0, 120.0, 0.5f32))),
+        Assert.assertEq(expected = (1, Some((160.0, 120.0, 0.5))),
             (List.length(items), List.head(items) |> Option.flatMap(boxOf)))
 
     // FadeOut は t=1 で不透明の全面覆い・左上原点は (0,0)。
@@ -45,7 +45,7 @@ mod TestTransition {
     def testFadeOutAtOne(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.FadeOut, 1.0));
         let at = List.head(items) |> Option.map(p -> (p#at#x, p#at#y));
-        Assert.assertEq(expected = (Some((0.0, 0.0)), Some((160.0, 120.0, 1.0f32))),
+        Assert.assertEq(expected = (Some((0.0, 0.0)), Some((160.0, 120.0, 1.0))),
             (at, List.head(items) |> Option.flatMap(boxOf)))
 
     // ── itemsAt: FadeIn（FadeOut の裏返し）──
@@ -54,7 +54,7 @@ mod TestTransition {
     @Test
     def testFadeInAtZeroIsOpaque(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.FadeIn, 0.0));
-        Assert.assertEq(expected = Some((160.0, 120.0, 1.0f32)), List.head(items) |> Option.flatMap(boxOf))
+        Assert.assertEq(expected = Some((160.0, 120.0, 1.0)), List.head(items) |> Option.flatMap(boxOf))
 
     // FadeIn は t=1 で覆いなし（完全に晴れた）。
     @Test
@@ -69,7 +69,7 @@ mod TestTransition {
     def testWipeLeftAtHalfCoversRightHalf(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.WipeLeft, 0.5));
         let at = List.head(items) |> Option.map(p -> p#at#x);
-        Assert.assertEq(expected = (Some(80.0), Some((80.0, 120.0, 1.0f32))),
+        Assert.assertEq(expected = (Some(80.0), Some((80.0, 120.0, 1.0))),
             (at, List.head(items) |> Option.flatMap(boxOf)))
 
     // WipeRight は左端から覆いが伸びる: t=0.5 で幅 80、x は 0（左半分を覆う）。
@@ -77,7 +77,7 @@ mod TestTransition {
     def testWipeRightAtHalfCoversLeftHalf(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.WipeRight, 0.5));
         let at = List.head(items) |> Option.map(p -> p#at#x);
-        Assert.assertEq(expected = (Some(0.0), Some((80.0, 120.0, 1.0f32))),
+        Assert.assertEq(expected = (Some(0.0), Some((80.0, 120.0, 1.0))),
             (at, List.head(items) |> Option.flatMap(boxOf)))
 
     // WipeRight は t=0 で覆いなし。

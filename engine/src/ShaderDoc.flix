@@ -192,8 +192,8 @@ mod ShaderDoc {
           cycleRate = 0.5,
           bindings = Nil,
           out = Out.Fill({
-              shade = Shade.Ramp({ lo = { r = 0.15f32, g = 0.35f32, b = 0.55f32 },
-                                   hi = { r = 0.55f32, g = 0.85f32, b = 0.95f32 },
+              shade = Shade.Ramp({ lo = { r = 0.15, g = 0.35, b = 0.55 },
+                                   hi = { r = 0.55, g = 0.85, b = 0.95 },
                                    field = Field.Uv({ axis = Axis.U }) }),
               alpha = Field.Const(1.0) }) }
 
@@ -215,8 +215,8 @@ mod ShaderDoc {
           cycleRate = 0.25,
           bindings = Nil,
           out = Out.Fill({
-              shade = Shade.Ramp({ lo = { r = 0.35f32, g = 0.55f32, b = 0.60f32 },
-                                   hi = { r = 0.80f32, g = 0.95f32, b = 0.98f32 },
+              shade = Shade.Ramp({ lo = { r = 0.35, g = 0.55, b = 0.60 },
+                                   hi = { r = 0.80, g = 0.95, b = 0.98 },
                                    field = line }),
               alpha = pool }) }
 
@@ -240,8 +240,8 @@ mod ShaderDoc {
           cycleRate = 0.35,
           bindings = Nil,
           out = Out.Fill({
-              shade = Shade.Ramp({ lo = { r = 0.10f32, g = 0.04f32, b = 0.02f32 },
-                                   hi = { r = 1.0f32,  g = 0.88f32, b = 0.54f32 },
+              shade = Shade.Ramp({ lo = { r = 0.10, g = 0.04, b = 0.02 },
+                                   hi = { r = 1.0,  g = 0.88, b = 0.54 },
                                    field = glow }),
               alpha = pool }) }
 
@@ -257,9 +257,9 @@ mod ShaderDoc {
         match shade {
             case Shade.Solid(c) => c
             case Shade.Ramp(r)  =>
-                { r = (r#lo#r + r#hi#r) / 2.0f32,
-                  g = (r#lo#g + r#hi#g) / 2.0f32,
-                  b = (r#lo#b + r#hi#b) / 2.0f32 }
+                { r = wide((f32(r#lo#r) + f32(r#hi#r)) / 2.0f32),
+                  g = wide((f32(r#lo#g) + f32(r#hi#g)) / 2.0f32),
+                  b = wide((f32(r#lo#b) + f32(r#hi#b)) / 2.0f32) }
             case Shade.Gradient(g) =>
                 // field を評価せず、真ん中（f=0.5）の位置で stops を混ぜた色を返す。
                 gradientColorAt(0.5, g#stops)
@@ -269,14 +269,14 @@ mod ShaderDoc {
             case Shade.Rgb(_) =>
                 // 場を評価しない代表色は中間灰 — テクスチャの中身はここでは読めない
                 // （Cosine が a を返すのと同じ妥協）。
-                { r = 0.5f32, g = 0.5f32, b = 0.5f32 }
+                { r = 0.5, g = 0.5, b = 0.5 }
         }
 
     /// 係数 f（0..1）で stops を混ぜた色。先頭色から始めて、隣り合う区切りごとに
     /// smoothstep(前の位置, 次の位置, f) の重みで次の色へ近づけていく（GPU/CPU 同じ数式）。
     def gradientColorAt(f: Float64, stops: List[(Float64, Color)]): Color =
         match stops {
-            case Nil => { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+            case Nil => { r = 0.0, g = 0.0, b = 0.0 }
             case (_, c0) :: rest =>
                 let (col, _) = List.foldLeft((acc, sc) -> {
                     let (curCol, prevPos) = acc;
@@ -295,9 +295,13 @@ mod ShaderDoc {
 
     def mixColorF(a: Color, b: Color, t: Float64): Color =
         let tf = Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, t);
-        { r = a#r + (b#r - a#r) * tf,
-          g = a#g + (b#g - a#g) * tf,
-          b = a#b + (b#b - a#b) * tf }
+        { r = wide(f32(a#r) + (f32(b#r) - f32(a#r)) * tf),
+          g = wide(f32(a#g) + (f32(b#g) - f32(a#g)) * tf),
+          b = wide(f32(a#b) + (f32(b#b) - f32(a#b)) * tf) }
+
+    def f32(v: Float64): Float32 = RenderUtil.f32(v)
+
+    def wide(v: Float32): Float64 = Float32.toFloat64(v)
 
     /// 場の木を前置順（親 → 子）で 1 本ずつ f に渡して畳み込む汎用の走査。
     /// Ref 集め（ShaderJson）と Tex 名集め（texNames）がこれに乗る — ノードを増やすときは

@@ -24,13 +24,13 @@ mod GameLogger {
     pub type alias Entry = { text = String, color = Color }
 
     /// player 行のデフォルト色（白）
-    pub def playerColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    pub def playerColor(): Color = {r = 1.0, g = 1.0, b = 1.0}
 
     /// enemy 行のデフォルト色（赤系・薄め）
-    pub def enemyColor(): Color = {r = 1.0f32, g = 0.35f32, b = 0.35f32}
+    pub def enemyColor(): Color = {r = 1.0, g = 0.35, b = 0.35}
 
     /// ゲームオーバー行の色（濃赤）。enemyColor の薄赤と区別して際立たせる。
-    pub def gameOverColor(): Color = {r = 1.0f32, g = 0.0f32, b = 0.0f32}
+    pub def gameOverColor(): Color = {r = 1.0, g = 0.0, b = 0.0}
 
     /// `Tween.withScheduler` と同じ流儀の handler 注入。
     /// `entriesRef` は内部 closure に閉じ込められ、外からは見えない。

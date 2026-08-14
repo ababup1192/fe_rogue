@@ -26,7 +26,7 @@ mod Depth {
     pub def zAt(range: ZRange, footY: Float64): Int32 =
         let span = range#bottom - range#top;
         let t = if (Float64.abs(span) < 0.000001) 0.0
-                else clamp01((footY - range#top) / span);
+                else Num.clamp01((footY - range#top) / span);
         let steps = Int32.toFloat64(range#front - range#back);
         range#back + (Float64.round(t * steps) |> Float64.tryToInt32 |> Option.getWithDefault(0))
 
@@ -39,7 +39,4 @@ mod Depth {
     /// place の 1 個版。置き場所の下端（=足元）を自分で渡す。
     pub def placeOne(range: ZRange, footY: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.zShifted(zAt(range, footY), placed#item) | placed }
-
-    def clamp01(v: Float64): Float64 =
-        Float64.max(0.0, Float64.min(1.0, v))
 }

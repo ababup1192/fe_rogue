@@ -3,7 +3,7 @@
 // Drawable（record なので match 不要で読める）で個数・blend種別・zIndex・tint を pin する。
 mod TestLight {
 
-    def orange(): Color = { r = 1.0f32, g = 0.6f32, b = 0.2f32 }
+    def orange(): Color = { r = 1.0, g = 0.6, b = 0.2 }
 
     def sampleLight(): Light.Light =
         { at = { x = 100.0, y = 80.0 }, radius = 40.0, color = orange(), halo = 0.6 }
@@ -34,7 +34,7 @@ mod TestLight {
         let (drawables, _) = Render.draw(Light.singleLightItems(singleCfg()));
         let mask = List.head(drawables);
         Assert.assertEq(
-            expected = Some((DrawCmd.BlendMode.Multiply, 10, "glow_mask", 100.0, 80.0, 0.95f32)),
+            expected = Some((DrawCmd.BlendMode.Multiply, 10, "glow_mask", 100.0, 80.0, 0.95)),
             mask |> Option.map(d -> (d#blend, d#zIndex, d#texture, d#position#x, d#position#y, d#alpha)))
 
     // ハロは末尾・Add・zIndex=cfg#z+1・texture=haloSprite・tint=light#color・alpha=light#halo。
@@ -44,7 +44,7 @@ mod TestLight {
         let (drawables, _) = Render.draw(Light.singleLightItems(singleCfg()));
         let halo = List.last(drawables);
         Assert.assertEq(
-            expected = Some((DrawCmd.BlendMode.Add, 11, "glow_halo", 1.0f32, 0.6f32, 0.2f32, 0.6f32)),
+            expected = Some((DrawCmd.BlendMode.Add, 11, "glow_halo", 1.0, 0.6, 0.2, 0.6)),
             halo |> Option.map(d -> (d#blend, d#zIndex, d#texture, d#color#r, d#color#g, d#color#b, d#alpha)))
 
     // オーバーレイのスケールは「穴の実寸半径=radius」から逆算した倍率のみ（coverage 下限は廃止）。
@@ -87,8 +87,8 @@ mod TestLight {
         let surround = drawables |> List.drop(1) |> List.take(4);
         let props = surround |> List.map(d -> (d#blend, d#zIndex, d#alpha));
         Assert.assertEq(
-            expected = (DrawCmd.BlendMode.Multiply, 10, 0.95f32) :: (DrawCmd.BlendMode.Multiply, 10, 0.95f32)
-                :: (DrawCmd.BlendMode.Multiply, 10, 0.95f32) :: (DrawCmd.BlendMode.Multiply, 10, 0.95f32) :: Nil,
+            expected = (DrawCmd.BlendMode.Multiply, 10, 0.95) :: (DrawCmd.BlendMode.Multiply, 10, 0.95)
+                :: (DrawCmd.BlendMode.Multiply, 10, 0.95) :: (DrawCmd.BlendMode.Multiply, 10, 0.95) :: Nil,
             props)
 
     // ハロのスケールは「光の直径 / haloSourceSize」= 80/256 = 0.3125。
@@ -119,7 +119,7 @@ mod TestLight {
         let (drawables, _) = Render.draw(Light.multiLightItems(multiCfg()));
         let cover = List.head(drawables);
         Assert.assertEq(
-            expected = Some((DrawCmd.BlendMode.Multiply, 5, 0.8f32, 0.0, 0.0, 320.0, 240.0)),
+            expected = Some((DrawCmd.BlendMode.Multiply, 5, 0.8, 0.0, 0.0, 320.0, 240.0)),
             cover |> Option.map(d -> (d#blend, d#zIndex, d#alpha, d#position#x, d#position#y, d#scale#x, d#scale#y)))
 
     // ハロは全て zIndex=cfg#z+1（重なり順に依らず Add で足し合わさるため同じ高さでよい）。
@@ -135,7 +135,7 @@ mod TestLight {
         let (drawables, _) = Render.draw(Light.multiLightItems(multiCfg()));
         let second = List.drop(2, drawables) |> List.head;
         Assert.assertEq(
-            expected = Some((DrawCmd.BlendMode.Add, 200.0, 150.0, 0.4f32)),
+            expected = Some((DrawCmd.BlendMode.Add, 200.0, 150.0, 0.4)),
             second |> Option.map(d -> (d#blend, d#position#x, d#position#y, d#alpha)))
 
     // ── items（唯一の入口。単一/複数の振り分け + haloDiameterFactor + occluders 合成）──
@@ -222,7 +222,7 @@ mod TestLight {
     def testLightMapPassNameAndClear(): Unit \ Assert =
         let p = Light.lightMapPass(lightMapCfg(twoLights(), Nil));
         let clearIsBlack = match p#clear {
-            case RenderTarget.LoadOp.Clear(c) => c#r == 0.0f32 and c#g == 0.0f32 and c#b == 0.0f32
+            case RenderTarget.LoadOp.Clear(c) => c#r == 0.0 and c#g == 0.0 and c#b == 0.0
             case _                            => false
         };
         Assert.assertEq(expected = ("light", true), (p#name, clearIsBlack))
@@ -254,7 +254,7 @@ mod TestLight {
         let (drawables, _) = Render.draw(Light.lightMapPass(lightMapCfg(twoLights(), Nil))#items);
         let second = List.drop(2, drawables) |> List.head;
         Assert.assertEq(
-            expected = Some((200.0, 150.0, 0.4f32)),
+            expected = Some((200.0, 150.0, 0.4)),
             second |> Option.map(d -> (d#position#x, d#position#y, d#alpha)))
 
     // 影四角形の枚数 = 光ごとの背面辺の合計（2 光源 × 箱 1 個。Shadow.shadowQuads と同じ数）。
@@ -273,7 +273,7 @@ mod TestLight {
     def testLightMapPassShadowIsAmbientNormalAboveRadiance(): Unit \ Assert =
         let cfg = lightMapCfg(twoLights(), mapOccluder() :: Nil);
         let (_, polys) = Render.draw(Light.lightMapPass(cfg)#items);
-        let strength = Float64.truncateToFloat32(cfg#shadowStrength);
+        let strength = cfg#shadowStrength;
         Assert.assertEq(
             expected = true,
             polys |> List.forAll(p -> p#blend == DrawCmd.BlendMode.Normal and p#zIndex == 20

@@ -17,7 +17,7 @@ mod Visual {
 
     /// 既定の見た目（白で色変調なし・表示・重なり順 0）。
     pub def default(): Visual =
-        { color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, visible = true, zIndex = 0 }
+        { color = {r = 1.0, g = 1.0, b = 1.0}, visible = true, zIndex = 0 }
 
     /// 色変調を取得する
     pub def getColor(v: Visual): Color = v#color

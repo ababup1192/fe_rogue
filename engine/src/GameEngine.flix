@@ -379,18 +379,18 @@ mod GameEngine {
         /// 指定した名前のサウンドを停止する
         def stopAudio(name: String): Unit
         /// 指定した名前のサウンドの音量（gain）を 0.0〜1.0 で設定する
-        def setVolume(name: String, volume: Float32): Unit
+        def setVolume(name: String, volume: Float64): Unit
         /// 指定した名前のサウンドの高さ（再生速度）を実行時に変える。1.0 = 元のまま・
         /// 2.0 で 1 オクターブ上・0.5 で 1 オクターブ下。鳴っている音にも即座に効くので、
         /// 速度で唸りが変わるエンジン音のような「鳴り続ける音」に使う。
         /// 0 以下は音が止まって聞こえるので、実装は下限でクランプする。
-        def setPitch(name: String, pitch: Float32): Unit
+        def setPitch(name: String, pitch: Float64): Unit
         /// 指定した名前のサウンドの AL_LOOPING を実行時に切り替える。
         /// 起動時の `soundManifest#looping` 初期値を上書きする (再生中の音にも反映)
         def setLooping(name: String, loop: Bool): Unit
         /// 全サウンド共通のマスター音量（全体つまみ）を 0.0〜1.0 で設定する。範囲外はクランプ。
         /// 各サウンドの setVolume と乗算で効く（OpenAL の listener gain × source gain）。
-        def setMasterVolume(gain: Float32): Unit
+        def setMasterVolume(gain: Float64): Unit
         /// すでに登録してある名前の音を、path のファイルから読み直して差し替える。
         /// 音は起動時に一度読むだけなので、生成し直した WAV は本来次の起動まで届かない。
         /// これがあれば、調整しながら鳴らして確かめられる（絵の watchFile と同じ手触り）。

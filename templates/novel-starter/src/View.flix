@@ -223,7 +223,7 @@ mod View {
         if (alpha <= 0.0) Nil
         else { at = { x = 0.0, y = 0.0 },
                item = RawDraw.box({ x = World.width(), y = World.height() },
-                                 { r = 0.02f32, g = 0.02f32, b = 0.05f32 }, zVeil())
+                                 { r = 0.02, g = 0.02, b = 0.05 }, zVeil())
                    |> Render.fade(alpha) } :: Nil
 
     // ── 表紙（文言はすべて台本 Doc から: 事件の名前・一行・はじめ方のヒント） ──

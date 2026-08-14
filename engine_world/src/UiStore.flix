@@ -155,7 +155,7 @@ mod UiStore {
 
     /// 名前パスの box コンポーネントの不透明度（fill alpha）を差し替える。box を持たなければ no-op。
     /// 中央ポップアップのパネルのようにフェードで alpha を毎フレーム動かす widget で使う。
-    pub def setBoxAlpha(path: String, alpha: Float32, ui: UiWorld): UiWorld =
+    pub def setBoxAlpha(path: String, alpha: Float64, ui: UiWorld): UiWorld =
         let updated = idOf(path, ui)
             |> Option.flatMap(id -> Map.get(id, ui#boxes) |> Option.map(comp -> (id, {alpha = alpha | comp})));
         match updated {

@@ -28,7 +28,7 @@ mod UiShape {
 
     /// 図形 widget の描画コンポーネント。alpha は Render.fade、border は円（Box）にのみ効く。
     pub type alias ShapeComp = {
-        shape = Shape, color = Color, alpha = Float32, zIndex = Int32,
+        shape = Shape, color = Color, alpha = Float64, zIndex = Int32,
         borderWidth = Float64, borderColor = Option[Color]
     }
 
@@ -105,13 +105,13 @@ mod UiShape {
         }
 
     /// alpha < 1 のときだけ Render.fade を掛ける（1.0 は無修飾のまま — 既存の絵を変えない）。
-    pub def fadeIf(alpha: Float32, item: Render.Item): Render.Item =
-        if (alpha < 1.0f32) Render.fade(Float32.toFloat64(alpha), item) else item
+    pub def fadeIf(alpha: Float64, item: Render.Item): Render.Item =
+        if (alpha < 1.0) Render.fade(alpha, item) else item
 
     def outlineIf(s: ShapeComp, item: Render.Item): Render.Item =
         if (s#borderWidth > 0.0)
             Render.outline(Option.getWithDefault(white(), s#borderColor), s#borderWidth, item)
         else item
 
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def white(): Color = {r = 1.0, g = 1.0, b = 1.0}
 }

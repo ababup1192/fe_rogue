@@ -159,7 +159,7 @@ mod TestApp {
 
     def boxAtOrigin(): Render.PlacedItem =
         { at = { x = 0.0, y = 0.0 },
-          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, 0) }
+          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0, g = 0.0, b = 0.0 }, 0) }
 
     def atOf(items: List[Render.PlacedItem]): Option[(Float64, Float64)] =
         List.head(items) |> Option.map(p -> (p#at#x, p#at#y))
@@ -194,7 +194,7 @@ mod TestApp {
 
     def boxAtZ(z: Int32): Render.PlacedItem =
         { at = { x = 0.0, y = 0.0 },
-          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, z) }
+          item = RawDraw.box({ x = 1.0, y = 1.0 }, { r = 1.0, g = 0.0, b = 0.0 }, z) }
 
     def zAt(i: Int32, items: List[Render.PlacedItem]): Option[Int32] =
         List.head(List.drop(i, items)) |> Option.flatMap(p -> match p#item {
@@ -566,4 +566,52 @@ mod TestApp {
         Assert.assertEq(expected = (Some(10), Some(20)),
             (App.tileCacheHit("0", "floor", cache) |> Option.map(snd),
              App.tileCacheHit("1", "walls", cache) |> Option.map(snd)))
+
+    // decideBranch: F8 と停止状態から決まる、このフレームの進み方
+
+    /// 何も押していない、走っているフレーム。
+    def running(): { f8Pressed = Bool, canDebug = Bool, remoteHold = Bool, wasPaused = Bool } =
+        { f8Pressed = false, canDebug = true, remoteHold = false, wasPaused = false }
+
+    // 走っているときに F8 を押すと止まる。
+    @Test
+    def testDecideBranchF8Pauses(): Unit \ Assert =
+        Assert.assertEq(expected = (App.Branch.Paused, true),
+            App.decideBranch({ f8Pressed = true | running() }) |> b -> (b#branch, b#toggled))
+
+    // 止まっているときに F8 を押すと、その場では再開のフレームになる（まだ World は進めない）。
+    @Test
+    def testDecideBranchF8Resumes(): Unit \ Assert =
+        Assert.assertEq(expected = App.Branch.Resuming,
+            App.decideBranch({ f8Pressed = true, wasPaused = true | running() })#branch)
+
+    // 再開の次のフレームは、ふつうに走る。
+    @Test
+    def testDecideBranchAfterResumeRuns(): Unit \ Assert =
+        Assert.assertEq(expected = App.Branch.Running, App.decideBranch(running())#branch)
+
+    // 止まっていて F8 を押さなければ、止まったまま。
+    @Test
+    def testDecideBranchStaysPaused(): Unit \ Assert =
+        Assert.assertEq(expected = App.Branch.Paused,
+            App.decideBranch({ wasPaused = true | running() })#branch)
+
+    // HTTP 側が停止の主導権を持っている間は、F8 が効かない。
+    @Test
+    def testDecideBranchRemoteHoldBlocksF8(): Unit \ Assert =
+        Assert.assertEq(expected = (App.Branch.Running, false),
+            App.decideBranch({ f8Pressed = true, remoteHold = true | running() })
+                |> b -> (b#branch, b#toggled))
+
+    // デバッグ機能が使えない構成では、F8 が効かない。
+    @Test
+    def testDecideBranchNoDebugBlocksF8(): Unit \ Assert =
+        Assert.assertEq(expected = App.Branch.Running,
+            App.decideBranch({ f8Pressed = true, canDebug = false | running() })#branch)
+
+    // 停止中に HTTP 側が主導権を取ると、F8 では解除できない（止まったまま）。
+    @Test
+    def testDecideBranchRemoteHoldKeepsPaused(): Unit \ Assert =
+        Assert.assertEq(expected = App.Branch.Paused,
+            App.decideBranch({ f8Pressed = true, remoteHold = true, wasPaused = true | running() })#branch)
 }

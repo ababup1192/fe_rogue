@@ -72,6 +72,6 @@ mod ThemeDoc {
             case "accent"      => doc#accent
             case "accentLight" => Color.warm(lighten(doc#accent, 0.5), 0.15)
             case "accentDark"  => Color.cool(Color.darken(doc#accent, 0.45), 0.15)
-            case _             => { r = 1.0f32, g = 0.0f32, b = 1.0f32 }
+            case _             => { r = 1.0, g = 0.0, b = 1.0 }
         }
 }

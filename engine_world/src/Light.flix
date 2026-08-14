@@ -156,7 +156,7 @@ mod Light {
         let pad = Vec2.length(viewport);
         let half = maskSize / 2.0;
         let blackBox = (center: Vec2.Vec2, size: Vec2.Vec2) ->
-            RawDraw.boxAt(center, size, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
+            RawDraw.boxAt(center, size, { r = 0.0, g = 0.0, b = 0.0 }, z)
                 |> (placed -> { item = Render.blended(DrawCmd.BlendMode.Multiply, placed#item)
                                     |> Render.fade(darkness) | placed });
         let wideW = maskSize + pad * 2.0;
@@ -176,7 +176,7 @@ mod Light {
     def tintHalo(light: Light, item: Render.Item): Render.Item =
         match item {
             case Render.Item.Sprite(s) =>
-                Render.Item.Sprite({ tint = light#color, alpha = RenderUtil.f32(light#halo) | s })
+                Render.Item.Sprite({ tint = light#color, alpha = light#halo | s })
             case other => other
         }
 
@@ -194,7 +194,7 @@ mod Light {
     /// 床は暗いまま見えない（真の穴あきが要らない松明集団シーン等向け）。
     /// ハロは全て同じ z+1（Add は加算合成のため奥行き順に依らず重なりは自然に足し合わさる）。
     pub def multiLightItems(cfg: MultiLightConfig): List[Render.PlacedItem] =
-        let darkColor = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
+        let darkColor = { r = 0.0, g = 0.0, b = 0.0 };
         let cover = RawDraw.boxAt(Vec2.mul(cfg#viewport, 0.5), cfg#viewport, darkColor, cfg#z)
             |> (placed -> { item = Render.blended(DrawCmd.BlendMode.Multiply, placed#item)
                                 |> Render.fade(cfg#darkness) | placed });
@@ -261,7 +261,7 @@ mod Light {
                 |> List.flatMap(occluder -> Shadow.shadowQuads(light#at, occluder, cfg#extrudeLength))
                 |> List.map(quad -> ambientQuad(quad, cfg#ambient, cfg#shadowStrength)));
         { name = cfg#passName,
-          clear = RenderTarget.LoadOp.Clear({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+          clear = RenderTarget.LoadOp.Clear({ r = 0.0, g = 0.0, b = 0.0 }),
           items = ambientFloor :: List.append(radiance, shadows) }
 
     /// 光マップを本編へ Multiply で 1 枚貼る PlacedItem（view の列の末尾側に足す）。
@@ -283,6 +283,6 @@ mod Light {
           item = RawDraw.polygon(quad, ambient, shadowZ()) |> Render.fade(strength) }
 
     /// 8bit 値 k をそのままの色成分（k/255）にする。
-    def c255(k: Int32): Float32 =
-        Float64.truncateToFloat32(Int32.toFloat64(k) / 255.0)
+    def c255(k: Int32): Float64 =
+        Int32.toFloat64(k) / 255.0
 }

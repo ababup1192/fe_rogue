@@ -97,7 +97,7 @@ mod TerrainLayers {
             let ts = Physics.tileSize();
             ({ px = { x = Int32.toFloat64(x) * ts, y = Int32.toFloat64(y) * ts },
                srcX = pos#x, srcY = pos#y,
-               flipH = false, flipV = false, alpha = 1.0f32,
+               flipH = false, flipV = false, alpha = 1.0,
                tint = LightGrid.toColor(
                    LightGrid.brightnessAt(w#stage, w#light, x, y)) }: TileData)
         })

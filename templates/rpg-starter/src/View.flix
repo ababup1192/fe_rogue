@@ -505,21 +505,21 @@ mod View {
         List.range(0, 3) |> List.map(i -> {
             let top = 48.0 + Hash01.at(i, 21) * 72.0;
             let height = 20.0 + Hash01.at(i, 22) * 24.0;
-            let alpha = Float64.truncateToFloat32(0.07 + Hash01.at(i, 23) * 0.05);
+            let alpha = 0.07 + Hash01.at(i, 23) * 0.05;
             softStrip(theme#fog, { top = top, bottom = top + height }, alpha, zBattleSky() + 1)
         })
 
     /// 上下の縁が透けて消える横帯（霧・地面のなじませに使う）。
     def softStrip(color: Color, span: { top = Float64, bottom = Float64 },
-                 peak: Float32, z: Int32): Render.PlacedItem =
+                 peak: Float64, z: Int32): Render.PlacedItem =
         let mid = (span#top + span#bottom) / 2.0;
         { at = { x = 0.0, y = 0.0 },
           item = Render.gradPolygon(
-                 { pos = { x = 0.0, y = span#top },            color = color, alpha = 0.0f32 }
-              :: { pos = { x = World.width(), y = span#top },  color = color, alpha = 0.0f32 }
+                 { pos = { x = 0.0, y = span#top },            color = color, alpha = 0.0 }
+              :: { pos = { x = World.width(), y = span#top },  color = color, alpha = 0.0 }
               :: { pos = { x = World.width(), y = mid },       color = color, alpha = peak }
-              :: { pos = { x = World.width(), y = span#bottom },color = color, alpha = 0.0f32 }
-              :: { pos = { x = 0.0, y = span#bottom },         color = color, alpha = 0.0f32 }
+              :: { pos = { x = World.width(), y = span#bottom },color = color, alpha = 0.0 }
+              :: { pos = { x = 0.0, y = span#bottom },         color = color, alpha = 0.0 }
               :: { pos = { x = 0.0, y = mid },                 color = color, alpha = peak }
               :: Nil, z) }
 
@@ -531,12 +531,12 @@ mod View {
         let far = ThemeDoc.darken(theme#path, 0.6);
            { at = { x = 0.0, y = 0.0 },
              item = Render.gradPolygon(
-                    { pos = { x = 0.0, y = top },              color = far,  alpha = 0.0f32 }
-                 :: { pos = { x = World.width(), y = top },    color = far,  alpha = 0.0f32 }
-                 :: { pos = { x = World.width(), y = top + 40.0 }, color = far, alpha = 1.0f32 }
-                 :: { pos = { x = World.width(), y = World.height() }, color = near, alpha = 1.0f32 }
-                 :: { pos = { x = 0.0, y = World.height() },   color = near, alpha = 1.0f32 }
-                 :: { pos = { x = 0.0, y = top + 40.0 },       color = far,  alpha = 1.0f32 }
+                    { pos = { x = 0.0, y = top },              color = far,  alpha = 0.0 }
+                 :: { pos = { x = World.width(), y = top },    color = far,  alpha = 0.0 }
+                 :: { pos = { x = World.width(), y = top + 40.0 }, color = far, alpha = 1.0 }
+                 :: { pos = { x = World.width(), y = World.height() }, color = near, alpha = 1.0 }
+                 :: { pos = { x = 0.0, y = World.height() },   color = near, alpha = 1.0 }
+                 :: { pos = { x = 0.0, y = top + 40.0 },       color = far,  alpha = 1.0 }
                  :: Nil, zBattleGround()) }
         :: Nil
 

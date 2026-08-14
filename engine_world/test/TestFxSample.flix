@@ -5,8 +5,8 @@ mod TestFxSample {
 
     // ── 道具 ──
 
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
-    def black(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
+    def black(): Color = { r = 0.0, g = 0.0, b = 0.0 }
 
     /// ばらつきゼロの基準 emitter（全粒が同じ姿 = 式の検算がしやすい）。
     /// dir 90 度 = 真右（0 度が真上・時計回り）。
@@ -31,7 +31,7 @@ mod TestFxSample {
 
     /// Drawable へ落として (位置, サイズ, 色, alpha, blend, zIndex) に射影（絵の全属性の指紋）。
     def fingerprints(items: List[Render.PlacedItem]):
-            List[(Float64, Float64, Float64, Float64, Float32, Float32, Float32, Float32, String, Int32)] =
+            List[(Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, String, Int32)] =
         let (drawables, _) = Render.draw(items);
         List.map(d -> (d#position#x, d#position#y, d#scale#x, d#scale#y,
                        d#color#r, d#color#g, d#color#b, d#alpha,
@@ -135,7 +135,7 @@ mod TestFxSample {
                    blend = DrawCmd.BlendMode.Add | baseEmitter() };
         let got = fingerprints(Fx.sample(specOf(em), 0i64, 0.5)) |> List.head
             |> Option.map(fp -> { let (_, _, _, _, _, _, _, a, blend, z) = fp; (a, blend, z) });
-        Assert.assertEq(expected = Some((0.5f32, "add", 3)), got)
+        Assert.assertEq(expected = Some((0.5, "add", 3)), got)
 
     /// 色グラデ: 黒 → 白 の 2 色は u=0.5 でちょうど灰色 (0.5, 0.5, 0.5)。
     @Test
@@ -143,7 +143,7 @@ mod TestFxSample {
         let em = { color = black() :: white() :: Nil | baseEmitter() };
         let got = fingerprints(Fx.sample(specOf(em), 0i64, 0.5)) |> List.head
             |> Option.map(fp -> { let (_, _, _, _, r, g, b, _, _, _) = fp; (r, g, b) });
-        Assert.assertEq(expected = Some((0.5f32, 0.5f32, 0.5f32)), got)
+        Assert.assertEq(expected = Some((0.5, 0.5, 0.5)), got)
 
     /// box 形: 一辺 size の正方形 Drawable（scale = (size, size)）。中心置き → 左上 (5-1, 0-1)。
     @Test

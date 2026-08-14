@@ -30,23 +30,23 @@ mod DrawCmd {
         cornerRadius = Float64,
         borderWidth  = Float64,
         borderColor  = Color,
-        borderAlpha  = Float32,
+        borderAlpha  = Float64,
         stripeColor  = Color,
-        stripeAlpha  = Float32,
+        stripeAlpha  = Float64,
         stripeWidth  = Float64,
         stripePeriod = Float64,
         stripeDir    = Int32,   // 縞の向き: 0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞
         checkerColor = Color,   // 市松タイルの色
-        checkerAlpha = Float32, // 市松タイルの濃さ（0 で無効）
+        checkerAlpha = Float64, // 市松タイルの濃さ（0 で無効）
         checkerCell  = Float64  // 市松のセル一辺 px（0 で無効）
     }
 
     /// 何も飾らない素の BoxStyle（枠・縞・市松すべて無効）。色系は塗りと同じ base を入れておく。
     /// フィールドを足すときはここへ既定値を 1 つ足せば、組み立て側は上書きだけで済む。
     pub def defaultStyle(base: Color): BoxStyle =
-        { cornerRadius = 0.0, borderWidth = 0.0, borderColor = base, borderAlpha = 0.0f32,
-          stripeColor = base, stripeAlpha = 0.0f32, stripeWidth = 0.0, stripePeriod = 0.0,
-          stripeDir = 0, checkerColor = base, checkerAlpha = 0.0f32, checkerCell = 0.0 }
+        { cornerRadius = 0.0, borderWidth = 0.0, borderColor = base, borderAlpha = 0.0,
+          stripeColor = base, stripeAlpha = 0.0, stripeWidth = 0.0, stripePeriod = 0.0,
+          stripeDir = 0, checkerColor = base, checkerAlpha = 0.0, checkerCell = 0.0 }
 
     /// px の長さを持つフィールド（角丸・枠線幅・縞の幅と周期・市松のセル）を一括で factor 倍する。
     /// zoom やスケール適用が同じ表を見るための共通ヘルパ。
@@ -84,7 +84,7 @@ mod DrawCmd {
         scale = Vec2.Vec2,
         rotation = Float64,
         color = Color,
-        alpha = Float32,
+        alpha = Float64,
         centered = Bool,
         uvOffset = Vec2.Vec2,
         uvScale = Vec2.Vec2,
@@ -101,7 +101,7 @@ mod DrawCmd {
         px    = Vec2.Vec2,
         uvOff = Vec2.Vec2,
         uvSc  = Vec2.Vec2,
-        alpha = Float32,
+        alpha = Float64,
         tint  = Color
     }
 
@@ -123,14 +123,14 @@ mod DrawCmd {
     /// 頂点 1 つぶんの色と濃さ。`PolygonRenderCmd#grad` が頂点列と同じ順で持つ。
     pub type alias VertexTint = {
         color = Color,
-        alpha = Float32
+        alpha = Float64
     }
 
     /// 展開済みの色つき頂点（位置＋色＋濃さ）。バックエンドが三角形の中で線形に混ぜる単位。
     pub type alias GradVertex = {
         pos   = Vec2.Vec2,
         color = Color,
-        alpha = Float32
+        alpha = Float64
     }
 
     /// 凸多角形の塗り潰し命令。vertices はスクリーン px に変換済みの頂点列を渡す。
@@ -144,7 +144,7 @@ mod DrawCmd {
     pub type alias PolygonRenderCmd = {
         vertices = List[Vec2.Vec2],
         color    = Color,
-        alpha    = Float32,
+        alpha    = Float64,
         zIndex   = Int32,
         clip     = Option[Rect2.Rect2],
         blend    = BlendMode,
@@ -164,15 +164,18 @@ mod DrawCmd {
         }
 
     /// vertices と grad の色列を 1 本に綴じる（不足は color / α=1 で補う）。
+    /// 掛け合わせは Float32 で行う — バックエンド（GL の頂点属性・SoftRaster の重み付き平均）が
+    /// Float32 で受け取るので、掛ける前に落とさないと丸めの回数がバックエンドとずれる。
     def gradVertices(tints: List[VertexTint], p: PolygonRenderCmd): List[GradVertex] =
-        let fallback: VertexTint = { color = p#color, alpha = 1.0f32 };
+        let fallback: VertexTint = { color = p#color, alpha = 1.0 };
+        let mulA = (a, b) -> Float32.toFloat64(RenderUtil.f32(a) * RenderUtil.f32(b));
         let folded = List.foldLeft((acc, v) -> {
             let (outRev, rest) = acc;
             let (tint, rest2) = match rest {
                 case t :: more => (t, more)
                 case Nil       => (fallback, Nil)
             };
-            (({ pos = v, color = tint#color, alpha = tint#alpha * p#alpha }: GradVertex) :: outRev, rest2)
+            (({ pos = v, color = tint#color, alpha = mulA(tint#alpha, p#alpha) }: GradVertex) :: outRev, rest2)
         }, ((Nil: List[GradVertex]), tints), p#vertices);
         let (outRev, _) = folded;
         List.reverse(outRev)

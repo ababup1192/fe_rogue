@@ -162,6 +162,11 @@ def check_templates(problems, dist):
         # $(ENGINE)/bin/... や $(ENGINE)/docs/... は engine リポの実体を指す。
         for m in re.finditer(r"\$\(ENGINE\)/((?:bin|docs)/[A-Za-z0-9_*/.-]+)", text):
             rel = m.group(1).rstrip(".,;:)'\"`")
+            # bin/flix.jar は Windows 経路の手動配置（Studio 同梱 JRE が直接叩く）。
+            # macOS/Linux は nix の jar を bin/flix ラッパが解決するので、
+            # engine に実体が無いのが正常。
+            if rel == "bin/flix.jar":
+                continue
             if not exists_in(ROOT, rel):
                 problems.append("{}: $(ENGINE)/{} が engine に実在しません".format(rel_mk, rel))
         # ゲーム側 bin/* の参照は new-game 時に sync-agents が配る。配布リスト

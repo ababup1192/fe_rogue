@@ -1,5 +1,5 @@
 // TestTerrainDoc — *.terrain.json の橋渡し(fromJson / defaults / fail-open)を固定する。
-// 方針どおり 1 Doc 最大3本: 壊れたJSON→既定値 / 1フィールド上書き / 複合破損サンプル1本で
+// 壊れたJSON→既定値 / 1フィールド上書き / 既知 preset は残る / 複合破損サンプル1本で
 // decode 契約(char 先勝ち・未知 preset 除去・edge の uniform 先勝ち)。
 // 期待値はリテラルで書かず defaults() から導く。描画の導出(16ケースの形・持ち上げ・粒)は
 // テストしない —スナップショットと目視の仕事。
@@ -24,6 +24,17 @@ mod TestTerrainDoc {
         Assert.assertEq(
             expected = (round, TerrainDoc.defaults()#styleMix#square),
             (doc#styleMix#round, doc#styleMix#square))
+
+    @Test
+    def testTerrainKeepsGrainPreset(): Unit \ Assert =
+        // "grain" は presetOf が受け取れる名前なので decode で捨てられず surface に1件残る。
+        let text = "{\"version\":1, \"entries\":["
+            + "{\"char\":\".\",\"name\":\"土\",\"fill\":\"#8a6a44\","
+            +   "\"surface\":[{\"preset\":\"grain\",\"color\":\"#6a4f31\"}]}]}";
+        let doc = TerrainDoc.fromJson(text) |> Option.getWithDefault(TerrainDoc.defaults());
+        Assert.assertEq(
+            expected = Some("grain" :: Nil),
+            List.head(doc#entries) |> Option.map(e -> e#surface |> List.map(fx -> fx#preset)))
 
     @Test
     def testTerrainDecodeRulesInOneSample(): Unit \ Assert =

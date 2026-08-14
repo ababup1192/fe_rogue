@@ -4,7 +4,7 @@
 // 具体値で固定する。図形そのものの幾何は TestRawDraw を見る。
 mod TestRender {
 
-    def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
+    def red(): Color = { r = 1.0, g = 0.0, b = 0.0 }
 
     // draw の振り分け: Box は Drawable に、Poly は PolygonRenderCmd に出る。
     // Poly の頂点は置き場所相対 → 出力では加算済み（(0,0) が (100,200) になる）。
@@ -52,7 +52,7 @@ mod TestRender {
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = faded } :: Nil);
         let untouched = RawDraw.polygon({ x = 0.0, y = 0.0 } :: Nil, red(), 0) |> Render.rounded(4.0);
         let (_, ps) = Render.draw({ at = { x = 9.0, y = 9.0 }, item = untouched } :: Nil);
-        Assert.assertEq(expected = (Some(0.5f32), 1),
+        Assert.assertEq(expected = (Some(0.5), 1),
             (ds |> List.head |> Option.map(d -> d#alpha), List.length(ps)))
 
     // outline と striped は同じ Box の style に重なる（枠幅・縞の濃度と周期を同時に pin）。
@@ -63,7 +63,7 @@ mod TestRender {
             |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = 0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
-        Assert.assertEq(expected = (Some(1.5), Some(0.25f32), Some(6.0)),
+        Assert.assertEq(expected = (Some(1.5), Some(0.25), Some(6.0)),
             (style |> Option.map(s -> s#borderWidth),
              style |> Option.map(s -> s#stripeAlpha),
              style |> Option.map(s -> s#stripePeriod)))
@@ -86,7 +86,7 @@ mod TestRender {
             |> Render.checker({ color = red(), alpha = 0.5, cell = 4.0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
-        Assert.assertEq(expected = (Some(0.5f32), Some(4.0)),
+        Assert.assertEq(expected = (Some(0.5), Some(4.0)),
             (style |> Option.map(s -> s#checkerAlpha),
              style |> Option.map(s -> s#checkerCell)))
 

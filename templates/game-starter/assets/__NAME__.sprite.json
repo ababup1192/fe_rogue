@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "ドット絵。文字は意味色キーで、実色は ThemeDoc.resolver が解決する。hero は 8×8・scale 2 で 16×16px。絵は差し色 1 色（a）で平らに塗ってあり、ふち光（A）と接地影（d）は読み込み時に PxShade が乗せる — 光の向きを絵ごとに手で管理しない。手で塗り分けたいなら World.polished を外す。",
+  "note": "ドット絵。文字は意味色キーで、実色は ThemeDoc.resolver が解決する。hero は 8×8・scale 2 で 16×16px。絵は差し色 1 色（a）で平らに塗ってあり、ふち光（A）と接地影（d）は読み込み時に PxShade が乗せる — 光の向きを絵ごとに手で管理しない。手で塗り分けたいなら World.shaded を外す。",
   "paletteFile": "assets/__NAME__.palette.json",
   "entityId": "__NAME__.sprites",
   "legend": {

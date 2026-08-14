@@ -149,7 +149,7 @@ mod TestAnnotate {
     @Test
     def testItemAabbCenteredScaledSprite(): Unit \ Assert =
         let sprite = Render.Item.Sprite({
-            texture = "ball", tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
+            texture = "ball", tint = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0,
             scale = { x = 2.0, y = 2.0 }, rotation = 0.0, centered = true,
             flipH = false, flipV = false, regionRect = None, zIndex = 0,
             blend = DrawCmd.BlendMode.Normal, maskPolys = Nil });
@@ -167,7 +167,7 @@ mod TestAnnotate {
     /// 矩形 (5,5)-(15,15) は原点の箱 10×10 とは重なるが、(50,50) の箱とは重ならない。
     @Test
     def testHitsFiltersByRect(): Unit \ Assert =
-        let gray = { r = 0.5f32, g = 0.5f32, b = 0.5f32 };
+        let gray = { r = 0.5, g = 0.5, b = 0.5 };
         let near = { at = { x = 0.0, y = 0.0 }, item = RawDraw.box({ x = 10.0, y = 10.0 }, gray, 1) };
         let far = { at = { x = 50.0, y = 50.0 }, item = RawDraw.box({ x = 10.0, y = 10.0 }, gray, 2) };
         let rect = { position = { x = 5.0, y = 5.0 }, size = { x = 10.0, y = 10.0 } };
@@ -228,7 +228,7 @@ mod TestAnnotate {
     @Test
     def testApplyInspectKeepsCircleRound(): Unit \ Assert =
         let view = { zoom = 2.0, pan = Vec2.zero(), design = design() };
-        let yellow = { r = 1.0f32, g = 1.0f32, b = 0.0f32 };
+        let yellow = { r = 1.0, g = 1.0, b = 0.0 };
         let (drawables, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = RawDraw.circle(5.0, yellow, 0) } :: Nil);
         match Annotate.applyInspect(view, drawables) {
             case d :: Nil =>
@@ -246,10 +246,10 @@ mod TestAnnotate {
     /// （view を持たず生チャンネルを登録するゲーム向けの経路）
     @Test
     def testHitsFromDrawablesFindsSprite(): Unit \ Assert =
-        let white = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
+        let white = { r = 1.0, g = 1.0, b = 1.0 };
         let drawable = { texture = "unit", position = { x = 100.0, y = 100.0 },
                          scale = { x = 2.0, y = 2.0 }, rotation = 0.0, color = white,
-                         alpha = 1.0f32, centered = true, uvOffset = { x = 0.0, y = 0.0 },
+                         alpha = 1.0, centered = true, uvOffset = { x = 0.0, y = 0.0 },
                          uvScale = { x = 1.0, y = 1.0 }, zIndex = 5, style = None, clip = None,
                          blend = DrawCmd.BlendMode.Normal, mask = Nil };
         let sizeOf = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 10.0, height = 20.0 });
@@ -266,7 +266,7 @@ mod TestAnnotate {
     def testApplyInspectTilesScalesPositionAndTiles(): Unit \ Assert =
         let view = { zoom = 2.0, pan = Vec2.zero(), design = design() };
         let tile = { textureName = "floor", tileSize = 16.0, position = { x = 50.0, y = 25.0 },
-                     tileScale = { x = 1.0, y = 1.0 }, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                     tileScale = { x = 1.0, y = 1.0 }, color = { r = 1.0, g = 1.0, b = 1.0 },
                      zIndex = 0, tileVaoId = GpuHandle.wrapTileVao(1), tileCount = 10 };
         match Annotate.applyInspectTiles(view, tile :: Nil) {
             case t :: Nil => Assert.assertEq(expected = (0.0, 0.0, 2.0, 2.0),

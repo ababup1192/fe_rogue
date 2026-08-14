@@ -1,8 +1,8 @@
 ---
 name: compile-fix
-description: "Flix のコンパイルエラーを診断し、既知の落とし穴（予約語・import の位置・エフェクト伝播忘れ・Channel API・Java 例外型・パターン網羅性・Float32 サフィックス等）と照合して修正を出す。flix check / flix test / make が失敗したとき、E3138・E5252・E6217 等のエラー番号が出たとき、Unexpected token・Parse error・Unable to unify・Non-exhaustive match・Unresolved type が出たとき、「Expected ',' before '='」のような原因の見えないパースエラーが出たときに使う。"
+description: "Flix のコンパイルエラーを診断し、既知の落とし穴（予約語・import の位置・エフェクト伝播忘れ・Channel API・Java 例外型・パターン網羅性・Float32 と Float64 の食い違い等）と照合して修正を出す。flix check / flix test / make が失敗したとき、E3138・E5252・E6217 等のエラー番号が出たとき、Unexpected token・Parse error・Unable to unify・Non-exhaustive match・Unresolved type が出たとき、「Expected ',' before '='」のような原因の見えないパースエラーが出たときに使う。"
 allowed-tools: Read, Grep, Glob, Bash
-sync: 2026-08-12
+sync: 2026-08-13
 ---
 
 # Flix コンパイルエラー診断
@@ -81,13 +81,16 @@ sync: 2026-08-12
 
 **修正**: 型注釈を付ける（例: `(Nil: List[Int32])`）、または要素付きで初期化。
 
-### 9. Float32 リテラルのサフィックス忘れ
+### 9. Float32 と Float64 の食い違い
 
 **症状**: `Expected Float32 but got Float64`
 
-**原因**: `1.0` は Float64。Float32 が必要な箇所では `1.0f32` と書く必要がある。
+**原因**: `1.0` は Float64。Float32 が出るのは GL / OpenAL / STB を呼ぶ境界の内側だけで、
+engine の pub 面（型・関数・eff の op）に Float32 は無い。
 
-**修正**: 全ての浮動小数点リテラルに `f32` サフィックスを付ける。
+**修正**: ゲーム側のコードで出たなら、`f32` を足す前に Float64 のまま渡せる口を探す
+（pub 面の Float32 は `make lint-f32` が止める決まり）。境界の内側を書いているなら
+`1.0f32` のようにサフィックスを付ける。
 
 ## 一般的な診断フロー
 

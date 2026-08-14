@@ -11,7 +11,7 @@ mod UiWidget {
     /// `skin`: パネルの皮にするドット絵（テクスチャ名）。指定すると塗りの代わりに九分割スキン
     /// （角4枚は等倍・辺と中は伸ばす）で描く。テクスチャが引けなければ従来の塗りにする（fail-open）。
     /// `skinCorner`: 九分割の角の厚み（テクスチャ px）。None は短辺の 1/3 を使う。
-    pub type alias BoxComp = { color = Color, alpha = Float32, zIndex = Int32,
+    pub type alias BoxComp = { color = Color, alpha = Float64, zIndex = Int32,
                                cornerRadius = Float64, borderWidth = Float64, borderColor = Color,
                                skin = Option[String], skinCorner = Option[Float64] }
 
@@ -59,7 +59,7 @@ mod UiWidget {
     /// Flex 経路は静的で hover 状態を持たない。
     pub type alias HoverStyle = {
         color = Option[Color], borderColor = Option[Color],
-        tint = Option[Color], alpha = Option[Float32]
+        tint = Option[Color], alpha = Option[Float64]
     }
 
     /// 塗り潰し凸多角形（の集合）の描画属性。サイズは layout が決め、頂点はその矩形内へ置く。
@@ -68,7 +68,7 @@ mod UiWidget {
     ///   レンダラは GL_TRIANGLE_FAN（凸前提）なので、凹形状は凸単位に割った複数サブポリで表す
     ///   （中空リング＝アヌラスは外周 2 点＋内周 2 点の凸クアッド列など）。単純な三角形は 1 要素。
     /// `color`: 塗り色。`alpha`: 不透明度。`zIndex`: 重なり順（全サブポリ共通）。
-    pub type alias PolyComp = { polys = List[List[Vec2.Vec2]], color = Color, alpha = Float32, zIndex = Int32 }
+    pub type alias PolyComp = { polys = List[List[Vec2.Vec2]], color = Color, alpha = Float64, zIndex = Int32 }
 
     /// リスト選択カーソルを delta だけ動かす（端で反対側へ回り込む）。
     /// count<=0 は選択肢が無いので 0 を返す。

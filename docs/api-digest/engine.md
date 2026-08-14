@@ -5,6 +5,12 @@
 
 `engine/src` 配下の `pub def` / `pub enum` / `pub type alias` の一覧。索引は [api-digest.md](../api-digest.md)。
 
+## AllocMeter — `engine/src/core/AllocMeter.flix`
+- この JVM でスレッドの割り当てバイト数を読めるか。false なら測っても 0 しか返らない。
+  `pub def isThreadAllocatedMemoryEnabled(): Bool`
+- `body` を 1 回動かす間に今のスレッドが割り当てたバイト数。
+  `pub def measureBytes(warmups: Int32, body: Unit -> a): Int64`
+
 ## Anchor — `engine/src/core/Anchor.flix`
 - 文字列から Anchor を parse する。scene.json の `"anchor": "FullRect"` 等のパース用。
   `pub def fromString(s: String): Option[Anchor]`
@@ -36,8 +42,8 @@
 - `pub def getSegments(arc: Arc): Int32`
 - 分割数を設定する。1 未満は 1 にクランプ（state と描画を一致させる）。
   `pub def setSegments(segments: Int32, arc: Arc): Arc`
-- `pub def getAlpha(arc: Arc): Float32`
-- `pub def setAlpha(alpha: Float32, arc: Arc): Arc`
+- `pub def getAlpha(arc: Arc): Float64`
+- `pub def setAlpha(alpha: Float64, arc: Arc): Arc`
 - スクリーン px の塗り潰しコマンド列に変換する。`screenPos` は描画原点
   `pub def toRenderCmds(screenPos: Vec2.Vec2, scaleVec: Vec2.Vec2, arc: Arc): List[GameEngine.PolygonRenderCmd]`
 
@@ -49,9 +55,9 @@
 - 指定した名前のオーディオを停止する
   `pub def stop(name: String): Unit \ GameEngine.Audio`
 - 指定した名前のオーディオの音量（gain）を 0.0〜1.0 で設定する。
-  `pub def setVolume(name: String, volume: Float32): Unit \ GameEngine.Audio`
+  `pub def setVolume(name: String, volume: Float64): Unit \ GameEngine.Audio`
 - 指定した名前のオーディオの高さ（再生速度）を変える。1.0 = 元のまま・
-  `pub def setPitch(name: String, pitch: Float32): Unit \ GameEngine.Audio`
+  `pub def setPitch(name: String, pitch: Float64): Unit \ GameEngine.Audio`
 - 指定した名前のオーディオの loop フラグ (AL_LOOPING) を実行時に切り替える。
   `pub def setLooping(name: String, loop: Bool): Unit \ GameEngine.Audio`
 - enum が保持する設定を一括反映する。volume → looping → (autoplay なら play) を順に適用する。
@@ -188,7 +194,7 @@
   `pub def validatePolygonPoints(points: List[Vec2.Vec2]): Result[String, Unit]`
 
 ## Color — `engine/src/core/Color.flix`
-- 0〜1 の 3 つ組から色を作る。Float64 のまま書けるので、色を計算で導くときに使う。
+- 0〜1 の 3 つ組から色を作る。
   `pub def rgb(r: Float64, g: Float64, b: Float64): Color`
 - 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段階で配られるので、
   `pub def rgb8(r: Int32, g: Int32, b: Int32): Color`
@@ -197,7 +203,7 @@
 - 2 色の間を t（0〜1）で混ぜる。lighten（白へ）/ darken（黒へ）が「片方が決め打ち」
   `pub def mix(a: Color, b: Color, t: Float64): Color`
 - 3 チャンネルを組にして取り出す。Color は record なので **そのままでは比べられない**
-  `pub def channels(color: Color): (Float32, Float32, Float32)`
+  `pub def channels(color: Color): (Float64, Float64, Float64)`
 - 色を白へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
   `pub def lighten(color: Color, amount: Float64): Color`
 - 色を黒へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
@@ -215,7 +221,7 @@
 - ピクセルの重ね方（ブレンドモード）。
   `pub enum BlendMode with Eq, Order, ToString { case Normal case Add case Multiply }`
 - 角丸＋枠線スタイル。`Drawable.style = Some(..)` かつ texture="" のとき、
-  `pub type alias BoxStyle = { cornerRadius = Float64, borderWidth = Float64, borderColor = Color, borderAlpha = Float32, stripeColor = Color, stripeAlpha = Float32, stripeWidth = Float64, stripePeriod = Float64, stripeDir = Int32, checkerColor = Color, checkerAlpha = Float32, checkerCell = Float64 }`
+  `pub type alias BoxStyle = { cornerRadius = Float64, borderWidth = Float64, borderColor = Color, borderAlpha = Float64, stripeColor = Color, stripeAlpha = Float64, stripeWidth = Float64, stripePeriod = Float64, stripeDir = Int32, checkerColor = Color, checkerAlpha = Float64, checkerCell = Float64 }`
 - 何も飾らない素の BoxStyle（枠・縞・市松すべて無効）。色系は塗りと同じ base を入れておく。
   `pub def defaultStyle(base: Color): BoxStyle`
 - px の長さを持つフィールド（角丸・枠線幅・縞の幅と周期・市松のセル）を一括で factor 倍する。
@@ -223,17 +229,17 @@
 - clip 矩形（design px・スクリーン空間）を出力ピクセルの整数矩形 (x0, y0, x1, y1) へ写す
   `pub def clipPixels(scale: {scaleX = Float64, scaleY = Float64}, clip: Rect2.Rect2): (Int32, Int32, Int32, Int32)`
 - スプライト 1 つ分の描画命令（zIndex 順にソートして描画される）。
-  `pub type alias Drawable = { texture = String, position = Vec2.Vec2, scale = Vec2.Vec2, rotation = Float64, color = Color, alpha = Float32, centered = Bool, uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, zIndex = Int32, style = Option[BoxStyle], clip = Option[Rect2.Rect2], blend = BlendMode, mask = List[List[Vec2.Vec2]] }`
+  `pub type alias Drawable = { texture = String, position = Vec2.Vec2, scale = Vec2.Vec2, rotation = Float64, color = Color, alpha = Float64, centered = Bool, uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, zIndex = Int32, style = Option[BoxStyle], clip = Option[Rect2.Rect2], blend = BlendMode, mask = List[List[Vec2.Vec2]] }`
 - タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、
-  `pub type alias TileInstance = { px = Vec2.Vec2, uvOff = Vec2.Vec2, uvSc = Vec2.Vec2, alpha = Float32, tint = Color }`
+  `pub type alias TileInstance = { px = Vec2.Vec2, uvOff = Vec2.Vec2, uvSc = Vec2.Vec2, alpha = Float64, tint = Color }`
 - タイルマップのインスタンス描画命令（1 draw call で全タイル）。
   `pub type alias TileMapRenderCmd = { textureName = String, tileSize = Float64, position = Vec2.Vec2, tileScale = Vec2.Vec2, color = Color, zIndex = Int32, tileVaoId = GpuHandle.TileVao, tileCount = Int32 }`
 - 頂点 1 つぶんの色と濃さ。`PolygonRenderCmd#grad` が頂点列と同じ順で持つ。
-  `pub type alias VertexTint = { color = Color, alpha = Float32 }`
+  `pub type alias VertexTint = { color = Color, alpha = Float64 }`
 - 展開済みの色つき頂点（位置＋色＋濃さ）。バックエンドが三角形の中で線形に混ぜる単位。
-  `pub type alias GradVertex = { pos = Vec2.Vec2, color = Color, alpha = Float32 }`
+  `pub type alias GradVertex = { pos = Vec2.Vec2, color = Color, alpha = Float64 }`
 - 凸多角形の塗り潰し命令。vertices はスクリーン px に変換済みの頂点列を渡す。
-  `pub type alias PolygonRenderCmd = { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32, clip = Option[Rect2.Rect2], blend = BlendMode, grad = Option[List[VertexTint]] }`
+  `pub type alias PolygonRenderCmd = { vertices = List[Vec2.Vec2], color = Color, alpha = Float64, zIndex = Int32, clip = Option[Rect2.Rect2], blend = BlendMode, grad = Option[List[VertexTint]] }`
 - grad つき多角形を「色つき頂点の三角形列」に展開する。GL と SoftRaster が同じ
   `pub def gradTriangles(p: PolygonRenderCmd): List[(GradVertex, GradVertex, GradVertex)]`
 - 静的多角形バッファのキャッシュキー。ゲームは「静的な中身を決める全入力」
@@ -315,6 +321,58 @@
   `pub def allMouseButtons(): List[MouseButton]`
 - マウスカーソル形状（エディタのリサイズハンドルなどで切り替える）。
   `pub enum Cursor with Eq, ToString { case Default case Crosshair case HResize case VResize case AllResize case Rotate case NWResize case NEResize case SWResize case SEResize }`
+- ゲームエフェクト: 描画・ウィンドウ制御・時間取得・キー入力・マウス入力・フォント・
+  `pub eff Game`
+- zIndex 混合で sprites・tileMaps・polygons を 1 フレーム描画する。
+  `pub eff Game { def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd], polygons: List[PolygonRenderCmd], staticLayer: Option[StaticLayerCmd]): Unit }`
+- タイルインスタンスデータを GPU VBO にアップロードし (vaoハンドル, count) を返す
+  `pub eff Game { def initTileBuffer(instances: List[TileInstance]): (GpuHandle.TileVao, Int32) }`
+- 既存のタイル VAO のインスタンス VBO へ中身を入れ直す（VAO は増やさない）。
+  `pub eff Game { def updateTileBuffer(vaoId: GpuHandle.TileVao, instances: List[TileInstance]): (GpuHandle.TileVao, Int32) }`
+- `pub eff Game { def shouldClose(): Bool }`
+- 前フレームからの経過時間。EngineConfig#maxDeltaTime で上限クランプ済み
+  `pub eff Game { def getDeltaTime(): Duration.Duration }`
+- `pub eff Game { def isKeyPressed(key: Key): Bool }`
+- `pub eff Game { def getMousePosition(): Vec2.Vec2 }`
+- `pub eff Game { def isMouseButtonPressed(button: MouseButton): Bool }`
+- 前回呼び出し以降に蓄積されたマウスホイールの y 方向 delta を返し、
+  `pub eff Game { def consumeScrollDelta(): Float64 }`
+- `pub eff Game { def getFontAtlas(name: String): FontAtlas }`
+- アトラスにまだ無い字を、いま生成してアトラスに足す。
+  `pub eff Game { def ensureGlyphs(textureName: String, codepoints: Set[Int32]): Unit }`
+- `pub eff Game { def getViewportRect(): Rect2.Rect2 }`
+- 指定したテクスチャ名の元画像サイズ等を取得する。
+  `pub eff Game { def getTextureInfo(name: String): Option[TextureInfo] }`
+- 実行時に生成した画素を、名前付きテクスチャとして使えるようにする。
+  `pub eff Game { def ensureTexture(name: String, key: String, width: Int32, height: Int32, argb: Vector[Int32]): Unit }`
+- マウスカーソル形状を切り替える。連続して同じ Cursor を渡しても問題ない（冪等）
+  `pub eff Game { def setCursor(cursor: Cursor): Unit }`
+- マウスカーソルの表示/非表示を切り替える。形状(setCursor)は「どんな絵か」、
+  `pub eff Game { def setCursorVisible(visible: Bool): Unit }`
+- ウィンドウ⇄ボーダーレスフルスクリーンを切り替える。フルスクリーンはプライマリ
+  `pub eff Game { def setFullscreen(on: Bool): Unit }`
+- 直近の setFullscreen で今フルスクリーン中かを返す
+  `pub eff Game { def isFullscreen(): Bool }`
+- 注釈一式（screenshot.png / highlighted.png / annotation.json / README.md）を
+  `pub eff Game { def saveAnnotation(req: AnnotationRequest): Option[String] }`
+- デバッグモード中であることをウィンドウタイトルで示す。
+  `pub eff Game { def setDebugBadge(enabled: Bool): Unit }`
+- オーディオエフェクト: サウンドの再生・停止・音量・ループ
+  `pub eff Audio`
+- 指定した名前のサウンドを先頭から再生する
+  `pub eff Audio { def playAudio(name: String): Unit }`
+- 指定した名前のサウンドを停止する
+  `pub eff Audio { def stopAudio(name: String): Unit }`
+- 指定した名前のサウンドの音量（gain）を 0.0〜1.0 で設定する
+  `pub eff Audio { def setVolume(name: String, volume: Float64): Unit }`
+- 指定した名前のサウンドの高さ（再生速度）を実行時に変える。1.0 = 元のまま・
+  `pub eff Audio { def setPitch(name: String, pitch: Float64): Unit }`
+- 指定した名前のサウンドの AL_LOOPING を実行時に切り替える。
+  `pub eff Audio { def setLooping(name: String, loop: Bool): Unit }`
+- 全サウンド共通のマスター音量（全体つまみ）を 0.0〜1.0 で設定する。範囲外はクランプ。
+  `pub eff Audio { def setMasterVolume(gain: Float64): Unit }`
+- すでに登録してある名前の音を、path のファイルから読み直して差し替える。
+  `pub eff Audio { def reloadAudio(name: String, path: String): Unit }`
 - macOS では -XstartOnFirstThread 付きでプロセスを再起動する。
   `pub def ensureMainThread(): Bool \ IO`
 
@@ -350,6 +408,12 @@
 - アトラスにベイクする全コードポイントを 1 行の文字列として返す。
   `pub def text(): String`
 
+## Log — `engine/src/core/Log.flix`
+- stderr へ 1 行。効果は `unsafe IO` で隠す
+  `pub def warn(line: String): Unit`
+- 既定値へ替えた事実を定型文で 1 行知らせる。
+  `pub def fellBack(domain: String, subject: String, fallback: String, reason: String): Unit`
+
 ## Num — `engine/src/core/Num.flix`
 - 0 以上 1 以下に収める。濃さ・進み具合・混ぜ具合など「0〜1 のはずの値」を
   `pub def clamp01(x: Float64): Float64`
@@ -381,7 +445,7 @@
   `pub def visual(poly: Polygon): Visual`
 - Visual 部品に関数を適用して差し替える
   `pub def mapVisual(f: Visual -> Visual \ ef, poly: Polygon): Polygon \ ef`
-- `pub def setAlpha(alpha: Float32, poly: Polygon): Polygon`
+- `pub def setAlpha(alpha: Float64, poly: Polygon): Polygon`
 - スクリーン px の塗り潰しコマンドに変換する。`screenPos` は描画原点
   `pub def toRenderCmd(screenPos: Vec2.Vec2, scaleVec: Vec2.Vec2, poly: Polygon): GameEngine.PolygonRenderCmd`
 
@@ -393,7 +457,7 @@
 - project.json を読んで Project を組み立てる。
   `pub def loadProject(rootDir: String): Result[String, Project] \ {Fs.FileRead}`
 - プロジェクトディレクトリを再帰的に走査して *.scene.json を列挙する。
-  `pub def findSceneFiles(rootDir: String): List[String] \ Fs.Glob`
+  `pub def findSceneFiles(rootDir: String): Result[String, List[String]] \ Fs.Glob`
 
 ## Projection — `engine/src/render/drawable/Projection.flix`
 - ビュー変換: screenPos = worldPos * scale - offset。
@@ -427,19 +491,19 @@
 - Visual 部品に関数を適用して差し替える
   `pub def mapVisual(f: Visual -> Visual \ ef, rect: Rect): Rect \ ef`
 - alpha を設定する
-  `pub def setAlpha(alpha: Float32, rect: Rect): Rect`
+  `pub def setAlpha(alpha: Float64, rect: Rect): Rect`
 - 角丸半径（px）を設定する。0 で矩形、>0 で角丸（BoxStyle 経由）。
   `pub def setCornerRadius(radius: Float64, rect: Rect): Rect`
 - 枠線の色を設定する。
   `pub def setBorderColor(color: Color, rect: Rect): Rect`
 - 枠線の不透明度を設定する（0 で枠なし）。
-  `pub def setBorderAlpha(alpha: Float32, rect: Rect): Rect`
+  `pub def setBorderAlpha(alpha: Float64, rect: Rect): Rect`
 - 枠線の太さ（design px）を設定する。0 以下で枠なし。小数も可。
   `pub def setBorderWidth(width: Float64, rect: Rect): Rect`
 - 枠線の太さ（design px）を取得する。
   `pub def getBorderWidth(rect: Rect): Float64`
 - 45° 斜線ハッチを設定する。width<=0 または alpha<=0 で無効。
-  `pub def setStripe(color: Color, alpha: Float32, width: Float64, period: Float64, rect: Rect): Rect`
+  `pub def setStripe(color: Color, alpha: Float64, width: Float64, period: Float64, rect: Rect): Rect`
 - 表示サイズ（描画矩形の幅・高さ）を取得する
   `pub def getSize(rect: Rect): Vec2.Vec2`
 - 表示サイズを設定する。リサイズ編集の主たる更新先で、`scale` ではなく
@@ -468,6 +532,12 @@
 ## RenderTarget — `engine/src/RenderTarget.flix`
 - ターゲットを開くたびに前の中身をどう始末するかの 3 択（wgpu / Vulkan の LoadOp と同じ語彙）。
   `pub enum LoadOp { case Keep case Clear(Color) case ClearTransparent }`
+- レンダーターゲットへの描画チャンネル。eff Game とは別に隔離した効果。
+  `pub eff Target`
+- ターゲットを開く。以降の renderCommands は画面でなくここに描かれる（swap もしない）。
+  `pub eff Target { def beginTarget(name: String, width: Int32, height: Int32, clear: RenderTarget.LoadOp): Unit }`
+- ターゲットを閉じて描画先を画面へ戻す。
+  `pub eff Target { def endTarget(): Unit }`
 - レンダーターゲットを使わないゲーム・GL の無い環境（テスト等）向けの何もしないハンドラ。
   `pub def runNoop(f: Unit -> a \ ef + Target): a \ ef`
 
@@ -515,13 +585,19 @@
 ## ShaderEffect — `engine/src/ShaderEffect.flix`
 - シェーダー面 1 枚ぶんの描画依頼。
   `pub type alias ShaderRenderCmd = { program = GpuHandle.ShaderProgram, texNames = List[String], rect = Rect2.Rect2, mask = List[List[Vec2.Vec2]], time = Float64, zIndex = Int32, blend = DrawCmd.BlendMode }`
+- シェーダー面の描画チャンネル。eff Game とは別に隔離した効果。
+  `pub eff Shader`
+- Spec を GLSL プログラムへコンパイルしハンドルを返す（起動時/リロード時に 1 回）。
+  `pub eff Shader { def buildProgram(spec: ShaderDoc.Spec): GpuHandle.ShaderProgram }`
+- シェーダー面 1 枚を描く。骨格では「床タイルと壁の間の固定 z-index の範囲」へそろえて
+  `pub eff Shader { def drawSurface(cmd: ShaderRenderCmd): Unit }`
 - シェーダーを使わないゲーム・GL の無い環境（テスト等）向けの何もしないハンドラ。
   `pub def runNoop(f: Unit -> a \ ef + Shader): a \ ef`
 
 ## ShaderEval — `engine/src/ShaderEval.flix`
 - テクスチャ 1 枚ぶんの画素（ARGB・正立・行優先）。Tex ノードが CPU 側で標本する素材。
   `pub type alias TexData = { width = Int32, height = Int32, pixels = Vector[Int32] }`
-- 代表点 uv（0..1 目安）と時刻 t の最終色（Color = 0..1 の Float32 rgb）。
+- 代表点 uv（0..1 目安）と時刻 t の最終色（Color = 0..1 の rgb）。
   `pub def evalPixel(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Color`
 - 代表点のアルファ（Fill#alpha の場を評価）。
   `pub def evalAlpha(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Float64`
@@ -576,7 +652,7 @@
 - Visual 部品に関数を適用して差し替える
   `pub def mapVisual(f: Visual -> Visual \ ef, sprite: Sprite): Sprite \ ef`
 - 不透明度を設定する（0.0 = 完全透明、1.0 = 不透明）
-  `pub def setAlpha(alpha: Float32, sprite: Sprite): Sprite`
+  `pub def setAlpha(alpha: Float64, sprite: Sprite): Sprite`
 - 水平反転を設定する
   `pub def setFlipH(h: Bool, sprite: Sprite): Sprite`
 - テクスチャ内の切り出し矩形を設定する。None ならテクスチャ全体を使う

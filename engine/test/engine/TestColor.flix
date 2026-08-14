@@ -5,15 +5,15 @@ mod TestColor {
     /// 明暗の両端と中央で、白または黒へ指定した割合だけ近づく。
     @Test
     def testLightenAndDarkenAtKeyAmounts(): Unit \ Assert =
-        let color = { r = 0.25f32, g = 0.5f32, b = 0.75f32 };
+        let color = { r = 0.25, g = 0.5, b = 0.75 };
         let channels = value -> (value#r, value#g, value#b);
         Assert.assertEq(
-            expected = ((0.25f32, 0.5f32, 0.75f32),
-                        (0.625f32, 0.75f32, 0.875f32),
-                        (1.0f32, 1.0f32, 1.0f32),
-                        (0.25f32, 0.5f32, 0.75f32),
-                        (0.125f32, 0.25f32, 0.375f32),
-                        (0.0f32, 0.0f32, 0.0f32)),
+            expected = ((0.25, 0.5, 0.75),
+                        (0.625, 0.75, 0.875),
+                        (1.0, 1.0, 1.0),
+                        (0.25, 0.5, 0.75),
+                        (0.125, 0.25, 0.375),
+                        (0.0, 0.0, 0.0)),
             (channels(Color.lighten(color, 0.0)),
              channels(Color.lighten(color, 0.5)),
              channels(Color.lighten(color, 1.0)),
@@ -24,30 +24,32 @@ mod TestColor {
     /// 範囲外のamountを補正せず、既存ゲームと同じ式をそのまま延長する。
     @Test
     def testLightenAndDarkenDoNotClampAmount(): Unit \ Assert =
-        let color = { r = 0.25f32, g = 0.5f32, b = 0.75f32 };
+        let color = { r = 0.25, g = 0.5, b = 0.75 };
         let light = Color.lighten(color, -1.0);
         let dark = Color.darken(color, 2.0);
         Assert.assertEq(
-            expected = ((-0.5f32, 0.0f32, 0.5f32),
-                        (-0.25f32, -0.5f32, -0.75f32)),
+            expected = ((-0.5, 0.0, 0.5),
+                        (-0.25, -0.5, -0.75)),
             ((light#r, light#g, light#b), (dark#r, dark#g, dark#b)))
 
     /// lightenはamountを、darkenはFloat64で求めた残りをFloat32へ変えてから各色へ使う。
     @Test
     def testLightenAndDarkenKeepFloatConversionOrder(): Unit \ Assert =
-        let color = { r = 0.01f32, g = 0.6f32, b = 0.9f32 };
+        let color = { r = 0.01, g = 0.6, b = 0.9 };
         let amount = 0.6;
         let value = Float64.truncateToFloat32(amount);
         let remaining = Float64.truncateToFloat32(1.0 - amount);
         let light = Color.lighten(color, amount);
         let dark = Color.darken(color, amount);
+        let narrow = Float64.truncateToFloat32;
+        let wide = Float32.toFloat64;
         Assert.assertEq(
-            expected = (color#r + (1.0f32 - color#r) * value,
-                        color#g + (1.0f32 - color#g) * value,
-                        color#b + (1.0f32 - color#b) * value,
-                        color#r * remaining,
-                        color#g * remaining,
-                        color#b * remaining),
+            expected = (wide(narrow(color#r) + (1.0f32 - narrow(color#r)) * value),
+                        wide(narrow(color#g) + (1.0f32 - narrow(color#g)) * value),
+                        wide(narrow(color#b) + (1.0f32 - narrow(color#b)) * value),
+                        wide(narrow(color#r) * remaining),
+                        wide(narrow(color#g) * remaining),
+                        wide(narrow(color#b) * remaining)),
             (light#r, light#g, light#b, dark#r, dark#g, dark#b))
 
     @Test
@@ -56,8 +58,8 @@ mod TestColor {
         // h は 1 周で折り返すので 1.25 と 0.25 は同じ色。
         let rgb = spec -> { let c = Color.hsv(spec); (c#r, c#g, c#b) };
         Assert.assertEq(
-            expected = ((1.0f32, 0.0f32, 0.0f32), (0.0f32, 1.0f32, 0.0f32), (0.0f32, 0.0f32, 1.0f32),
-                        (0.5f32, 0.5f32, 0.5f32), rgb({ h = 0.25, s = 1.0, v = 1.0 })),
+            expected = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0),
+                        (0.5, 0.5, 0.5), rgb({ h = 0.25, s = 1.0, v = 1.0 })),
             (rgb({ h = 0.0, s = 1.0, v = 1.0 }),
              rgb({ h = 1.0 / 3.0, s = 1.0, v = 1.0 }),
              rgb({ h = 2.0 / 3.0, s = 1.0, v = 1.0 }),
@@ -85,8 +87,8 @@ mod TestColor {
     @Test
     def testMixHitsBothEndsAndMiddle(): Unit \ Assert =
         let ch = Color.channels;
-        let a = Color.rgb8(0, 0, 0);
-        let b = Color.rgb8(255, 100, 50);
-        Assert.assertEq(expected = (ch(a), ch(b), ch(Color.rgb(0.5, 100.0 / 255.0 * 0.5, 50.0 / 255.0 * 0.5))),
+        let a = Color.rgb(0.0, 0.0, 0.0);
+        let b = Color.rgb(1.0, 0.5, 0.25);
+        Assert.assertEq(expected = (ch(a), ch(b), (0.5, 0.25, 0.125)),
             (ch(Color.mix(a, b, 0.0)), ch(Color.mix(a, b, 1.0)), ch(Color.mix(a, b, 0.5))))
 }

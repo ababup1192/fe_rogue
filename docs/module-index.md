@@ -70,8 +70,8 @@
 | 敵を追わせる・逃がす・ふらつかせる(距離場の 1 歩) | Steering |
 | タイルセット PNG + 自前の map.json でマップを貼る | MapResource |
 | チップ絵タイルを 1 draw call で敷く(事前に生成・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene（実例: `templates/platformer-starter/src/Main.flix` / `templates/rpg-starter/src/TownMap.flix`） |
-| チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material |
-| rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc |
+| チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material（repo 内に見本なし。[dual-grid.md](dual-grid.md)） |
+| rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc（repo 内に見本なし。[dual-grid.md](dual-grid.md)） |
 | 重なり判定・物理 | Collision / Physics2D |
 | 当たり判定を JSON で宣言する | HitDoc + Hit（実例: `templates/platformer-starter/src/World.flix`） |
 | キーが押された瞬間を取る | InputEdge |
@@ -247,8 +247,14 @@
 - **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵へ変換する。ヘッドレス生成・F8 停止画面・スナップショットが GPU の事前生成と同じ絵になるための橋。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。概念: docs/dual-grid.md。
 - **Material** — DualGrid のタイルに質感(塗り・フチ・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
-- **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API(実装例: rpg-starter)。
+- **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API。
 - **TerrainDoc** — セル文字→質感の表の宣言(*.terrain.json)を読む codec。色は #rrggbb か @キー(テーマ参照)。
+
+**この 4 つ(DualGrid / Material / Terrain / TerrainDoc)を呼ぶ見本はこのリポジトリに無い。**
+`templates/` にも `bench/` にも呼び出し元は 0 件で、`.terrain.json` も 1 つも無い。
+使うときの写経元は `engine_world/src/Terrain.flix` / `Material.flix` / `TerrainDoc.flix` の
+冒頭 doc コメントと、Doc の形は `engine_world/test/TestTerrainDoc.flix`。仕組みの説明は
+[dual-grid.md](dual-grid.md)。
 
 ## 物理・衝突
 

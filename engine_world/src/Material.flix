@@ -333,9 +333,11 @@ mod Material {
     /// 2色の線分上の混ぜ(0 = a, 1 = b)。色ランプの1区間の補間に使う。
     def toneMix(a: Color, b: Color, t: Float64): Color =
         let tf = Float64.truncateToFloat32(t);
-        { r = a#r + (b#r - a#r) * tf,
-          g = a#g + (b#g - a#g) * tf,
-          b = a#b + (b#b - a#b) * tf }
+        let f32 = RenderUtil.f32;
+        let wide = Float32.toFloat64;
+        { r = wide(f32(a#r) + (f32(b#r) - f32(a#r)) * tf),
+          g = wide(f32(a#g) + (f32(b#g) - f32(a#g)) * tf),
+          b = wide(f32(a#b) + (f32(b#b) - f32(a#b)) * tf) }
 
     /// 3色ランプ(deep→mid→lite)を位相 phase(0..1 で1周)で回した色。位相を2区間に割り、
     /// 前半は deep→mid、後半は mid→lite を線形補間する — 図形を動かさず色だけ回すことで

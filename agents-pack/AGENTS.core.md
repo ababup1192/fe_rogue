@@ -86,7 +86,9 @@
 ## make の入口
 
 - `make run` / `make debug`（watchFile・F8 有効）/ `make check`（型検査・一番速い確認）
-- `make test` / `make render`（決定的な絵を描き出す）/ `make reference-check`（gallery/ vs reference/ のバイト比較）
+- `make test` / `make render SHOT=<場面名>`（その場面 1 枚だけ描き出す。既定の手はこれ）/
+  `make render-all`（決定的な絵を全部描き出す。素の `make render` は使い方を出して失敗する）/
+  `make reference-check`（gallery/ vs reference/ のバイト比較）
 - `make reference-update`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
   `make gallery-sounds` の sounds.png / music.png）で**目と耳で確かめて**批評する。
@@ -149,7 +151,7 @@
   積んだ疑似グラデーションだけは禁止** — 生成時間に直撃するし、上の部品で正しく描ける。
   使える部品は engine のバージョンで決まるので visual-dict の **[新]** 印を見る）
 - **主役と背景が分離して読めること**。主役の輪郭が背景に溶けていない。
-  （手の例: `PxShade.polishDoc` のリムライト（ふち光）・接地影 / 明度差 / 縁取り /
+  （手の例: `PxShade.shadeDoc` のリムライト（ふち光）・接地影 / 明度差 / 縁取り /
   `Render.glowAt` / 背景側をぼかす・沈める。**明度差だけで足りるならそれでよい**）
 - **層が分かれていること**（少なくとも 奥・主役・手前）。奥行きの表現が要らないゲームでも、
   情報の優先順位は絵に出す。

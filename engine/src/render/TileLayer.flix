@@ -27,7 +27,7 @@ pub type alias TileData = {
     srcY  = Float64,
     flipH = Bool,
     flipV = Bool,
-    alpha = Float32,
+    alpha = Float64,
     tint  = Color
 }
 
@@ -35,7 +35,7 @@ mod TileLayer {
 
     /// 色変調なし（白 = テクスチャの色のまま）。tint の既定値として使う。
     /// per-tile の照明（松明の暖色・月光）を乗せるゲームは、マスごとの明度色をここに渡す。
-    pub def noTint(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    pub def noTint(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     /// TileLayer を TileMapRenderCmd に変換する（GameEngine.render 内で使用）。
     /// `position` は既にカメラ ViewTransform を適用したスクリーン座標、

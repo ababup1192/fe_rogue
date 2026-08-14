@@ -20,14 +20,12 @@ mod SfxSynth {
     /// `ms` ミリ秒ぶんのサンプル数。
     pub def frames(cfg: Config, ms: Int32): Int32 = cfg#sampleRate * ms / 1000
 
-    def fract(x: Float64): Float64 = x - Float64.floor(x)
-
     /// 矩形波: `freq` Hz・振幅 `amp` を `ms` ミリ秒ぶん。減衰は持たない生の波（先細りは fade で足す）。
     pub def tone(cfg: Config, freq: Float64, amp: Float64, ms: Int32): List[Float64] =
         let sr = Int32.toFloat64(cfg#sampleRate);
         List.map(n -> {
             let t = Int32.toFloat64(n) / sr;
-            if (fract(t * freq) < 0.5) amp else -amp
+            if (Num.fract(t * freq) < 0.5) amp else -amp
         }, List.range(0, frames(cfg, ms)))
 
     /// 雑音: 番号をハッシュした擬似乱数を振幅 `amp` で `ms` ミリ秒ぶん。生の波。

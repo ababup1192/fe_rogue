@@ -212,7 +212,7 @@ mod Text {
                             scale = {x = w / atlas#textureSize, y = h / atlas#textureSize},
                             rotation = 0.0,
                             color = r#visual#color,
-                            alpha = 1.0f32,
+                            alpha = 1.0,
                             centered = false,
                             uvOffset = {x = gm#s0, y = gm#t0},
                             uvScale = {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
@@ -225,9 +225,10 @@ mod Text {
                     case None => None
                 }
             }, List.zip(lineChars, positions));
-            {drawables = List.append(acc#drawables, lineDrawables), lineIdx = lineIdx + 1}
-        }, {drawables = (Nil: List[GameEngine.Drawable]), lineIdx = 0}, rows);
-        result#drawables
+            // 行ごとの列を先頭へ積んで最後に並べ直す。acc へ append すると行数の二乗で割り当てる。
+            {rows = lineDrawables :: acc#rows, lineIdx = lineIdx + 1}
+        }, {rows = (Nil: List[List[GameEngine.Drawable]]), lineIdx = 0}, rows);
+        List.flatten(List.reverse(result#rows))
 
 }
 

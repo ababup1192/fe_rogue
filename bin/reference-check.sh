@@ -16,7 +16,7 @@ if [ ! -f "$sums" ]; then
 fi
 
 if [ ! -d gallery ]; then
-	echo "error: gallery/ がありません。先に make render を実行してください" >&2
+	echo "error: gallery/ がありません。先に make render-all を実行してください" >&2
 	exit 1
 fi
 

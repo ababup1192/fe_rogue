@@ -114,10 +114,10 @@ mod Bench {
 
     def colorOf(k: Int32): Color =
         match Int32.modulo(k, 4) {
-            case 0 => { r = 0.86f32, g = 0.30f32, b = 0.29f32 }
-            case 1 => { r = 0.42f32, g = 0.72f32, b = 0.34f32 }
-            case 2 => { r = 0.35f32, g = 0.55f32, b = 0.87f32 }
-            case _ => { r = 0.91f32, g = 0.75f32, b = 0.32f32 }
+            case 0 => { r = 0.86, g = 0.30, b = 0.29 }
+            case 1 => { r = 0.42, g = 0.72, b = 0.34 }
+            case 2 => { r = 0.35, g = 0.55, b = 0.87 }
+            case _ => { r = 0.91, g = 0.75, b = 0.32 }
         }
 
     /// HUD あり構成（HUD=1 で有効）の絵。withHudView 経由なので z は HUD の範囲
@@ -125,13 +125,13 @@ mod Bench {
     /// 範囲が混ざってもスロット方式（counting sort）に乗り続けるかを HUD 無しとの A/B で見る。
     pub def hud(ctx: App.ViewCtx, w: World): List[Render.PlacedItem] =
         RawDraw.boxAt({ x = 160.0, y = 228.0 }, { x = 300.0, y = 16.0 },
-            { r = 0.10f32, g = 0.10f32, b = 0.14f32 }, 0)
+            { r = 0.10, g = 0.10, b = 0.14 }, 0)
         :: { at = { x = 14.0, y = 222.0 },
              item = Render.textTinted("HUD SEG=${w#segment + 1} N=${countOf(w#segment)}",
-                 ctx#atlas, 9.0, { r = 0.95f32, g = 0.85f32, b = 0.40f32 }, 1) }
+                 ctx#atlas, 9.0, { r = 0.95, g = 0.85, b = 0.40 }, 1) }
         :: { at = { x = 200.0, y = 222.0 },
              item = Render.textTinted("BAND CHECK", ctx#atlas, 9.0,
-                 { r = 0.60f32, g = 0.90f32, b = 0.60f32 }, 1) }
+                 { r = 0.60, g = 0.90, b = 0.60 }, 1) }
         :: Nil
 
     /// SDF テキストの負荷は文字数で決まるので、毎フレームほぼ一定（約 300 文字）に固定する。
@@ -148,5 +148,5 @@ mod Bench {
         lines |> List.mapWithIndex((k, line) ->
             { at = { x = 4.0, y = 12.0 + 11.0 * Int32.toFloat64(k) },
               item = Render.textTinted(line, atlas, 9.0,
-                                       { r = 0.92f32, g = 0.92f32, b = 0.95f32 }, zText()) })
+                                       { r = 0.92, g = 0.92, b = 0.95 }, zText()) })
 }

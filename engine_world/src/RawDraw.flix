@@ -13,7 +13,7 @@ mod RawDraw {
 
     /// 単色塗りの矩形（左上原点・サイズ指定）。
     pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item =
-        Item.Box({ size = size, color = color, alpha = 1.0f32, rotation = 0.0,
+        Item.Box({ size = size, color = color, alpha = 1.0, rotation = 0.0,
                          style = Some(solidStyle()), zIndex = zIndex,
                          blend = DrawCmd.BlendMode.Normal })
 
@@ -44,7 +44,7 @@ mod RawDraw {
     /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を Render.flipH に
     /// 通してから渡す。
     pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item =
-        Item.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex,
+        Item.Poly({ vertices = vertices, color = color, alpha = 1.0, zIndex = zIndex,
                     blend = DrawCmd.BlendMode.Normal, grad = None })
 
     // ── 図形の語彙（polygon の上に組んだ形。凹も可 — 描画側の耳切りが三角形化する）──
@@ -149,5 +149,5 @@ mod RawDraw {
                 sweep#fromT + (sweep#toT - sweep#fromT) * Int32.toFloat64(i) / Int32.toFloat64(segs)))
 
     def solidStyle(): GameEngine.BoxStyle =
-        DrawCmd.defaultStyle({r = 1.0f32, g = 1.0f32, b = 1.0f32})
+        DrawCmd.defaultStyle({r = 1.0, g = 1.0, b = 1.0})
 }

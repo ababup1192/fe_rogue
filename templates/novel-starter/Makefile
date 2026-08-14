@@ -4,7 +4,8 @@
 #   make test   … テストを実行する（記録は .test-logs/）
 #   make status … 現状 1 画面（テスト記録・スナップショット・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
-#   make render   … ギャラリー PNG を描き出す（決定的）
+#   make render-all … ギャラリーの絵を全部描き出す（決定的）
+#   make render SHOT=choice … その場面だけ debug/choice.png へ描き出す（複数は SHOT="title ending"）
 #   make reference-check  … 生成した絵をリファレンス画像とバイト比較する
 #   make reference-update … いまの gallery をリファレンス画像として更新する
 #   make atelier-preview … atelier/ の候補と assets/ の現行を debug/atelier/ に描き出す
@@ -37,7 +38,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check render reference-check reference-update atelier-preview api hooks check-docs-sync
+.PHONY: status run debug test build check render render-all reference-check reference-update atelier-preview api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -85,13 +86,27 @@ api:
 	if [ -n "$$out" ]; then printf '%s\n' "$$out"; \
 	else echo "[api] '$(Q)' に当たりなし。$(ENGINE)/docs/module-index.md で別名を探す"; fi
 
-render:
+# 描き出せる場面の名前（source of truth は SceneRender.shotNames。ここは使い方に出す写し）。
+SHOTS := title choice ending
+
+render-all:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.all
 
-reference-check: render
+# 1 枚だけ debug/<場面>.png へ描き出す（gallery/ は render-all だけが書く）。
+render:
+	@if [ -z "$(SHOT)" ]; then \
+		echo "usage: make render SHOT=<場面>           1 枚だけ debug/<場面>.png へ描き出す"; \
+		echo "       make render SHOT=\"title ending\"   何枚か"; \
+		echo "       make render-all                   全部 gallery/ へ描き出す"; \
+		echo "  場面: $(SHOTS)"; \
+		exit 1; \
+	fi
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" SHOT="$(SHOT)" $(FLIX) run --entrypoint SceneRender.one
+
+reference-check: render-all
 	"$(ENGINE)/bin/reference-check.sh"
 
-reference-update:
+reference-update: render-all
 	"$(ENGINE)/bin/reference-update.sh"
 
 atelier-preview:

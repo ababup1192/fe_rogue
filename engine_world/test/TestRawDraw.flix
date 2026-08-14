@@ -1,9 +1,10 @@
 // RawDraw の単体テスト: 図形そのものの幾何（circle は全角丸 Box・boxAt/circleAt/ngonAt の
 // 中心置き換算・ellipseAt の半径・sector と circleSegment の頂点構成・starAt の交互半径・
 // lineQuad の幅・半周超の扇形の耳切り面積保存）を具体値で固定する。
+// lint-view: 対象外 — 図形プリミティブ 1 つずつの幾何を数字で固定するための呼び出し。画面に出す絵ではない。
 mod TestRawDraw {
 
-    def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
+    def red(): Color = { r = 1.0, g = 0.0, b = 0.0 }
 
     /// PlacedItem から Poly の頂点列を取り出す（図形テストの共通口）。
     def vertsOf(placed: Render.PlacedItem): List[Vec2.Vec2] =

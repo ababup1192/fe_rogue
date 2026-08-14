@@ -63,8 +63,8 @@ App.make(initialWorld)
 ```flix
 AudioStreamPlayer.play("cursor")
 AudioStreamPlayer.stop("bgm")
-AudioStreamPlayer.setVolume("bgm", 0.5f32)
-AudioStreamPlayer.setPitch("bgm", 1.2f32)
+AudioStreamPlayer.setVolume("bgm", 0.5)
+AudioStreamPlayer.setPitch("bgm", 1.2)
 AudioStreamPlayer.setLooping("bgm", true)
 ```
 
@@ -100,7 +100,7 @@ pub def events(worlds: { before = World, after = World }): List[String] =
 ```flix
 pub def hums(w: World): List[App.Sustain] =
     if (not w.running) Nil
-    else { name = "engine", volume = 0.4f32, pitch = 1.0f32 + 0.6f32 * speedRatio(w) } :: Nil
+    else { name = "engine", volume = 0.4, pitch = 1.0 + 0.6 * speedRatio(w) } :: Nil
 
 App.make(initialWorld)
     |> App.withAudio(Sfx.events)
@@ -161,7 +161,7 @@ App.make(initialWorld)
 | `sequence(voices)` | 複数の声を順につなげる。上昇音・下降音・ファンファーレのような音階の並びを作る |
 
 ゲーム側は `src/render/SfxRender.flix` に「音のデザイン」だけを書き、`SceneRender.all` から
-`renderAll` を呼んで `assets/sfx/` へ WAV を書き出す（`make render`）。合成と WAV エンコードは
+`renderAll` を呼んで `assets/sfx/` へ WAV を書き出す（`make render-all`）。合成と WAV エンコードは
 engine_tools 側の `SfxSynth.wavBytes` / `writeBytes` / `renderSet` が持つので、ゲーム側は
 波形の足し算だけ書けばよい。
 
@@ -203,7 +203,7 @@ pub def renderAll(): Unit \ IO =
 ```flix
 // フェードイン: 無音 → 全開
 let volume = AudioFade.volumeOf(AudioFade.fadeIn(), t);
-AudioStreamPlayer.setVolume("bgm", Float64.toFloat32(volume))
+AudioStreamPlayer.setVolume("bgm", volume)
 
 // フェードアウト: 全開 → 無音
 let volume = AudioFade.volumeOf(AudioFade.fadeOut(), t)

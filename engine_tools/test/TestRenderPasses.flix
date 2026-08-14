@@ -22,7 +22,7 @@ mod TestRenderPasses {
 
     def cfg(scale: Int32): HeadlessRender.RenderConfig =
         { design = { x = 4.0, y = 4.0 }, scale = scale,
-          background = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+          background = { r = 0.0, g = 0.0, b = 0.0 },
           texturePath = Map.empty(),
           fontTtf = "../templates/game-starter/assets/Xolonium-Regular.ttf",
           fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
@@ -36,7 +36,7 @@ mod TestRenderPasses {
     /// 最小の Drawable（テクスチャ名だけ指定。位置・拡大は個々のテストで上書きする）。
     def drawable(texture: String): GameEngine.Drawable =
         { texture = texture, position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
-          rotation = 0.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
+          rotation = 0.0, color = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
           zIndex = 0, style = None, clip = None, blend = DrawCmd.BlendMode.Normal, mask = Nil }
 
@@ -45,7 +45,7 @@ mod TestRenderPasses {
     def testRenderPassImageClearColorFillsWholeTarget(): Unit \ {Assert, IO} =
         let img: BufferedImage =
             HeadlessRender.renderPassImage(cfg(1),
-                emptyPass(RenderTarget.LoadOp.Clear({ r = 1.0f32, g = 0.0f32, b = 0.0f32 })), None);
+                emptyPass(RenderTarget.LoadOp.Clear({ r = 1.0, g = 0.0, b = 0.0 })), None);
         Assert.assertEq(expected = (255, 255, 0, 0) :: (255, 255, 0, 0) :: Nil,
             channels(img.getRGB(0i32, 0i32)) :: channels(img.getRGB(3i32, 3i32)) :: Nil)
 
@@ -54,7 +54,7 @@ mod TestRenderPasses {
     def testRenderPassImageNoneKeepsPrevContent(): Unit \ {Assert, IO} =
         let prev: BufferedImage =
             HeadlessRender.renderPassImage(cfg(1),
-                emptyPass(RenderTarget.LoadOp.Clear({ r = 0.0f32, g = 0.0f32, b = 1.0f32 })), None);
+                emptyPass(RenderTarget.LoadOp.Clear({ r = 0.0, g = 0.0, b = 1.0 })), None);
         let img: BufferedImage =
             HeadlessRender.renderPassImage(cfg(1), emptyPass(RenderTarget.LoadOp.Keep), Some(prev));
         Assert.assertEq(expected = (255, 0, 0, 255), channels(img.getRGB(2i32, 2i32)))
@@ -125,12 +125,12 @@ mod TestRenderPasses {
         let toCmds = t -> {
             let p: HeadlessRender.PassSpec =
                 { name = "paper",
-                  clear = RenderTarget.LoadOp.Clear({ r = t, g = 0.0f32, b = 0.0f32 }),
+                  clear = RenderTarget.LoadOp.Clear({ r = t, g = 0.0, b = 0.0 }),
                   drawables = Nil, polygons = Nil };
             (p :: Nil, drawable("paper") :: Nil,
              (Nil: List[GameEngine.PolygonRenderCmd]), (Nil: List[SoftRaster.SurfaceCmd]))
         };
-        let strip = HeadlessRender.renderGifWithPasses(c, 0.0f32 :: 1.0f32 :: Nil, 1, toCmds, "smoke");
+        let strip = HeadlessRender.renderGifWithPasses(c, 0.0 :: 1.0 :: Nil, 1, toCmds, "smoke");
         let gifExists = (new File("build/test/rendergifpasses/smoke.gif")).exists();
         Assert.assertEq(
             expected = (2, true, (255, 0, 0, 0), (255, 255, 0, 0)),

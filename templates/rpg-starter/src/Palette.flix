@@ -7,7 +7,7 @@
 // 並び順から作った仮色で塗るので、編集画面と実機で配色が食い違う。
 // だから導出の結果をここへ書き出して読ませる。
 //
-// 生成物なので手で直さない（`make palette`。`make render` の前に走る）。
+// 生成物なので手で直さない（`make palette`。`make render-all` の前に走る）。
 // テーマの色を変えたら作り直す — 忘れても TestPalette が食い違いを見つける。
 mod Palette {
 
@@ -42,8 +42,9 @@ mod Palette {
             + "教えるための写し。色を変えるのは rpg.theme.json 側。\",\n"
             + body + "\n}\n"
 
-    def channel(v: Float32): String =
-        Float32.toString(v)
+    /// Studio と実機の GL に渡るのは Float32 の値なので、その桁で書く。
+    def channel(v: Float64): String =
+        Float32.toString(RenderUtil.f32(v))
 
     /// 写しを書き出す。読むのは Studio だけなので、走らせるのは開発の手元だけでよい。
     pub def write(): Unit \ IO =

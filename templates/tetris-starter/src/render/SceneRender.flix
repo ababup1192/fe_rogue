@@ -1,9 +1,11 @@
 // SceneRender — ゲーム画面を画面なしで PNG に生成する（スナップショット比較・目視批評用）。
-// 実行: flix run --entrypoint SceneRender.all → gallery/s1_start.png .. s4_over.png
+// 実行: make render-all → gallery/title.png・s1_start.png .. s4_over.png
+//       make render SHOT=s3_clear → debug/s3_clear.png（1 枚だけ）
 // すべて決定的な場面（時計 t は場面ごとに固定値を入れる）。World を直接組み（RNG を回さず固定し）、
 // 実機と同じ描画経路（View.frame → Render.draw → HeadlessRender.renderPng）で生成する。
 mod SceneRender {
     import java.io.File
+    import java.lang.System
 
     def design(): Vec2.Vec2 = { x = 256.0, y = 352.0 }
 
@@ -20,25 +22,61 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    pub def shotNames(): List[String] =
+        "title" :: "s1_start" :: "s2_stack" :: "s3_clear" :: "s4_over" :: Nil
+
+    /// 名前 → その場面の World。shotNames と対で保つ。名前で引く形にしてあるので、
+    /// SHOT で 1 枚だけ描くときに残りの場面は組まない。
+    def sceneOf(name: String, w0: World.World): Option[World.World] =
+        match name {
+            // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が reference/title.png を
+            // /genesis/title で読み、「パズル」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
+            case "title"    => Some(stackScene(w0))
+            // s1: 初期盤（空）+ 涌いたばかりの current + NEXT + score 0。
+            case "s1_start" => Some({ t = 0.4 | w0 })
+            // s2: 積み上がった中盤 + 落下中のミノ + ゴースト。
+            case "s2_stack" => Some(stackScene(w0))
+            // s3: ライン消しの演出中（下 2 行が満杯・演出の途中で固定）。
+            case "s3_clear" => Some(clearScene(w0))
+            // s4: GAME OVER の幕。
+            case "s4_over"  => Some(overScene(w0))
+            case _          => None
+        }
+
     /// SceneRender.all の中身。生成した PNG のパス列を返す — 走行中のゲームへの POST /render も呼ぶ。
     pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
+        shotsInto("gallery", _ -> true)
+
+    /// SHOT で指した場面だけを debug/ へ生成する（スナップショットを汚さない）。
+    /// 実行: make render SHOT=s3_clear
+    pub def one(): Unit \ IO =
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// keep が真を返す場面だけを outDir へ生成し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
-        let cfg = cfgOf("gallery", atlas, w0#theme#bg);
+        let cfg = cfgOf(outDir, atlas, w0#theme#bg);
         let ctx = App.viewCtxOf(atlas, design());
-        // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が reference/title.png を
-        // /genesis/title で読み、「パズル」のジャンルカードのサムネイルにする（各 starter 共通の規約）。
-        let t = shoot(cfg, ctx, stackScene(w0), "title");
-        // s1: 初期盤（空）+ 涌いたばかりの current + NEXT + score 0。
-        let s1 = shoot(cfg, ctx, { t = 0.4 | w0 }, "s1_start");
-        // s2: 積み上がった中盤 + 落下中のミノ + ゴースト。
-        let s2 = shoot(cfg, ctx, stackScene(w0), "s2_stack");
-        // s3: ライン消しの演出中（下 2 行が満杯・演出の途中で固定）。
-        let s3 = shoot(cfg, ctx, clearScene(w0), "s3_clear");
-        // s4: GAME OVER の幕。
-        let s4 = shoot(cfg, ctx, overScene(w0), "s4_over");
-        t :: s1 :: s2 :: s3 :: s4 :: Nil
+        shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, ctx, w, name)))
+
+    def envOr(key: String, fallback: String): String \ IO =
+        let value = System.getenv(key);
+        if (Object.isNull(value)) fallback else value
 
     // ── 決定的な場面の脚本（RNG を回さず board を直接組む） ──
 

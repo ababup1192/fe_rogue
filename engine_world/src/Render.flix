@@ -19,20 +19,20 @@ mod Render {
         /// maskPolys は多角形の型抜き（空 = 抜かない。masked で付ける）。頂点は表示クアッドの
         /// ローカル座標（design px・原点 = クアッドの左上・回転前）— rotation・反転は
         /// クアッドと同じ変換が掛かるので、形は 1 回定義すれば回転は rotation に任せられる。
-        case Sprite({ texture = String, tint = Color, alpha = Float32,
+        case Sprite({ texture = String, tint = Color, alpha = Float64,
                       scale = Vec2.Vec2, rotation = Float64, centered = Bool,
                       flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32,
                       blend = DrawCmd.BlendMode, maskPolys = List[List[Vec2.Vec2]] })
         /// wrapWidth = Some(w) で、w (design px) を超える字を次の行へ折り返す。None は折らない。
         case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color,
                     rotation = Float64, zIndex = Int32, wrapWidth = Option[Float64] })
-        case Box({ size = Vec2.Vec2, color = Color, alpha = Float32, rotation = Float64,
+        case Box({ size = Vec2.Vec2, color = Color, alpha = Float64, rotation = Float64,
                    style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode })
         /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
         /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
         /// grad = Some(色列) で頂点ごとの色になり面の中で滑らかに混ざる（gradPolygon / vgrad で作る。
         /// 扇割りのため凸の形で使う）。None = color 一色。
-        case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
+        case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float64, zIndex = Int32,
                     blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] })
         /// rect（スクリーン空間・design px）で inner を切り抜く。入れ子は交差。
         /// App + withCamera 経路では中身にはカメラが掛かるが、clip 矩形は常にスクリーン固定 —
@@ -52,11 +52,11 @@ mod Render {
 
     // ── smart constructor（Drawable/BoxStyle をゲームから隠す）──
 
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def white(): Color = {r = 1.0, g = 1.0, b = 1.0}
 
     /// 全テクスチャ・等倍・中心原点のスプライト（最頻ケース）。反転が要るときは spriteFlipped。
     pub def sprite(texture: String, zIndex: Int32): Item =
-        Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
+        Item.Sprite({ texture = texture, tint = white(), alpha = 1.0,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
                             flipH = false, flipV = false, regionRect = None, zIndex = zIndex,
                             blend = DrawCmd.BlendMode.Normal, maskPolys = Nil })
@@ -64,7 +64,7 @@ mod Render {
     /// 反転付きスプライト。同型の Bool 2 つは取り違えやすいので名前で渡す。
     pub def spriteFlipped(texture: String, zIndex: Int32,
                           flip: { flipH = Bool, flipV = Bool }): Item =
-        Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
+        Item.Sprite({ texture = texture, tint = white(), alpha = 1.0,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
                             flipH = flip#flipH, flipV = flip#flipV, regionRect = None, zIndex = zIndex,
                             blend = DrawCmd.BlendMode.Normal, maskPolys = Nil })
@@ -128,7 +128,7 @@ mod Render {
     def ringAt(center: Vec2.Vec2, radius: Float64, color: Color, zIndex: Int32): PlacedItem =
         { at = { x = center#x - radius, y = center#y - radius },
           item = Item.Box({ size = { x = radius * 2.0, y = radius * 2.0 }, color = color,
-                            alpha = 1.0f32, rotation = 0.0, style = Some(solidStyle()),
+                            alpha = 1.0, rotation = 0.0, style = Some(solidStyle()),
                             zIndex = zIndex, blend = DrawCmd.BlendMode.Normal })
                  |> rounded(radius) }
 
@@ -221,7 +221,7 @@ mod Render {
         Item.Poly({ vertices = List.map(v -> v#pos, vertices),
                     color = vertices |> List.head |> Option.map(v -> v#color)
                                      |> Option.getWithDefault(white()),
-                    alpha = 1.0f32, zIndex = zIndex, blend = DrawCmd.BlendMode.Normal,
+                    alpha = 1.0, zIndex = zIndex, blend = DrawCmd.BlendMode.Normal,
                     grad = Some(List.map(v -> ({ color = v#color, alpha = v#alpha }: DrawCmd.VertexTint),
                                          vertices)) })
 
@@ -229,10 +229,10 @@ mod Render {
     /// 濃さも変えたいとき（上へ消える光の帯など）は gradPolygon で頂点ごとに渡す。
     pub def vgrad(size: Vec2.Vec2, colors: { top = Color, bottom = Color }, zIndex: Int32): Item =
         gradPolygon(
-            { pos = { x = 0.0, y = 0.0 },       color = colors#top,    alpha = 1.0f32 } ::
-            { pos = { x = size#x, y = 0.0 },    color = colors#top,    alpha = 1.0f32 } ::
-            { pos = { x = size#x, y = size#y }, color = colors#bottom, alpha = 1.0f32 } ::
-            { pos = { x = 0.0, y = size#y },    color = colors#bottom, alpha = 1.0f32 } :: Nil,
+            { pos = { x = 0.0, y = 0.0 },       color = colors#top,    alpha = 1.0 } ::
+            { pos = { x = size#x, y = 0.0 },    color = colors#top,    alpha = 1.0 } ::
+            { pos = { x = size#x, y = size#y }, color = colors#bottom, alpha = 1.0 } ::
+            { pos = { x = 0.0, y = size#y },    color = colors#bottom, alpha = 1.0 } :: Nil,
             zIndex)
 
     // ── 図形の語彙（box / circle / polygon / ngon / star …）は RawDraw へ ──
@@ -300,14 +300,11 @@ mod Render {
         }, item)
 
     /// 透明度（alpha）を指定した値にする（Sprite / Box / Poly に効く。Text は tint が濃度を兼ねる）。
-    /// alpha は Float64 で受けて縁で 1 回だけ f32 へ落とす — ゲーム側の数はぜんぶ Float64 なので、
-    /// 呼び側に `f32` サフィックスや変換関数を書かせない（lightAt / glowAt と同じ方針）。
     pub def fade(alpha: Float64, item: Item): Item =
-        let a = Float64.truncateToFloat32(alpha);
         onLeaf(leaf -> match leaf {
-            case Item.Sprite(s) => Item.Sprite({ alpha = a | s })
-            case Item.Box(b)    => Item.Box({ alpha = a | b })
-            case Item.Poly(p)   => Item.Poly({ alpha = a | p })
+            case Item.Sprite(s) => Item.Sprite({ alpha = alpha | s })
+            case Item.Box(b)    => Item.Box({ alpha = alpha | b })
+            case Item.Poly(p)   => Item.Poly({ alpha = alpha | p })
             case other                => other
         }, item)
 
@@ -471,9 +468,9 @@ mod Render {
             case Some(s) =>
                 Float64.abs(s#cornerRadius) < 0.000001
                     and Float64.abs(s#borderWidth) < 0.000001
-                    and s#borderAlpha == 0.0f32
-                    and s#stripeAlpha == 0.0f32
-                    and s#checkerAlpha == 0.0f32
+                    and s#borderAlpha == 0.0
+                    and s#stripeAlpha == 0.0
+                    and s#checkerAlpha == 0.0
         }
 
     /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
@@ -556,7 +553,7 @@ mod Render {
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ borderColor = color, borderWidth = width,
-                                                borderAlpha = 1.0f32 | styleOf(b#style) }) | b })
+                                                borderAlpha = 1.0 | styleOf(b#style) }) | b })
             case other => other
         }, item)
 
@@ -567,7 +564,7 @@ mod Render {
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ borderColor = border#color, borderWidth = border#width,
-                                                borderAlpha = Float64.truncateToFloat32(border#alpha)
+                                                borderAlpha = border#alpha
                                                 | styleOf(b#style) }) | b })
             case other => other
         }, item)
@@ -578,7 +575,7 @@ mod Render {
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ stripeColor = stripe#color,
-                                                stripeAlpha = Float64.truncateToFloat32(stripe#alpha),
+                                                stripeAlpha = stripe#alpha,
                                                 stripeWidth = stripe#width, stripePeriod = stripe#period,
                                                 stripeDir = stripe#dir
                                                 | styleOf(b#style) }) | b })
@@ -590,7 +587,7 @@ mod Render {
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ checkerColor = c#color,
-                                                checkerAlpha = Float64.truncateToFloat32(c#alpha),
+                                                checkerAlpha = c#alpha,
                                                 checkerCell = c#cell
                                                 | styleOf(b#style) }) | b })
             case other => other
@@ -673,7 +670,7 @@ mod Render {
     pub def blitRegion(spec: { name = String, design = Vec2.Vec2, src = Rect2.Rect2,
                                at = Vec2.Vec2, size = Vec2.Vec2, z = Int32 }): PlacedItem =
         { at = spec#at,
-          item = Item.Sprite({ texture = spec#name, tint = white(), alpha = 1.0f32,
+          item = Item.Sprite({ texture = spec#name, tint = white(), alpha = 1.0,
               scale = { x = spec#size#x / spec#design#x, y = spec#size#y / spec#design#y },
               rotation = 0.0, centered = true, flipH = false, flipV = false,
               regionRect = Some(spec#src), zIndex = spec#z,
@@ -852,7 +849,7 @@ mod Render {
 
     /// Poly を置き場所 pos の描画命令へ（全頂点に pos を加算）。
     def polyCmd(pos: Vec2.Vec2,
-                p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
+                p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float64, zIndex = Int32,
                      blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] }): GameEngine.PolygonRenderCmd =
         { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
           color = p#color, alpha = p#alpha, zIndex = p#zIndex, clip = None, blend = p#blend,
@@ -892,7 +889,7 @@ mod Render {
             case Item.Shader(s) =>
                 // GL の無い経路（SoftRaster / F8 注釈）向けの代表色ベタ塗り。本物のシェーダーは
                 // eff Shader が別チャンネルで描くので、ここは「面がそこにある」ことだけ残す。
-                boxDrawable(s#rect#size, ShaderDoc.representativeColor(s#spec), 1.0f32, 0.0, None,
+                boxDrawable(s#rect#size, ShaderDoc.representativeColor(s#spec), 1.0, 0.0, None,
                             s#zIndex, s#blend, s#rect#position) :: Nil
             case Item.Clipped(c) =>
                 toDrawables(c#inner, pos) |> List.map(d -> { clip = mergeClip(c#rect, d#clip) | d })
@@ -930,7 +927,7 @@ mod Render {
 
     // flip は base scale に符号を“乗算”（engine spriteToDrawable と同じ）。centered は素通し。
     // region=Some は textureSize(\Game) が要るので今回未対応＝loud に落とす（部分関数を残さない）。
-    def spriteDrawable(texture: String, tint: Color, alpha: Float32, scale: Vec2.Vec2,
+    def spriteDrawable(texture: String, tint: Color, alpha: Float64, scale: Vec2.Vec2,
                        rotation: Float64, centered: Bool, flipH: Bool, flipV: Bool,
                        regionRect: Option[Rect2.Rect2], zIndex: Int32, blend: DrawCmd.BlendMode,
                        maskPolys: List[List[Vec2.Vec2]], pos: Vec2.Vec2): GameEngine.Drawable =
@@ -980,7 +977,7 @@ mod Render {
         let moved = rotAbout(t, pivot, Vec2.add(d#position, half));
         { position = Vec2.sub(moved, half), rotation = radiansOf(t) | d }
 
-    def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32, rotation: Float64,
+    def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float64, rotation: Float64,
                     style: Option[GameEngine.BoxStyle], zIndex: Int32, blend: DrawCmd.BlendMode,
                     pos: Vec2.Vec2): GameEngine.Drawable =
         // texture=""・centered=false・position=左上・scale=ピクセルサイズ・style=Some で単色塗り。

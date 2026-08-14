@@ -3,8 +3,8 @@
 /// visual / transform 部品を検証する。
 mod TestArc {
 
-    def cyan(): Color = {r = 0.2f32, g = 0.8f32, b = 1.0f32}
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def cyan(): Color = {r = 0.2, g = 0.8, b = 1.0}
+    def white(): Color = {r = 1.0, g = 1.0, b = 1.0}
 
     def origin(): Vec2.Vec2 = {x = 0.0, y = 0.0}
     def unitScale(): Vec2.Vec2 = {x = 1.0, y = 1.0}
@@ -66,8 +66,8 @@ mod TestArc {
     /// alpha round-trip
     @Test
     def testAlphaRoundtrip(): Unit \ Assert =
-        let arc = Arc.ring(10.0, 2.0, cyan()) |> Arc.setAlpha(0.5f32);
-        Assert.assertEq(expected = 0.5f32, Arc.getAlpha(arc))
+        let arc = Arc.ring(10.0, 2.0, cyan()) |> Arc.setAlpha(0.5);
+        Assert.assertEq(expected = 0.5, Arc.getAlpha(arc))
 
     /// endAngle round-trip
     @Test
@@ -89,7 +89,7 @@ mod TestArc {
     def testModulateRoundtrip(): Unit \ Assert =
         let arc = Arc.ring(10.0, 2.0, cyan())
             |> Arc.mapVisual(Visual.setColor(white()));
-        Assert.assertEq(expected = 1.0f32, Visual.getColor(Arc.visual(arc))#r)
+        Assert.assertEq(expected = 1.0, Visual.getColor(Arc.visual(arc))#r)
 
     /// Visual: visible round-trip
     @Test

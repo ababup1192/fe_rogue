@@ -11,6 +11,8 @@ AI エージェントが「この関数、型はどんな形だっけ」を調�
 対象は engine/src・engine_world/src・engine_tools/src の *.flix。
 pub def のシグネチャは本体開始の `=` 直前までを 1 行にまとめる（本体そのものは載せない）。
 pub enum・pub type alias は宣言全体（case 行・フィールドも含む）を 1 行にまとめる。
+pub eff は eff 自身を 1 行、中の op を 1 op 1 行で載せる（op には `pub` が付かないので
+行頭 `pub` だけを見ていると丸ごと落ちる）。
 
 標準ライブラリだけで動く（Windows / macOS / Linux 共通。sed 等の外部コマンドを使わない）。
 """
@@ -56,6 +58,7 @@ PACKAGES = [
 ]
 
 MOD_RE = re.compile(r"^mod\s+([A-Za-z][A-Za-z0-9_.]*)\s*\{")
+EFF_RE = re.compile(r"^pub\s+eff\s+([A-Za-z][A-Za-z0-9_]*)")
 
 PACKAGE_BANNER = (
     "<!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->\n"
@@ -222,6 +225,68 @@ def extract_block(lines, start_idx):
     return collapse(" ".join(p.strip() for p in parts if p.strip())), i
 
 
+def extract_eff_block(lines, start_idx):
+    """`pub eff` の宣言を (eff 名, [(doc, op シグネチャ), ...], 次の行番号) で返す。
+
+    op には `pub` が付かないので、eff の中括弧の中だけを別に読む。op の終わりは
+    「次の `///` / `def` / 閉じ括弧が来た所」で決める（op には本体の `=` が無く、
+    pub def と同じ「`=` の直前まで」では切れない）。
+    """
+    name_m = EFF_RE.match(lines[start_idx].strip())
+    name = name_m.group(1) if name_m else "?"
+
+    # 中括弧の深さで eff の範囲を測る。
+    depth = 0
+    end = start_idx
+    for i in range(start_idx, min(len(lines), start_idx + 400)):
+        for c in scannable(lines[i]):
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                depth -= 1
+        end = i
+        if i > start_idx and depth <= 0:
+            break
+
+    ops = []
+    pending_doc = None
+    cur_doc, cur = None, []
+
+    def flush():
+        if cur:
+            ops.append((cur_doc, collapse(" ".join(cur))))
+
+    for i in range(start_idx + 1, end):
+        # doc コメントの判定は生の行で行う（scannable は `//` から後ろを落とすので
+        # `///` の行は空になる）。
+        raw = lines[i].strip()
+        if raw.startswith("///"):
+            flush()
+            cur_doc, cur[:] = None, []
+            if pending_doc is None:
+                pending_doc = raw[3:].strip()
+            continue
+        stripped = scannable(lines[i]).strip()
+        if not stripped:
+            continue
+        if stripped.startswith("def "):
+            flush()
+            cur_doc, cur[:] = pending_doc, [stripped]
+            pending_doc = None
+            continue
+        if stripped.startswith("}"):
+            flush()
+            cur_doc, cur[:] = None, []
+            pending_doc = None
+            continue
+        if cur:
+            cur.append(stripped)
+        else:
+            pending_doc = None
+    flush()
+    return name, ops, end + 1
+
+
 def scan_file(path: Path):
     """ファイル 1 本から {mod名: [(doc, decl), ...]} を、出現順を保って返す。"""
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -273,6 +338,19 @@ def scan_file(path: Path):
             mod = mod_of_line[i]
             if mod is not None:
                 result.setdefault(mod, []).append((pending_doc, sig))
+            pending_doc = None
+            i += 1
+            continue
+        if stripped.startswith("pub eff "):
+            eff_name, ops, _end = extract_eff_block(lines, i)
+            mod = mod_of_line[i]
+            if mod is not None:
+                bucket = result.setdefault(mod, [])
+                bucket.append((pending_doc, "pub eff {}".format(eff_name)))
+                for op_doc, op_sig in ops:
+                    bucket.append(
+                        (op_doc, "pub eff {} {{ {} }}".format(eff_name, op_sig))
+                    )
             pending_doc = None
             i += 1
             continue

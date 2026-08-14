@@ -9,7 +9,7 @@ mod ParityMain {
 
     def ttf(): String = "assets/Xolonium-Regular.ttf"
 
-    def black(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+    def black(): Color = { r = 0.0, g = 0.0, b = 0.0 }
 
     /// 投影の共通 1 関数。GL / SoftRaster の両側が必ずここを通る — withoutShaders を
     /// 通し忘れた側だけ代表色ベタ塗りが二重に乗り、harness 自身のバグが「経路差」に

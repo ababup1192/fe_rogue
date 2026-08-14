@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-game-builds test test-par render render-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop lint-audio rules check-docs-sync checkd-stop
+.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-game-builds test test-par render render-all render-par render-changed diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop lint-audio rules check-docs-sync checkd-stop
 
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
 # 実行や変更は一切せず、残っている記録 (.test-logs/ スナップショット チケット git) を集めるだけ。
@@ -100,7 +100,7 @@ help:
 	@echo "Targets:"
 	@echo "  make status               現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない"
 	@echo "  make test                 全パッケージ (engine系 + templates) のテストを headless で実行"
-	@echo "  make test-par             同上を並列実行 (壁時計 ≈ 最遅パッケージ 1本分。ログは .test-logs/)"
+	@echo "  make test-par             同上を並列実行 (実時間 ≈ 最遅パッケージ 1本分。ログは .test-logs/)"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-rpg-starter / make test-engine)"
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make lint-view            View が矩形と円だけになっていないか検査"
@@ -111,10 +111,13 @@ help:
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
 	@echo "  make lint-audio           音名が SfxRender の名・project.json・コードの 3 か所でそろっているか検査"
 	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
+	@echo "  make lint-fallback        読み込みの途中で bug! していないか検査 (許すのは *OrBug の中だけ)"
+	@echo "  make lint-f32             engine の pub 面に Float32 が出ていないか検査 (Float32 は GL / OpenAL / STB の内側だけ)"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
-	@echo "  make render               render ターゲットを持つ全 template の生成物を描き出し直す"
+	@echo "  make render-all           render-all ターゲットを持つ全 template の生成物を描き出し直す"
 	@echo "  make render-par           同上を並列実行"
+	@echo "  make render-changed       git で変更のあった template だけ描き出す (engine 側に変更があれば全テンプレ)"
 	@echo "  make diff DIR=<dir>       直す前(スナップショット)と後(gallery)を左右に並べて <dir>/debug/diff/ に描き出す"
 	@echo "  make gl-parity            GL と SoftRaster が同じ絵を出すかを隠しウィンドウで突き合わせ (不一致で exit 1)"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
@@ -179,7 +182,7 @@ test:
 	done
 
 # 並列テスト。各パッケージは独立 (別ディレクトリ・別 JVM) なので同時に回せて、
-# 壁時計は最遅パッケージ 1本分まで縮む。ログは .test-logs/ にパッケージ別で残し、
+# 実時間は最遅パッケージ 1本分まで縮む。ログは .test-logs/ にパッケージ別で残し、
 # 赤があれば最後にそのログ末尾を表示して exit 1。並列数は TEST_PAR_JOBS で変えられる。
 # xargs は -I でなく -n1 + $$0 渡し (BSD xargs の -I は置換後の引数が 255 バイト制限で、
 # スクリプトに埋めると「command line cannot be assembled」で 1 本も走らない)。
@@ -206,24 +209,62 @@ test-par:
 
 # ── render ────────────────────────────────────────────────
 # 各テンプレのギャラリー・効果音などの生成物を一括で描き出し直す。
-# 対象は「Makefile に render ターゲットを持つ template」だけ。
-render:
+# 対象は「Makefile に render-all ターゲットを持つ template」だけ。
+# テンプレ側の素の `render` は場面名 (SHOT) を要求して失敗するので、ここからは必ず render-all を打つ。
+render-all:
 	@for dir in $(TEMPLATE_DIRS:%=%/); do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^render:" "$$dir/Makefile"; then \
+		if [ -f "$$dir/Makefile" ] && grep -q "^render-all:" "$$dir/Makefile"; then \
 			echo "===== $$dir ====="; \
-			(cd "$$dir" && make render) || exit 1; \
+			(cd "$$dir" && make render-all) || exit 1; \
 		fi \
 	done
+
+# 素の render は打ち間違いなので、どのターゲットを打てばいいかを出して止める（テンプレ側と同じ形）。
+render:
+	@echo "usage: make render-all                        全 template を描き出す"; \
+	echo "       make render-changed                    git で変更のあった template だけ描き出す"; \
+	echo "       make -C templates/<name> render SHOT=<場面>   その template の 1 枚だけ描き出す"; \
+	exit 1
+
+# 変更のあったテンプレだけを描き出す。全量 (make render-all) はテンプレのコンパイルが
+# コアを使い切って実時間 150 秒かかるが、触ったテンプレ 1 本なら 20〜40 秒で済む。
+# 判定は 2 段:
+#   1. engine 側 (engine / render_gl / engine_world / engine_tools) に変更があれば全テンプレ。
+#      土台の変更はどのテンプレの絵にも効きうるので、ここで絞ると退行を見落とす
+#   2. そうでなければ、そのテンプレのディレクトリ配下に変更のある物だけ
+# 変更の有無は git status (未追跡ファイルも含む) で見る。
+# リリース前と engine を直した後の退行検知には全量が要るので、make render-all の代わりにはしない。
+RENDER_ENGINE_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR)
+render-changed:
+	@if [ -n "$$(git status --porcelain -- $(RENDER_ENGINE_DIRS))" ]; then \
+		echo "[render-changed] engine 側に変更あり → 全テンプレが対象"; \
+		targets="$(TEMPLATE_DIRS)"; \
+	else \
+		targets=""; \
+		for dir in $(TEMPLATE_DIRS); do \
+			if [ -n "$$(git status --porcelain -- "$$dir")" ]; then targets="$$targets $$dir"; fi; \
+		done; \
+	fi; \
+	ran=0; \
+	for dir in $$targets; do \
+		if [ -f "$$dir/Makefile" ] && grep -q "^render-all:" "$$dir/Makefile"; then \
+			echo "===== $$dir ====="; \
+			(cd "$$dir" && make render-all) || exit 1; \
+			ran=$$((ran + 1)); \
+		fi \
+	done; \
+	if [ "$$ran" -eq 0 ]; then echo "[render-changed] 変更のあったテンプレはありません (全量は make render-all)"; \
+	else echo "[render-changed] done ($$ran templates)"; fi
 
 # 並列の描き出し。テンプレ同士は生成物が交わらないので同時に走れる。ログ・失敗の扱いは test-par と同じ。
 RENDER_PAR_JOBS ?= 4
 render-par:
 	@mkdir -p .test-logs; rm -f .test-logs/render-*.log .test-logs/render-*.fail; \
 	for dir in $(TEMPLATE_DIRS:%=%/); do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^render:" "$$dir/Makefile"; then echo "$$dir"; fi; \
+		if [ -f "$$dir/Makefile" ] && grep -q "^render-all:" "$$dir/Makefile"; then echo "$$dir"; fi; \
 	done | xargs -P $(RENDER_PAR_JOBS) -n 1 sh -c ' \
 		dir="$$0"; name=$$(basename "$$dir"); \
-		if (cd "$$dir" && make render) > ".test-logs/render-$$name.log" 2>&1; then \
+		if (cd "$$dir" && make render-all) > ".test-logs/render-$$name.log" 2>&1; then \
 			echo "[render-par] DONE $$dir"; \
 		else \
 			echo "[render-par] FAIL $$dir"; touch ".test-logs/render-$$name.fail"; \
@@ -242,12 +283,12 @@ render-par:
 # 描き出すのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
 #
 # リファレンス画像の PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
-# 「前」が手元に無い。その時は一度 make render && make reference-update で今の絵を基準に置く。
+# 「前」が手元に無い。その時は一度 make render-all && make reference-update で今の絵を基準に置く。
 diff:
 	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
 	@ls "$(DIR)"/reference/*.png > /dev/null 2>&1 || { \
 		echo "[diff] $(DIR)/reference に比べる前の絵がありません。"; \
-		echo "       リファレンス画像の PNG は git 管理外です。まず make -C $(DIR) render && make -C $(DIR) reference-update で基準を置いてください。"; \
+		echo "       リファレンス画像の PNG は git 管理外です。まず make -C $(DIR) render-all && make -C $(DIR) reference-update で基準を置いてください。"; \
 		exit 1; }
 	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
 		n=$$(basename "$$f"); \
@@ -294,6 +335,24 @@ lint-audio:
 .PHONY: lint-jargon
 lint-jargon:
 	@python3 bin/lint-jargon.py --all
+
+# ── ゲート: bug! を置く場所 ──────────────────────────────────
+# 読み込みの途中で bug! すると、既定値で続けてよいかを呼ぶ側が選べない
+# (docs/error-handling.md の決まり 2)。*OrBug という名前の関数の中だけを許す。
+# 残すと決めた bug! は bin/lint-fallback.py の EXEMPT に理由付きで載っている。
+.PHONY: lint-fallback
+lint-fallback:
+	@python3 bin/lint-fallback.py --self-test >/dev/null
+	@python3 bin/lint-fallback.py --all
+
+# ── ゲート: pub 面に Float32 を出さない ───────────────────────
+# ゲームを書く側は Float64 と Int32 だけで済むのが決まり。Float32 は
+# GL / OpenAL / STB の境界の内側だけ (plans/f32-boundary.md)。
+# 残すと決めた Float32 は bin/lint-f32.py の EXEMPT に理由付きで載っている。
+.PHONY: lint-f32
+lint-f32:
+	@python3 bin/lint-f32.py --self-test >/dev/null
+	@python3 bin/lint-f32.py
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
@@ -648,6 +707,7 @@ check-docs-sync:
 	  "docs/drawing-floor.md" \
 	  "docs/flix-conventions.md" \
 	  "docs/z-bands.md" \
+	  "docs/performance.md" \
 	; do \
 	  if ! grep -q "$$kw" AGENTS.md; then \
 	    echo "[check-docs-sync] NG: AGENTS.md に $$kw への導線がありません"; ok=0; \
@@ -754,10 +814,10 @@ new-game: engine-full-fresh
 	git -C "$(GAME)" init -q; \
 	git -C "$(GAME)" config core.hooksPath bin/githooks; \
 	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
-	echo "[new-game] 産声の確認: check → test → render"; \
+	echo "[new-game] 産声の確認: check → test → render-all"; \
 	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
 	$(MAKE) --no-print-directory -C "$(GAME)" test ENGINE="$(CURDIR)"; \
-	$(MAKE) --no-print-directory -C "$(GAME)" render ENGINE="$(CURDIR)"; \
+	$(MAKE) --no-print-directory -C "$(GAME)" render-all ENGINE="$(CURDIR)"; \
 	echo ""; \
 	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
 	echo "  次にやること:"; \

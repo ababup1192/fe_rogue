@@ -35,7 +35,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make debug`  | 保存即反映(watchFile)と F8 を有効にして起動 |
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
-| `make render`   | ギャラリー PNG を描き出す（決定的な 7 場面: title / s1_drift / s2_nitro / s3_crash / s4_uturn / s5_gate / s6_rail） |
+| `make render-all`   | ギャラリー PNG と効果音を全部作り直す（決定的な 8 場面: title / s1_drift / s2_nitro / s3_crash / s4_uturn / s5_gate / s6_rail / s7_bar） |
+| `make render SHOT=s1_drift` | その場面だけ `debug/s1_drift.png` へ描き出す（複数は `SHOT="title s5_gate"`） |
 | `make reference-check`  | 描き出した絵をリファレンス画像とバイト比較する |
 | `make reference-update` | いまの gallery をリファレンス画像として更新する |
 
@@ -54,8 +55,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
       状態を絵に写す層たち（空と海 → 路面と縁石 → 車とドット絵 → 粒 → HUD → 幕）。
    5. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
    6. `src/Sfx.flix` … World から「いま鳴らす音」を導く（一発の音と、鳴り続ける音。下の「音」を参照）。
-   7. `src/render/SceneRender.flix` … 決定的な 7 場面を PNG に描き出す（リファレンス画像比較・目視批評）と、
-      `src/render/SfxRender.flix` … 効果音 13 本を WAV に描き出す。どちらも `make render` の 1 手で走る。
+   7. `src/render/SceneRender.flix` … 決定的な 8 場面を PNG に描き出す（リファレンス画像比較・目視批評）と、
+      `src/render/SfxRender.flix` … 効果音 13 本を WAV に描き出す。どちらも `make render-all` の 1 手で走る。
 3. 数値・色・コースをいじる（保存すると走行中のゲームに即反映されます）:
    - `assets/race.rules.json` … 手触りぜんぶ（速度・グリップ・ドリフト・ニトロ・スピン・アイテム）。
    - `assets/race.rivals.json` … 敵の性格（地力・コーナーの上手さ・好みのレーン）とラバーバンドの強さ。
@@ -74,7 +75,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 
 ## 音（何が鳴るか・どこをいじると変わるか）
 
-効果音は録音素材ではなく、`make render` が `src/render/SfxRender.flix` の合成レシピから
+効果音は録音素材ではなく、`make render-all` が `src/render/SfxRender.flix` の合成レシピから
 `assets/sfx/*.wav` を描き出した生成物です（`.wav` を直接編集しても次の描き出しで消えます）。
 
 | いつ | 音 | 質感 |
@@ -97,7 +98,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
   どちらも純関数なので、「いつ鳴るか」はここだけを読めば分かり、
   テスト（`test/TestSfx.flix`）で固定できます。
 - **音量・高さ・長さ**を変える: `assets/race.sfxtune.json`（音ごとに volume / pitch / speed）。
-  これは WAV に書き込まれる値なので、保存したら `make render` して起動し直すと届きます。
+  これは WAV に書き込まれる値なので、保存したら `make render-all` して起動し直すと届きます。
 - **エンジン音の唸りの幅**を変える: 同じ Doc の `enginePitchLow` / `enginePitchHigh`
   （止まっているとき / 最高速のときの高さ）。ここだけは WAV を描き出し直さなくてよく、保存すると
   走行中のゲームへ即反映されます。

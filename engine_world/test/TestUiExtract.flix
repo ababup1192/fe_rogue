@@ -21,7 +21,7 @@ mod TestUiExtract {
             glyphs      = Map.empty() |> Map.insert(65, metrics)
         }: FontAtlas)
 
-    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+    def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     /// 'A' 6 文字（fontSize 10 で幅 60px）の TextComp。
     def sixCharComp(wrap: UiWidget.TextWrap, fit: Option[UiWidget.TextFit]): UiWidget.TextComp =

@@ -51,7 +51,7 @@ mod RenderFont {
             case "auto" =>
                 println("[RenderFont] 起動時は焼かず、出た字から順に焼きます");
                 Some(Set.empty())
-            case "used" => harvestGlyphs(rootDir)
+            case "used" => loadUsedGlyphs(rootDir)
             case other  =>
                 println("[RenderFont] glyphs に知らない値 '${other}' が指定されたので "
                     + "'auto'（出た字から順に焼く）として扱います");
@@ -69,7 +69,7 @@ mod RenderFont {
     ///
     /// 1 字も拾えなければ None を返す（＝フォントの字を全部焼く）。走査に失敗しても
     /// 焼き直しが遅いだけで、字が消えることはない。
-    pub def harvestGlyphs(rootDir: String): Option[Set[Int32]] \ IO =
+    pub def loadUsedGlyphs(rootDir: String): Option[Set[Int32]] \ IO =
         try {
             let found = Ref.fresh(Static, Set.empty());
             walkText(new File(rootDir), 0, found);

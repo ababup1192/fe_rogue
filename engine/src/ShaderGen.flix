@@ -469,15 +469,12 @@ mod ShaderGen {
                            base, List.range(1, k))
 
     def vec3Lit(c: Color): String =
-        "vec3(" + f32(c#r) + ", " + f32(c#g) + ", " + f32(c#b) + ")"
+        "vec3(" + f(c#r) + ", " + f(c#g) + ", " + f(c#b) + ")"
 
     /// GLSL の float リテラル（決定論のため必ず小数点を含める）。
     def f(x: Float64): String =
         let s = "${x}";
         if (String.contains({ substr = "." }, s) or String.contains({ substr = "E" }, s)) s else s + ".0"
-
-    def f32(x: Float32): String =
-        f(Float32.toFloat64(x))
 
     /// seed（Int32）を GLSL の float リテラルへ（hash 関数は float seed を取る）。
     def fSeed(seed: Int32): String =

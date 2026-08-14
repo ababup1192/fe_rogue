@@ -1,10 +1,12 @@
 // SceneRender — ゲーム画面を画面なしで PNG に描き出す（スナップショット比較用と、アトリエ候補のプレビュー用）。
-// 実行: flix run --entrypoint SceneRender.all → gallery/title.png・choice.png・ending.png
-//       flix run --entrypoint SceneRender.atelier → debug/atelier/*.png（スナップショットの外）
+// 実行: make render-all → gallery/title.png・choice.png・ending.png
+//       make render SHOT=choice → debug/choice.png（1 枚だけ）
+//       make atelier-preview → debug/atelier/*.png（スナップショットの外）
 // 場面は「進めて作る」: 台本が伸びてもビート数を数え直さずに済むよう、
 // 「選択肢待ちになるまで進める」「結末の最後のビートまで進める」で位置を決める。
 mod SceneRender {
     import java.io.File
+    import java.lang.System
 
     def design(): Vec2.Vec2 = { x = World.width(), y = World.height() }
 
@@ -25,26 +27,63 @@ mod SceneRender {
     pub def all(): Unit \ IO =
         discard allShots()
 
+    /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    pub def shotNames(): List[String] =
+        "title" :: "choice" :: "ending" :: Nil
+
+    /// 名前 → その場面の World。shotNames と対で保つ。名前で引く形にしてあるので、
+    /// SHOT で 1 枚だけ描くときに残りの場面は台本を歩かない。
+    /// 場面ごとに時計 t を固定する（雨も炎も埃も t から導くので、
+    /// 据えれば毎回同じ絵になる = スナップショットがバイトで比べられる）。
+    def sceneOf(name: String, w0: World.World): Option[World.World] =
+        match name {
+            // 表紙: 灯りが全部ついた書斎とタイトル。
+            case "title"  => Some({ t = 2.3 | w0 })
+            // 最初の分岐: 問いを読み終え、選択肢のチップが出た状態。
+            case "choice" => Some({ t = 5.1 | walkToAsk(40, World.advance(w0)) })
+            // 結末: 疑いを重ねて灯りが消えた書斎で、最後の一文を読んでいる状態。
+            // （分岐 2 つは選んで次の分岐まで歩き、最後の告発だけは結末の最後のビートで止める）
+            case "ending" =>
+                let ended = walkToAsk(40, World.advance(w0))
+                    |> pickAndWalk(0) |> pickAndWalk(0) |> World.pick(1) |> walkToLast(40);
+                Some({ t = 8.4 | ended })
+            case _        => None
+        }
+
     /// SceneRender.all の中身。描き出した PNG のパス列を返す — 走行中のゲームへの POST /render
     /// （Main の App.onRenderRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
-    /// 場面ごとに時計 t を固定してから描き出す（雨も炎も埃も t から導くので、
-    /// 据えれば毎回同じ絵になる = スナップショットがバイトで比べられる）。
     pub def allShots(): List[String] \ IO =
-        discard (new File("gallery")).mkdirs();
+        shotsInto("gallery", _ -> true)
+
+    /// SHOT で指した場面だけを debug/ へ描き出す（スナップショットを汚さない）。
+    /// 実行: make render SHOT=choice
+    pub def one(): Unit \ IO =
+        let wanted = envOr("SHOT", "") |> String.splitOn(substr = " ")
+            |> List.map(String.trim) |> List.filter(n -> not String.isEmpty(n));
+        let known = List.toSet(shotNames());
+        let unknown = wanted |> List.filter(n -> not Set.memberOf(n, known));
+        if (List.isEmpty(wanted) or not List.isEmpty(unknown)) {
+            println("[render] 描けない名前です: ${List.join(" ", unknown)}");
+            println("[render] SHOT=<場面> に使えるのは: ${List.join(" ", shotNames())}");
+            System.exit(1)
+        } else {
+            let picked = List.toSet(wanted);
+            discard shotsInto("debug", n -> Set.memberOf(n, picked))
+        }
+
+    /// keep が真を返す場面だけを outDir へ描き出し、そのファイルパス列を返す。
+    def shotsInto(outDir: String, keep: String -> Bool): List[String] \ IO =
+        discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
-        let cfg = cfgOf("gallery", atlas, w0#theme#bg);
+        let cfg = cfgOf(outDir, atlas, w0#theme#bg);
         let ctx = App.viewCtxOf(atlas, design());
-        // 表紙: 灯りが全部ついた書斎とタイトル。
-        let title = shoot(cfg, ctx, { t = 2.3 | w0 }, "title");
-        // 最初の分岐: 問いを読み終え、選択肢のチップが出た状態。
-        let asking = walkToAsk(40, World.advance(w0));
-        let choice = shoot(cfg, ctx, { t = 5.1 | asking }, "choice");
-        // 結末: 疑いを重ねて灯りが消えた書斎で、最後の一文を読んでいる状態。
-        // （分岐 2 つは選んで次の分岐まで歩き、最後の告発だけは結末の最後のビートで止める）
-        let ended = asking |> pickAndWalk(0) |> pickAndWalk(0) |> World.pick(1) |> walkToLast(40);
-        let ending = shoot(cfg, ctx, { t = 8.4 | ended }, "ending");
-        title :: choice :: ending :: Nil
+        shotNames() |> List.filter(keep) |> List.filterMap(name ->
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, ctx, w, name)))
+
+    def envOr(key: String, fallback: String): String \ IO =
+        let value = System.getenv(key);
+        if (Object.isNull(value)) fallback else value
 
     /// 1 場面を PNG に描き出し、そのファイルパスを返す。hud の合流は実機と同じ
     /// App.composeScene を通す（カメラ無しなので center = None・等倍）。

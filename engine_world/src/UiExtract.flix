@@ -157,7 +157,7 @@ mod UiExtract {
             cornerRadius = box#cornerRadius,
             borderWidth  = box#borderWidth,
             borderColor  = box#borderColor,
-            borderAlpha  = if (box#borderWidth > 0.0) 1.0f32 else 0.0f32
+            borderAlpha  = if (box#borderWidth > 0.0) 1.0 else 0.0
             | DrawCmd.defaultStyle(box#borderColor)
         }: GameEngine.BoxStyle);
         Render.Item.Box({size = size, color = box#color, alpha = box#alpha, rotation = 0.0,
@@ -213,7 +213,7 @@ mod UiExtract {
     def slicePiece(box: UiWidget.BoxComp, texture: String, info: GameEngine.TextureInfo,
                    src: Rect2.Rect2, dst: Vec2.Vec2): Render.Item =
         Render.Item.Sprite({
-            texture = texture, tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = box#alpha,
+            texture = texture, tint = { r = 1.0, g = 1.0, b = 1.0 }, alpha = box#alpha,
             scale = { x = dst#x / info#width, y = dst#y / info#height },
             rotation = 0.0, centered = false, flipH = false, flipV = false,
             regionRect = Some(src), zIndex = box#zIndex, blend = DrawCmd.BlendMode.Normal,
@@ -266,7 +266,7 @@ mod UiExtract {
     pub def spriteItem(sprite: UiWidget.SpriteComp,
                        textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.Item \ ef =
         let regionOpt = resolveRegion(sprite, textureInfoOf);
-        Render.Item.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0f32,
+        Render.Item.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0,
                                   scale = regionAdjustedScale(sprite, regionOpt, textureInfoOf), rotation = 0.0, centered = false,
                                   flipH = sprite#flipH, flipV = sprite#flipV,
                                   regionRect = regionOpt, zIndex = sprite#zIndex,

@@ -3,7 +3,7 @@
 // 消えた宣言は止める・同じ名前の重複は 1 本にまとめる。
 mod TestAppSustain {
 
-    def hum(name: String, volume: Float32, pitch: Float32): App.Sustain =
+    def hum(name: String, volume: Float64, pitch: Float64): App.Sustain =
         { name = name, volume = volume, pitch = pitch }
 
     def names(items: List[App.Sustain]): List[String] =
@@ -12,28 +12,28 @@ mod TestAppSustain {
     /// 何も鳴っていない所へ宣言が現れたら、それは鳴らし始める側に入る。
     @Test
     def testNewDeclarationStarts(): Unit \ Assert =
-        let ops = App.sustainOps(Nil, hum("engine", 0.5f32, 1.0f32) :: Nil);
+        let ops = App.sustainOps(Nil, hum("engine", 0.5, 1.0) :: Nil);
         Assert.assertEq(expected = ("engine" :: Nil, Nil, Nil),
             (names(ops#start), names(ops#keep), ops#stop))
 
     /// すでに鳴っている音は「続ける」側へ入る（鳴らし直さないので音が途切れない）。
     @Test
     def testLivingDeclarationIsKeptNotRestarted(): Unit \ Assert =
-        let ops = App.sustainOps("engine" :: Nil, hum("engine", 0.5f32, 1.4f32) :: Nil);
+        let ops = App.sustainOps("engine" :: Nil, hum("engine", 0.5, 1.4) :: Nil);
         Assert.assertEq(expected = (Nil, "engine" :: Nil, Nil),
             (names(ops#start), names(ops#keep), ops#stop))
 
     /// 続ける側にも毎フレームの音量と高さが載る（速度で唸りが変わる音のため）。
     @Test
     def testKeptDeclarationCarriesVolumeAndPitch(): Unit \ Assert =
-        let ops = App.sustainOps("engine" :: Nil, hum("engine", 0.25f32, 1.7f32) :: Nil);
+        let ops = App.sustainOps("engine" :: Nil, hum("engine", 0.25, 1.7) :: Nil);
         let got = List.head(ops#keep) |> Option.map(s -> (s#volume, s#pitch));
-        Assert.assertEq(expected = Some((0.25f32, 1.7f32)), got)
+        Assert.assertEq(expected = Some((0.25, 1.7)), got)
 
     /// 宣言が消えた音は止める（宣言が続く間だけ鳴る、が規約）。
     @Test
     def testDroppedDeclarationStops(): Unit \ Assert =
-        let ops = App.sustainOps("engine" :: "wind" :: Nil, hum("engine", 0.5f32, 1.0f32) :: Nil);
+        let ops = App.sustainOps("engine" :: "wind" :: Nil, hum("engine", 0.5, 1.0) :: Nil);
         Assert.assertEq(expected = (Nil, "engine" :: Nil, "wind" :: Nil),
             (names(ops#start), names(ops#keep), ops#stop))
 
@@ -49,9 +49,9 @@ mod TestAppSustain {
     @Test
     def testDuplicateNamesFoldToTheFirst(): Unit \ Assert =
         let ops = App.sustainOps(Nil,
-            hum("wind", 0.2f32, 1.0f32) :: hum("wind", 0.9f32, 2.0f32) :: Nil);
+            hum("wind", 0.2, 1.0) :: hum("wind", 0.9, 2.0) :: Nil);
         let got = List.map(s -> (s#name, s#volume), ops#start);
-        Assert.assertEq(expected = ("wind", 0.2f32) :: Nil, got)
+        Assert.assertEq(expected = ("wind", 0.2) :: Nil, got)
 
     /// 止める側は名前の重複もまとめる（同じ音を 2 回止めに行かない）。
     @Test
@@ -64,7 +64,7 @@ mod TestAppSustain {
     @Test
     def testStartAndKeepCoverEveryDeclaredName(): Unit \ Assert =
         let ops = App.sustainOps("engine" :: Nil,
-            hum("engine", 0.5f32, 1.0f32) :: hum("wind", 0.3f32, 1.0f32) :: Nil);
+            hum("engine", 0.5, 1.0) :: hum("wind", 0.3, 1.0) :: Nil);
         Assert.assertEq(expected = "wind" :: "engine" :: Nil,
             List.append(names(ops#start), names(ops#keep)))
 }

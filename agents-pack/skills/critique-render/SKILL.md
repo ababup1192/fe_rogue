@@ -1,7 +1,7 @@
 ---
 name: critique-render
-description: "描き出し系ターゲット（make render 等）を実行し、debug/gallery の PNG・WAV 可視化（sounds.png / music.png）を目視・目聴して、設計原則と絵の下限 5 性質に照らした批評レポートを返す。絵や音を作った・直した直後、報告の前の自己批評として、「見た目はどう？」「音はどう？」と聞かれたとき、スナップショットを更新する前に使う。"
-sync: 2026-08-13
+description: "描き出し系ターゲット（make render SHOT=<場面名> / make render-all 等）を実行し、debug/gallery の PNG・WAV 可視化（sounds.png / music.png）を目視・目聴して、設計原則と絵の下限 5 性質に照らした批評レポートを返す。絵や音を作った・直した直後、報告の前の自己批評として、「見た目はどう？」「音はどう？」と聞かれたとき、スナップショットを更新する前に使う。"
+sync: 2026-08-14
 ---
 
 # critique-render — 描き出して批評する
@@ -13,7 +13,8 @@ sync: 2026-08-13
 1. ゲームの設計原則を読む（共通部はこのファイル群と AGENTS.md、
    ゲーム固有の原則 — 文字なし等 — は **AGENTS.local.md** を参照）。
 2. 描き出しを実行する:
-   - 絵: `make gallery-prologue`（debug/ に全場面 + all.png）や `make render`
+   - 絵: `make gallery-prologue`（debug/ に全場面 + all.png）や `make render SHOT=<場面名>`
+     （素の `make render` は使い方を出して失敗する。全部いるときだけ `make render-all`）
    - 音: `make gallery-sounds`（debug/sounds/*.wav、debug/sounds.png、debug/music.png）
 3. 出力を読む。all.png・各場面 PNG は Read で目視、音は sounds.png の波形・
    スペクトログラムと music.png のピアノロールで目聴する。ループ GIF（コマ 0 に

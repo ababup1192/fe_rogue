@@ -14,6 +14,12 @@
                          そのファイルだけに通す (折り返し宣言漏れを止める)
   6. 独自の比喩語        今回書き足したコメント・文章に、bin/lint-jargon.py の
                          WORDS の語が混ざっていたら止める。既存の行は見ない
+  7. 読み込み中の bug!   今回書き足した行が *OrBug 以外の関数の中で bug! を呼んで
+                         いたら止める (docs/error-handling.md の決まり 2)。
+                         残すと決めた bug! は bin/lint-fallback.py の EXEMPT
+  8. pub 面の Float32     engine / engine_world / engine_tools の *.flix を触ったら
+                         pub 面 (型・関数・eff の op) に Float32 が無いか検査する。
+                         残すと決めた Float32 は bin/lint-f32.py の EXEMPT
 
 使い方:
   通常は git が bin/githooks/pre-commit 経由で呼ぶ (配線は make hooks)
@@ -169,6 +175,20 @@ def main():
     if ui:
         lu = tool("lint-ui-overflow.py")
         if lu and run([sys.executable, str(lu), "--strict", *ui]) != 0:
+            failed = True
+
+    if flix:
+        lf = tool("lint-fallback.py")
+        # 引数は渡さない: lint-fallback 自身がステージの + 行だけを読む (既存の bug! は叩かない)
+        if lf and run([sys.executable, str(lf)]) != 0:
+            failed = True
+
+    if any(p.startswith(("engine/src/", "engine_world/src/", "engine_tools/src/"))
+           for p in flix):
+        l32 = tool("lint-f32.py")
+        # 引数は渡さない: pub 面は宣言 1 つが複数ファイルに散らないので全量が速く、
+        # 別のファイルの型を変えた巻き添えで pub 面へ Float32 が出た場合も拾える
+        if l32 and run([sys.executable, str(l32)]) != 0:
             failed = True
 
     prose = [p for p in staged

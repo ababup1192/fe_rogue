@@ -42,7 +42,7 @@ mod ThemeDoc {
     /// 色見本の 6 桁 16 進をそのまま書くための近道。読めない綴りはマゼンタ
     /// （書き間違いが画面で目に見える）。
     def hex(code: String): Color =
-        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0, g = 0.0, b = 1.0 })
 
     /// コード側の既定値（assets/race.theme.json と同じ色から出発する）。
     /// 真夏の昼。空は青く、海は光り、路面は白く灼けている。

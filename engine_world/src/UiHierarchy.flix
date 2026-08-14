@@ -35,19 +35,26 @@ mod UiHierarchy {
                 }
         }
 
+    /// 「親 → 子の一覧（order 昇順）」の索引。childrenOf を全ノードで呼ぶ代わりに 1 回だけ作る。
+    /// 子を持たない親は載らない（引く側は空リスト扱いにする）。
+    def buildChildIndex(parents: Map[EntityId, EntityId], order: Map[EntityId, Int32]): Map[EntityId, List[EntityId]] =
+        parents
+            |> Map.foldLeftWithKey((acc, id, p) -> Map.insertWith((_, kids) -> id :: kids, p, id :: Nil, acc), Map.empty())
+            |> Map.map(kids -> List.sortBy(id -> Option.getWithDefault(0, Map.get(id, order)), kids))
+
     /// 親を隠すと子も隠れる、を反映した各要素の実際の表示可否。
     /// 表示可否が未登録の entity は表示扱い。root から下へ「親が見えるか」を掛け合わせて伝える。
     pub def resolveInherited(visible: Map[EntityId, Bool], parents: Map[EntityId, EntityId],
                              root: EntityId, order: Map[EntityId, Int32]): Map[EntityId, Bool] =
-        resolveInheritedRec(root, true, visible, parents, order, Map.empty())
+        resolveInheritedRec(root, true, visible, buildChildIndex(parents, order), Map.empty())
 
     /// id の実効可視性 = 親の実効可視性 AND 自分の設定可視性。子孫へ再帰する。
     def resolveInheritedRec(id: EntityId, parentVisible: Bool, visible: Map[EntityId, Bool],
-                            parents: Map[EntityId, EntityId], order: Map[EntityId, Int32],
+                            kids: Map[EntityId, List[EntityId]],
                             acc: Map[EntityId, Bool]): Map[EntityId, Bool] =
         let selfVisible = Option.getWithDefault(true, Map.get(id, visible));
         let effective = parentVisible and selfVisible;
         let acc1 = Map.insert(id, effective, acc);
-        childrenOf(id, parents, order)
-            |> List.foldLeft((a, child) -> resolveInheritedRec(child, effective, visible, parents, order, a), acc1)
+        Option.getWithDefault(Nil, Map.get(id, kids))
+            |> List.foldLeft((a, child) -> resolveInheritedRec(child, effective, visible, kids, a), acc1)
 }

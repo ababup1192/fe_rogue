@@ -9,7 +9,6 @@
 // 棚詰め(shelfPack)は RenderFont のシェルフパッキングと同じ規則を関数に切り出したもの
 // (左→右に詰め、行に収まらなければ行の最大高+1px で折り返す。コマ間は 1px の隙間)。
 mod PxSpriteAtlas {
-    import java.lang.System
 
     /// アトラス内の 1 コマの矩形(px・セル数と同じ)。
     pub type alias Slot = { x = Int32, y = Int32, w = Int32, h = Int32 }
@@ -74,26 +73,20 @@ mod PxSpriteAtlas {
         { side = side, regions = regions, pixels = Array.toVector(buf) }
     }
 
-    /// パッキングが全部失敗した事実を標準エラーへ 1 行知らせてから baked を返す。
-    /// 効果は `unsafe IO` で隠す(DocJson.warnFellBack と同じ流儀 — 知らせるために
-    /// 呼び側の効果行を広げない)。
+    /// パッキングが全部失敗した事実を 1 行知らせてから baked を返す。
     def warnPackFailed(msg: String, baked: Baked): Baked =
-        unsafe IO {
-            System.err.println("pxsprite fail-open: 空のアトラスを使います — ${msg}");
-            baked
-        }
+        let _ = Log.fellBack("pxsprite", "アトラス", "空のアトラス", msg);
+        baked
 
-    /// 目次に載らなかったコマがあれば標準エラーへ 1 行知らせてから baked を返す。
+    /// 目次に載らなかったコマがあれば 1 行知らせてから baked を返す。
     /// 載らないコマは描かれない(何も知らせないと「絵が出ない」の原因が追えない)。
     def warnDroppedFrames(doc: PxSpriteDoc.Doc, baked: Baked): Baked =
         let dropped = List.length(framesOf(doc)) - Map.size(baked#regions);
         if (dropped <= 0)
             baked
         else
-            unsafe IO {
-                System.err.println("pxsprite fail-open: ${dropped} 個のコマがアトラスに入らないため描かれません");
-                baked
-            }
+            let _ = Log.warn("pxsprite fail-open: ${dropped} 個のコマがアトラスに入らないため描かれません");
+            baked
 
     /// (スプライト名, コマ名) → アトラス内矩形(Rect2・px)。regionRect(Item.Sprite)にそのまま渡せる。
     pub def regionOf(baked: Baked, sprite: String, frame: String): Option[Rect2.Rect2] =
@@ -147,7 +140,7 @@ mod PxSpriteAtlas {
     /// (round・クランプ)— box 列(polygon 塗り)とアトラス画素の色をバイト一致させるため。
     pub def argbOf(c: Color): Int32 =
         let ch = v -> {
-            let i = Float64.tryToInt32(Float32.toFloat64(v) * 255.0 + 0.5)
+            let i = Float64.tryToInt32(Float32.toFloat64(RenderUtil.f32(v)) * 255.0 + 0.5)
                 |> Option.getWithDefault(0);
             Int32.max(0, Int32.min(255, i))
         };

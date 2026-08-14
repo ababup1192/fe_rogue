@@ -26,9 +26,9 @@ mod BenchPx {
     /// 村の themeResolver 相当(固定色 — 計測なので色は何でもよいが、両モードで同一にする)。
     def resolver(key: String): Color =
         match key {
-            case "hair" => { r = 0.18f32, g = 0.14f32, b = 0.12f32 }
-            case "skin" => { r = 0.91f32, g = 0.76f32, b = 0.63f32 }
-            case _      => { r = 0.24f32, g = 0.36f32, b = 0.60f32 }
+            case "hair" => { r = 0.18, g = 0.14, b = 0.12 }
+            case "skin" => { r = 0.91, g = 0.76, b = 0.63 }
+            case _      => { r = 0.24, g = 0.36, b = 0.60 }
         }
 
     /// アトラス PNG を焼く(決定的)。project.json がこれを起動時に読む。
