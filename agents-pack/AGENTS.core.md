@@ -167,6 +167,12 @@
 
 ## ドット絵の打ち方（sprite.json の作法）
 
+**画素を 1 つ置く前に `.claude/skills/retro-pixel/SKILL.md` を読む**（色の予算・タイルと材質・
+キャラの等身・ディザの当て方・繰り返し出る癖の禁止）。下の 3 つはその要約ではなく、別の足場。
+**画素の格子に乗せない絵（高解像度・なめらかな輪郭・シェーダーで塗る面）で行くなら、
+読むのは `.claude/skills/smooth-render/SKILL.md`** — エッジの硬さ・面積と彩度・質感の重ね方・
+なめらかな面に出る縞の消し方。ドット絵の作法（色数・ディザ・タイル）は持ち込むと品質が落ちる。
+
 ここに書くのは「どう打つか」の作法だけ。何を描くか・どんな色でいくかは画風の仕事で、
 ゲームごとに毎回決め直す（上の「絵の下限」と同じ。既定の作風は無い）。
 
@@ -198,6 +204,10 @@
   markdown。Claude Code 本体は対象ファイルを触るとき自動で読むが、**この自動読みは
   サブエージェントでは発火しない** — サブエージェントと他のエージェントは作業前に
   `.claude/rules/*.md` を直接読む。
+- **skill の自動発動もサブエージェントでは効かない。** 絵・音・コードの作業を
+  サブエージェントへ委譲する親は、読ませる skill を prompt で名指しする責任がある
+  （例: 絵なら「`/visual-dict` を読み、**画素の格子に乗る絵なら `/retro-pixel`・
+  乗らない絵（高解像度・シェーダーの面）なら `/smooth-render`** も読んでから描く」）。
 - 本文中の「engine リポの `docs/...`」は、このゲームの `Makefile` 冒頭の `ENGINE` 変数が
   指す場所にある（`make new-game` が実パスへ書き換え済み）。
 
@@ -225,5 +235,6 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 - 画風がまだ決まっていない・新しいゲームを作り始める: `.claude/skills/style-interview`(人へ最大 7 問の聞き取り。注文は AGENTS.local.md へ)
 - 見栄えの実装: `.claude/skills/visual-dict`(絵の下限の節のとおり View の前に必読)と engine リポの `docs/shader-doc.md`(宣言シェーダーの語彙とレシピ)
 - ドット絵で行くと決まった後: `.claude/skills/retro-pixel`(色の予算・タイルと材質・キャラの等身・小物の置き場。画風を決めるのは visual-dict が先)
+- 画素の格子に乗せない絵で行くと決まった後: `.claude/skills/smooth-render`(エッジの硬さ・面積と彩度・質感の重ね方・なめらかな面に出る縞の消し方。こちらも画風を決めるのは visual-dict が先)
 - 規約と地図: engine リポの `docs/doc-conventions.md`(Doc の外形)・`docs/module-index.md`(やりたいこと → モジュール)・`docs/glossary.md`(UI に出す言葉)
 - 動く見本: engine の `templates/game-starter`(最小)と、隣にある既存ゲームのソース

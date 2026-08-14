@@ -3,6 +3,7 @@
   "note": "sync-agents の配布物一覧の source of truth。Makefile 版 (bin/sync-agents.py) と Studio 版 (NewGame.flix) はこれを読むだけで、リストを二重に持たない。キー名 copy / copyIfAbsent / copyDirs は Studio の Flix 実装と共有するので変えない。src は engine リポからの相対パス、dst はゲームリポからの相対パス。copyIfAbsent はユーザ編集を守るため既存を上書きしない。",
   "copy": [
     {"src": "bin/lint-view.py", "dst": "bin/lint-view.py"},
+    {"src": "bin/lint-composition.py", "dst": "bin/lint-composition.py"},
     {"src": "bin/lint-palette.py", "dst": "bin/lint-palette.py"},
     {"src": "bin/lint-sprite.py", "dst": "bin/lint-sprite.py"},
     {"src": "bin/lint-anim.py", "dst": "bin/lint-anim.py"},

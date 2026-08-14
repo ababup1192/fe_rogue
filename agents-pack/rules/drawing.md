@@ -2,6 +2,8 @@
 paths:
   - "**/View*.flix"
   - "**/src/render/*.flix"
+  - "**/src/hand/*.flix"
+  - "**/*Hand.flix"
   - "**/*.sprite.json"
   - "**/*.theme.json"
   - "**/*.palette.json"
@@ -53,9 +55,20 @@ box と circle だけで組み始めたら、それは辞書を引かなかっ�
 
 ## ドット絵（`*.sprite.json`）
 
+**画素を 1 つ置く前に `.claude/skills/retro-pixel/SKILL.md` を読む**（色の予算・タイルと材質・
+キャラの等身・ディザの当て方・繰り返し出る癖の禁止）。読まずに打った絵はここで差し戻す。
+
 `legend` に書いた意味色キーは、`*.theme.json` のトップレベル・`paletteFile` の指す色票・
 sprite Doc 直下の `palette` のどれかに**実体が無いと Studio が仮色で塗る**
 （編集画面と実機で配色が食い違う）。
+
+## 画素の格子に乗せない絵（シェーダーの面・なめらかな輪郭・高解像度）
+
+**面を `ShaderDoc` で塗る前・なめらかな輪郭で絵を組む前に
+`.claude/skills/smooth-render/SKILL.md` を読む**（エッジの硬さの使い分け・面積と彩度・
+質感の重ね方・なめらかな面に出る縞（banding）の消し方）。
+ドット絵の作法（色数の切り詰め・ディザ・タイル）をここへ持ち込むと品質が落ちる。
+`Field` / `Shade` の語彙そのものは `docs/shader-doc.md` が正。
 
 ## 良し悪しを決めるのは人（必ず確認を取る）
 
@@ -69,7 +82,7 @@ sprite Doc 直下の `palette` のどれかに**実体が無いと Studio が仮
   自分で選んで手を広げない（一度に直すのは 1 つだけ）
 - **壊れている物だけは聴かずに先に直す** — 落ちる・黒い穴・スナップショットの退行は好みの問題ではない
 
-進め方の詳しくは `.claude/skills/render-loop/SKILL.md`。
+焼いた絵を自分で批評してから見せる手順は `.claude/skills/critique-render/SKILL.md`。
 
 ## 機械で確かめる（人に見せる前の下ごしらえ）
 

@@ -28,6 +28,8 @@ RULES = {
         [
             "**/View*.flix",
             "**/src/render/*.flix",
+            "**/src/hand/*.flix",
+            "**/*Hand.flix",
             "**/*.sprite.json",
             "**/*.theme.json",
             "**/*.palette.json",
