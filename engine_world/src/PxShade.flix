@@ -30,7 +30,7 @@ mod PxShade {
     pub type alias Ramp = Map[Char, (Char, Char)]
 
     /// 1 コマ（文字格子）に仕上げを掛ける。
-    pub def polish(spec: Spec, ramp: Ramp, rows: List[String]): List[String] =
+    pub def shade(spec: Spec, ramp: Ramp, rows: List[String]): List[String] =
         let height = List.length(rows);
         if (height == 0) rows
         else {
@@ -53,21 +53,21 @@ mod PxShade {
         }
 
     /// 全コマ・全スプライトに同じ仕上げを掛けた Doc を返す（読み込み直後に 1 度だけ呼ぶ）。
-    pub def polishDoc(spec: Spec, ramp: Ramp, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
-        polishWith(_ -> spec, ramp, doc)
+    pub def shadeDoc(spec: Spec, ramp: Ramp, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
+        shadeWith(_ -> spec, ramp, doc)
 
     /// スプライトごとに仕上げを変えて掛ける。
     ///
     /// 地面のように「敷き詰めて 1 つの面になる」絵は、縁の仕上げ（ふち光・接地影）を
     /// 外さないと 1 枚ずつが縁取られて升目の格子が見えてしまう。そういう絵には
     /// 粒だけの仕上げを与える — 何を縁と見なすかは絵ごとに違う、という話。
-    pub def polishWith(specOf: String -> Spec, ramp: Ramp,
-                       doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
+    pub def shadeWith(specOf: String -> Spec, ramp: Ramp,
+                      doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
         { sprites = doc#sprites |> Map.mapWithKey(name -> sp -> {
               let spec = specOf(name);
               if (spec#rim <= 0.0 and spec#contact <= 0.0 and spec#dither <= 0.0
                       and spec#grain <= 0.0) sp
-              else { frames = sp#frames |> Map.map(rows -> polish(spec, ramp, rows)) | sp }
+              else { frames = sp#frames |> Map.map(rows -> shade(spec, ramp, rows)) | sp }
           }) | doc }
 
     // ── 1 画素ぶんの判定 ──

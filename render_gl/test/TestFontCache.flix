@@ -127,13 +127,13 @@ mod TestFontCache {
     /// 入ると、このゲームが出さない字まで焼いて起動が遅くなる。
     @Test
     def testHarvestReadsProjectTextButNotLibs(): Unit \ IO + Assert =
-        let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_harvest_test";
+        let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_used_glyphs_test";
         discard new File("${root}/assets").mkdirs();
         discard new File("${root}/lib").mkdirs();
         Files.writeString(Paths.get("${root}/assets/a.json"), "{ \"line\": \"あいう\" }");
         Files.writeString(Paths.get("${root}/lib/other.flix"), "// 漢字漢字");
         Files.writeString(Paths.get("${root}/assets/art.png"), "画像のふり");
-        match RenderFont.harvestGlyphs(root) {
+        match RenderFont.loadUsedGlyphs(root) {
             case None => Assert.assertTrue(false)
             case Some(cps) =>
                 // 拾う: あいう
@@ -149,9 +149,9 @@ mod TestFontCache {
     /// 何も拾えない場所なら None（＝フォントの字を全部焼く）にする。
     @Test
     def testHarvestFallsBackWhenNothingFound(): Unit \ IO + Assert =
-        let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_harvest_empty";
+        let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_used_glyphs_empty";
         discard new File(root).mkdirs();
-        Assert.assertEq(expected = true, Option.isEmpty(RenderFont.harvestGlyphs(root)))
+        Assert.assertEq(expected = true, Option.isEmpty(RenderFont.loadUsedGlyphs(root)))
 
     /// 取ってない印は素直に「無い」。
     @Test

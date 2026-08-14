@@ -46,13 +46,13 @@ mod World {
     /// 読み込んだドット絵に仕上げ（ふち光・接地影・ディザ・粒）を掛ける。
     /// 掛かるのは読み込み直後の 1 回だけで、毎フレームの絵づくりには入らない
     /// （何体出しても走行中の負荷は増えない）。強さと光の向きは theme.json から。
-    pub def polished(theme: ThemeDoc.Doc, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
-        PxShade.polishDoc(theme#shade, shadeRamp(), doc)
+    pub def shaded(theme: ThemeDoc.Doc, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
+        PxShade.shadeDoc(theme#shade, shadeRamp(), doc)
 
     /// ゲーム開始時の状態。主人公は画面の真ん中。
     pub def initial(doc: SampleDoc.Doc, keys: KeysDoc.Doc, theme: ThemeDoc.Doc,
                     sprites: PxSpriteDoc.Doc, shader: ShaderDoc.Spec): World =
-        { doc = doc, keys = keys, theme = theme, sprites = polished(theme, sprites), shader = shader,
+        { doc = doc, keys = keys, theme = theme, sprites = shaded(theme, sprites), shader = shader,
           x = width() / 2.0, y = height() / 2.0, t = 0.0, activeDocsWritten = "" }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
@@ -89,10 +89,10 @@ mod World {
 
     /// テーマには仕上げの強さ・光の向きも入っているので、色を変えたら絵も掛け直す。
     pub def withTheme(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc, w: World): World =
-        { theme = theme, sprites = polished(theme, sprites) | w }
+        { theme = theme, sprites = shaded(theme, sprites) | w }
 
     pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World =
-        { sprites = polished(w#theme, sprites) | w }
+        { sprites = shaded(w#theme, sprites) | w }
 
     pub def withShader(shader: ShaderDoc.Spec, w: World): World = { shader = shader | w }
 }

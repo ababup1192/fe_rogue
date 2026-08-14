@@ -34,7 +34,7 @@ canvas の狙い絵 → 実エンジンのヘッドレス生成（静止画 + �
 | 画面揺れ | `CameraRig`（減衰ノイズ） | **動き専用**。生成では world 層だけ translate（UI・雨・HUD は外に出す） |
 | 白フラッシュ / hitstop | 白矩形の α を減衰 | **動き専用** — 静止画に入れるなら α を実機の 1/3 程度に（常時の靄に見える） |
 | イージング / バネ | `EcsTween.Easing` / `Curve` | 補間は `EcsTween.Easing`（`Linear` / `EaseIn` / `EaseOut` / `EaseInOut` の 4 つ。これ以外の名前は無い）。周期・揺れ・減衰バネは `Curve`（`sine` / `tri` / `arch01` / `pieces` / `dampedSpring`）。`Float64.exp` は標準にある（探せば大抵ある、が教訓） |
-| ドット絵キャラ | `PxSprite`（文字格子） + **`PxShade`** | scale は整数のみ。伸縮の中間コマは `PxSprite.runs` の矩形を中心周りに伸縮して回避。legend の色に α は持てない（Add 前提で色に織り込む）。**平らに塗った絵を読み込み直後に `PxShade.polishDoc` へ通す** — ふち光・接地影・ディザ・粒が乗り、走行中の負荷は増えない |
+| ドット絵キャラ | `PxSprite`（文字格子） + **`PxShade`** | scale は整数のみ。伸縮の中間コマは `PxSprite.runs` の矩形を中心周りに伸縮して回避。legend の色に α は持てない（Add 前提で色に織り込む）。**平らに塗った絵を読み込み直後に `PxShade.shadeDoc` へ通す** — ふち光・接地影・ディザ・粒が乗り、走行中の負荷は増えない |
 | タイル地形 | `TileLayer` / `DualGrid` / `Terrain` | タイル角の丸めは明色の欠き取り（チャンファ）で DualGrid 風に。質感は `Material`（粒・きらめき・鱗・泡・発光・染み）を重ねる |
 | 光の帯 / ハードシャドウ | 半透明ポリゴン（`Light` / `Shadow`） | 影は光源と反対へ伸ばす。長さは距離の逆数で減らすと自然 |
 | 角丸パネル / 枠 | `DrawCmd.BoxStyle` / `Render.outline` / `outlineA` **[新]** | 半透明の枠は `Render.outlineA`（α を渡す）。`Render.outline` は枠 α=1 固定なので、0.12.1 以前は Item.Box + BoxStyle を直組みしていた |
