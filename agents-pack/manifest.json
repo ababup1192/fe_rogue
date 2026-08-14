@@ -4,6 +4,7 @@
   "copy": [
     {"src": "bin/lint-view.py", "dst": "bin/lint-view.py"},
     {"src": "bin/lint-composition.py", "dst": "bin/lint-composition.py"},
+    {"src": "bin/lint-style.py", "dst": "bin/lint-style.py"},
     {"src": "bin/lint-palette.py", "dst": "bin/lint-palette.py"},
     {"src": "bin/lint-sprite.py", "dst": "bin/lint-sprite.py"},
     {"src": "bin/lint-anim.py", "dst": "bin/lint-anim.py"},
