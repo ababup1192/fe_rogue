@@ -1,4 +1,4 @@
-<!-- engine v0.23.5 / 生成: 2026-08-13 -->
+<!-- engine v0.23.5 / 生成: 2026-08-14 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -202,6 +202,10 @@
   `pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO)`
 - 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
   `pub def historyLimit(): Int32`
+- リモートコマンドを捌いた後に残る 3 つの進み方。
+  `pub enum Branch with Eq, ToString { case Paused case Resuming case Running }`
+- F8 と停止状態から、このフレームの進み方と「F8 が今トグルされたか」を決める。
+  `pub def decideBranch(input: { f8Pressed = Bool, canDebug = Bool, remoteHold = Bool, wasPaused = Bool }): { branch = Branch, toggled = Bool }`
 - 一時停止を抜ける地点: スクラブで表示していた瞬間の World を現在とし、
   `pub def resumePoint(anno: Annotate.State, history: List[w], world: w): { world = w, anno = Annotate.State, history = List[w] }`
 - 履歴の back フレーム前の World（範囲外なら fallback）。先頭が「停止した瞬間」。
@@ -1052,11 +1056,11 @@
 - 材料の「中の色 → (明るい色, 暗い色)」の表。文字はその絵の legend に合わせ、
   `pub type alias Ramp = Map[Char, (Char, Char)]`
 - 1 コマ（文字格子）に仕上げを掛ける。
-  `pub def polish(spec: Spec, ramp: Ramp, rows: List[String]): List[String]`
+  `pub def shade(spec: Spec, ramp: Ramp, rows: List[String]): List[String]`
 - 全コマ・全スプライトに同じ仕上げを掛けた Doc を返す（読み込み直後に 1 度だけ呼ぶ）。
-  `pub def polishDoc(spec: Spec, ramp: Ramp, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc`
+  `pub def shadeDoc(spec: Spec, ramp: Ramp, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc`
 - スプライトごとに仕上げを変えて掛ける。
-  `pub def polishWith(specOf: String -> Spec, ramp: Ramp, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc`
+  `pub def shadeWith(specOf: String -> Spec, ramp: Ramp, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc`
 
 ## PxSprite — `engine_world/src/PxSprite.flix`
 - 結合済みの矩形 1 個(セル単位を px へ展開済み・key は未解決の意味色キー)。
