@@ -40,6 +40,8 @@
   `pub def imagePngs(outDir: String, images: List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }]): Map[String, String] \ IO`
 - 同じ絵の一覧から「名前 → テクスチャの寸法」を引く関数を作る（Render.drawWith に渡す）。
   `pub def imageTextureInfo(images: List[{ name = String, side = Int32 | r }]): String -> Option[{ id = GpuHandle.TextureId, width = Float64, height = Float64 }]`
+- タイル層・静的層を CPU へ投影したぶんを申告する（予算は 動的 = total − static で見る）。
+  `pub def noteStaticItems(cfg: RenderConfig, name: String, staticItems: List[a]): Unit \ IO`
 - 描画コマンド列を 1 枚の PNG に生成する（World を介さない場面や、投影済みの静止画に使う）。
   `pub def renderPng(cfg: RenderConfig, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
 - 複数フォントで生成する renderPng。`extraFonts` はテクスチャ名（実機の project.json の

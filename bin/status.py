@@ -154,6 +154,37 @@ def section_reference(out):
         out.append("reference OK: " + " ".join(oks))
 
 
+def section_budget(out):
+    """絵の値段（1 場面が毎フレーム組む描き物の数）。engine の bin/check-render-budget.py に
+    裁かせて、その 1 行だけを出す。判定の決まりを 2 か所に書かないための丸投げ。
+
+    読むのは焼き済みの gallery/*.items.tsv だけで、何も焼き直さない（status は速いまま）。
+    engine が古くて検査が無い・ENGINE の場所が分からない場合は黙る（fail-open）。"""
+    if os.path.isdir("templates"):
+        return  # engine リポ自身。テンプレごとの判定は make reference-check の仕事
+    if not os.path.isdir("gallery"):
+        return
+    engine = read_engine_dir()
+    if not engine:
+        return
+    script = os.path.join(engine, "bin", "check-render-budget.py")
+    if not os.path.isfile(script):
+        return
+    try:
+        r = subprocess.run([sys.executable, script, ".", "--brief"], capture_output=True,
+                           text=True, timeout=20, encoding="utf-8", errors="replace")
+    except Exception:
+        return
+    if r.returncode == 0:
+        line = next((s for s in r.stdout.splitlines() if s.startswith("budget OK")), "")
+        if line:
+            out.append(line)
+        return
+    out.append("budget NG: 絵の値段が予算を超えています")
+    for s in [x for x in r.stderr.splitlines() if x.startswith("  ")][:3]:
+        out.append(s)
+
+
 def section_tickets(out):
     dirs = glob.glob(os.path.join("debug", "annotations", "*")) + \
         glob.glob(os.path.join("templates", "*", "debug", "annotations", "*"))
@@ -292,7 +323,8 @@ def section_notes(out):
 def main():
     here = os.path.basename(os.getcwd())
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
-    for section in (section_git, section_tests, section_reference, section_tickets,
+    for section in (section_git, section_tests, section_reference, section_budget,
+                    section_tickets,
                     section_style, section_pack, section_engine_drift, section_notes):
         try:
             section(out)

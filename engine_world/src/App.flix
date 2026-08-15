@@ -659,7 +659,7 @@ mod App {
                     prevCursor = None, anno = Annotate.initial(), history = Nil,
                     bridge = bridge, remoteHold = false, stepState = freshStepState(),
                     watchState = watch0, sustaining = Nil, tileCache = freshTileCache(),
-                    glyphSeen = None });
+                    glyphSeen = None, budgetWarned = false });
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -677,7 +677,10 @@ mod App {
         anno = Annotate.State, history = List[w],
         bridge = Option[RemoteDebug.Bridge], remoteHold = Bool,
         stepState = StepState, watchState = WatchState, sustaining = List[String],
-        tileCache = TileCache, glyphSeen = Option[Int64]
+        tileCache = TileCache, glyphSeen = Option[Int64],
+        // 「絵の値段が予算を超えていると 1 回だけ知らせた」印。毎フレーム出すと
+        // 遅い画面がさらに遅くなり、ログも読めなくなる。
+        budgetWarned = Bool
     }
 
     /// リモートコマンドを捌いた後に残る 3 つの進み方。
@@ -778,9 +781,10 @@ mod App {
                             // スクラブ位置の World から再開する。巻き戻したぶんの履歴と
                             // フレーム番号も、そこを現在として数え直す。
                             let resumed = resumePoint(st#anno, st#history, st#world);
-                            let (cache1, seen1) = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), st#tileCache, st#glyphSeen);
+                            let (cache1, seen1, warned1) = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), st#tileCache, st#glyphSeen, st#budgetWarned);
                             loop(app, { world = resumed#world, anno = resumed#anno, history = resumed#history,
-                                        tileCache = cache1, glyphSeen = seen1 | carried })
+                                        tileCache = cache1, glyphSeen = seen1,
+                                        budgetWarned = warned1 | carried })
                         case Branch.Running =>
                             let (watched, nextWatchState, watchFired) = applyWatch(app, frame#dt, st#watchState, st#world);
                             let (reloaded, reloadFired) = applyReload(app, frame, watched);
@@ -790,9 +794,9 @@ mod App {
                             // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
                             let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, st#anno) else st#anno;
                             // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
-                            let (cache1, seen1) = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
+                            let (cache1, seen1, warned1) = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
                                                               bumpTileGen(watchFired or reloadFired, st#tileCache),
-                                                              st#glyphSeen);
+                                                              st#glyphSeen, st#budgetWarned);
                             // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
                             let nextHistory = if (canDebug(app))
                                                   List.take(historyLimit(), advanced :: st#history)
@@ -801,7 +805,7 @@ mod App {
                                         anno = { frame = measuredAnno#frame + 1i64 | measuredAnno },
                                         stepState = nextStepState, watchState = nextWatchState,
                                         sustaining = nextSustaining, tileCache = cache1,
-                                        glyphSeen = seen1 | carried })
+                                        glyphSeen = seen1, budgetWarned = warned1 | carried })
                     }
                 }
             }
@@ -1268,11 +1272,29 @@ mod App {
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
     /// camera / hudView もこの場合は効かない）。
     /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
+    /// 絵の値段の上限（1 フレームに組む描き物の数）。docs/performance.md の R3
+    /// 「動的 PlacedItem < 2000 個/フレーム」から借りた既定値で、
+    /// bin/check-render-budget.py の DEFAULT_CAP と同じ数。
+    def budgetCap(): Int32 = 2000
+
+    /// 予算を超えていたら標準エラーへ 1 回だけ知らせる（戻り値は「もう知らせたか」）。
+    /// headless の検査（reference-check の予算判定）は代表フレーム 1 枚しか見ないので、
+    /// Fx の最悪化・場面の切り替わり・GIF でしか焼かない場面はここでしか捕まらない。
+    /// WhyNot: 毎フレーム出さない — 遅い画面をさらに遅くし、ログも読めなくなる。
+    def warnOverBudget(count: Int32, warned: Bool): Bool \ IO =
+        if (warned or count < budgetCap()) warned
+        else {
+            System.err.println("budget: この 1 フレームで ${count} 個の描き物を組みました"
+                + "（上限 ${budgetCap()} 個）。盤や群れを毎フレーム組み直していませんか —"
+                + " タイル層は App.withTileLayers（逆引き: docs/module-index.md）");
+            true
+        }
+
     def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem],
-                    tileCache: TileCache, glyphSeen: Option[Int64]):
-            (TileCache, Option[Int64]) \ (ef + GameEngine.Game + ShaderEffect.Shader + RenderTarget.Target) =
+                    tileCache: TileCache, glyphSeen: Option[Int64], budgetWarned: Bool):
+            (TileCache, Option[Int64], Bool) \ (ef + GameEngine.Game + ShaderEffect.Shader + RenderTarget.Target + IO) =
         match app#view {
-            case None          => (tileCache, glyphSeen)
+            case None          => (tileCache, glyphSeen, budgetWarned)
             case Some(toItems) =>
                 uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
@@ -1309,7 +1331,10 @@ mod App {
                 let (sprites, polygons) = Render.drawWith(
                     name -> GameEngine.Game.getTextureInfo(name), Render.withoutShaders(items));
                 GameEngine.Game.renderCommands(sprites, tileCmds, polygons, staticLayerCmd(app, world));
-                (nextCache, nextSeen)
+                // 数えるのは itemsForGlyphs（本編 + レンダーターゲットの中）— headless の
+                // 検査と同じ量にそろえる。タイル層・静的層は GPU 側で 1 層 1 draw call に
+                // なるので、ここには最初から乗っていない（= 正しく静的化した絵は安いまま）。
+                (nextCache, nextSeen, warnOverBudget(List.length(itemsForGlyphs), budgetWarned))
         }
 
     /// レンダーターゲットの列を本編より先に描く（宣言順）。ターゲットの中は design 座標

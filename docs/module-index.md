@@ -154,6 +154,8 @@
 | 動かない背景を毎フレーム作り直している | App.withStaticLayer（鍵が同じ間は GPU バッファを使い回す） |
 | タイルが多い・タイル宣言の組み立てが毎フレーム走る | App.withTileLayers（tiles はサンク — 鍵が変わるまで評価されない） |
 | 遠くで 1px を切る物まで組み立てている | 倍率の床で place ごと切る（実戦の例: templates/race-starter の propCull / palmCull） |
+| 1 マスを画素ぶんの box で組んでいる（絵は同じでも桁が違う） | PxSprite.drawQuad（1 コマ = 1 クアッド）。アトラスは PxSpriteAtlas.bake + App.withSpriteAtlases |
+| make reference-check / make status が「budget NG」と言う | 絵の値段の検査（決まりと逃がし方は docs/performance.md §9）。静的層ぶんは HeadlessRender.noteStaticItems で申告して引く |
 
 ## 土台（App・ECS）
 

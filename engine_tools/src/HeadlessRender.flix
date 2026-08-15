@@ -108,10 +108,41 @@ mod HeadlessRender {
         SoftRaster.dropped(drawables)
             |> List.forEach(x -> println("${SoftRaster.droppedLine(x)}（${name}）"))
 
+    // ════════════════════════════════════════════════════════
+    // 絵の値段（1 場面が組んだ描き物の数）の記録
+    // 判定は bin/check-render-budget.py が reference-check と status から読む。
+    // ════════════════════════════════════════════════════════
+
+    /// 場面 1 枚ぶんの数を PNG の隣へ書く。
+    /// WhyNot: env や引数で切れる形にしない — 消せる検査は消えるので、生成したら必ず残る。
+    /// WhyNot: 公開の変種どうしが委譲し合う所（renderPngWithPasses → …WithImages）では
+    /// 呼ばない — 同じ name で 2 度書くと、後から来た本編だけの数が pass 込みの数を消す。
+    def writeItemStats(cfg: RenderConfig, name: String, total: Int32,
+                       passes: Int32, surfaces: Int32): Unit \ IO =
+        // 前回の申告が残っていると、静的層をやめた場面の動的数が過小に出て黙って緑になる。
+        discard (new File("${cfg#outDir}/${name}.static.tsv")).delete();
+        writeText("${cfg#outDir}/${name}.items.tsv",
+                  "total=${total}\tpasses=${passes}\tsurfaces=${surfaces}\n")
+
+    /// タイル層・静的層を CPU へ投影したぶんを申告する（予算は 動的 = total − static で見る）。
+    /// **PNG を生成した後に呼ぶ** — 前に呼ぶと生成側の掃除で申告が消え、動的数が過大に出る
+    /// （過大は保守側なので落ちるだけで、絵が黙って緑になることはない）。
+    /// WhyNot: 整数を受け取らない — 自由な数を書ける口にすると、検査が自己申告になる。
+    pub def noteStaticItems(cfg: RenderConfig, name: String, staticItems: List[a]): Unit \ IO =
+        writeText("${cfg#outDir}/${name}.static.tsv",
+                  "static=${List.length(staticItems)}\n")
+
+    def writeText(path: String, content: String): Unit \ IO =
+        run {
+            run { discard Fs.WriteFile.write({ str = content }, path) }
+                with Fs.WriteFile.runWithFileWrite
+        } with Fs.FileWrite.runWithIO
+
     /// 描画コマンド列を 1 枚の PNG に生成する（World を介さない場面や、投影済みの静止画に使う）。
     pub def renderPng(cfg: RenderConfig, drawables: List[GameEngine.Drawable],
                       polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
         warnDropped(drawables, name);
+        writeItemStats(cfg, name, List.length(drawables) + List.length(polygons), 0, 0);
         SoftRaster.render(reqOf(cfg, drawables, polygons, pngPath(cfg, name)))
 
     /// 複数フォントで生成する renderPng。`extraFonts` はテクスチャ名（実機の project.json の
@@ -122,6 +153,7 @@ mod HeadlessRender {
                            drawables: List[GameEngine.Drawable],
                            polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
         warnDropped(drawables, name);
+        writeItemStats(cfg, name, List.length(drawables) + List.length(polygons), 0, 0);
         SoftRaster.renderFonts(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), extraFonts)
 
     /// 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
@@ -134,6 +166,8 @@ mod HeadlessRender {
                           polygons: List[GameEngine.PolygonRenderCmd],
                           surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
         warnDropped(drawables, name);
+        writeItemStats(cfg, name, List.length(drawables) + List.length(polygons), 0,
+                       List.length(surfaces));
         SoftRaster.renderWithSurfaces(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), surfaces)
 
     // ════════════════════════════════════════════════════════
@@ -271,6 +305,17 @@ mod HeadlessRender {
                                 drawables: List[GameEngine.Drawable],
                                 polygons: List[GameEngine.PolygonRenderCmd],
                                 surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
+        writeItemStats(cfg, name, List.length(drawables) + List.length(polygons), 0,
+                       List.length(surfaces));
+        renderPngWithImagesCore(cfg, images, drawables, polygons, surfaces, name)
+
+    /// renderPngWithImages の中身から「値段の記録」だけを外した実体。
+    /// WhyNot: renderPngWithPasses からはこちらを呼ぶ — 公開の方を呼ぶと、pass を足した数を
+    /// 本編だけの数で上書きしてしまい、pass へ絵を移した場面が予算をすり抜ける。
+    def renderPngWithImagesCore(cfg: RenderConfig, images: Map[String, BufferedImage],
+                                drawables: List[GameEngine.Drawable],
+                                polygons: List[GameEngine.PolygonRenderCmd],
+                                surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
         warnDropped(drawables, name);
         SoftRaster.renderFull(reqOf(cfg, drawables, polygons, pngPath(cfg, name)),
             surfaces, Map.empty(), images)
@@ -285,10 +330,16 @@ mod HeadlessRender {
                                 surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
         // pass の中の生成できない指定も本編と同じに知らせる（本編ぶんは renderPngWithImages が出す）。
         passes |> List.forEach(p -> warnDropped(p#drawables, "${name}:pass ${p#name}"));
+        // pass の中身も実機では描く物なので予算に入れる（本編から pass へ移すだけで
+        // すり抜けられると、検査は避けられる物になる）。
+        let passItems = passes |> List.foldLeft((acc, p) ->
+            acc + List.length(p#drawables) + List.length(p#polygons), 0);
+        writeItemStats(cfg, name, List.length(drawables) + List.length(polygons) + passItems,
+                       passItems, List.length(surfaces));
         let images = passes |> List.foldLeft((acc, p) -> {
             Map.insert(p#name, renderPassImageWith(cfg, acc, p, None), acc)
         }, (Map.empty(): Map[String, BufferedImage]));
-        renderPngWithImages(cfg, images, drawables, polygons, surfaces, name)
+        renderPngWithImagesCore(cfg, images, drawables, polygons, surfaces, name)
 
     /// frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に生成する。
     /// 返り値は ReferenceSite 用のフィルムストリップ情報（駒送りビューア）。
