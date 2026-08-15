@@ -42,6 +42,9 @@ BUNDLE_REQUIRED = [
     "bin/gen-api-digest.py",
     "bin/reference-update.sh",
     "bin/reference-check.sh",
+    # 絵の値段の判定。reference-check.sh と status.py が $(ENGINE)/bin/ から呼ぶ。
+    # どちらも「無ければ飛ばす」で fail-open するので、同梱し忘れると判定が黙って消える。
+    "bin/check-render-budget.py",
     "bin/img-digest.py",
     "bin/status.py",
     "bin/lint-view.py",
