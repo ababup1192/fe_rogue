@@ -13,8 +13,7 @@
 //     "maxDeltaTime": Float,
 //     "textures": [{"name": String, "path": String, "hasAlpha": Bool}, ...],
 //     "fonts":    [{"name": String, "path": String, "fontSize": Float}, ...],
-//     "sounds":   [{"name": String, "path": String, "looping": Bool}, ...],
-//     "mainScene": String   // project root からの相対パス (engine では現状未使用)
+//     "sounds":   [{"name": String, "path": String, "looping": Bool}, ...]
 //   }
 //
 // 画像・フォント・サウンドのパスは project root からの相対で記述する。

@@ -182,12 +182,10 @@ alpha が Float64 になると最後の `f32()` が消え、出口の 8bit 量�
   `make engine-upgrade` で、上げたタイミングで各リポが個別に直す運用
 - リリースノートに「pub 面から Float32 が消えた。ゲーム側は `f32` サフィックスを消すだけでよい」と書く
 
-## 見落としやすい 4 つ（段階に組み込み済み）
+## 見落としやすい 3 つ（段階に組み込み済み）
 
-1. **`editor_server/src`** — `Float32`/`f32` が 23 件。`TEST_DIRS` に入っているので
-   直さないと `make test-par` が赤
-2. **`bench/gl_parity` + `bench/sprite_stress`** — 14 件。`make gl-parity` は
+1. **`bench/gl_parity` + `bench/sprite_stress`** — 14 件。`make gl-parity` は
    `make release` の一員なのでリリースが通らない
-3. **`render_gl/src/Render.flix:23`** — render_gl 独自の `alpha = Float32`
-4. **`templates/game-starter`** — `ThemeDoc.flix:75` に 3 件。`TEMPLATE_DIRS` から除外されていて
+2. **`render_gl/src/Render.flix:23`** — render_gl 独自の `alpha = Float32`
+3. **`templates/game-starter`** — `ThemeDoc.flix:75` に 3 件。`TEMPLATE_DIRS` から除外されていて
    **CI では永久に検出されない**。`make new-game` を打った人が最初に踏むので、手で確かめる

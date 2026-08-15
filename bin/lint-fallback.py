@@ -41,7 +41,6 @@ SRC_ROOTS = [
     "engine_world/src",
     "render_gl/src",
     "engine_tools/src",
-    "editor_server/src",
 ]
 
 # 残すと決めた `bug!` の一覧。鍵は "パス::関数名"、値は残す理由 (1 行必須)。

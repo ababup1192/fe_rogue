@@ -32,7 +32,6 @@ TRACKED_MAX_TOTAL_BYTES = 8 * 1024 * 1024
 ALLOWED_PREFIXES = (
     "docs/gallery/",
     "docs/brand/",
-    "editor_app/src-tauri/icons/",
 )
 ALLOWED_SUBSTRINGS = (
     "/assets/",

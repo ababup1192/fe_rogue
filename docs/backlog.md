@@ -28,7 +28,7 @@
   テンプレ側の配線ごと足す数日仕事）。
   - 最終確認日: 2026-08-13
 
-- **editor_server の engine 追随** — トリガー: **Studio マップエディタが
+- **flix_ge_studio/server の engine 追随** — トリガー: **Studio マップエディタが
   `TerrainDoc.palette` を呼ぶ実装を開始する時点**。flix_ge_studio/server は
   `flix_engine_core` / `flix_engine_world` / `flix_engine_tools` を古いバージョンで固定
   参照しており（全量 sync は API 乖離で現状不可という既知の状況）、パレット供給口

@@ -22,7 +22,7 @@
 **ゲームが呼ぶ口には `Result` を出さない。** ゲームの View やロジックから呼ぶ物は
 `loadOr` / `loadOrBug` の側で、値がそのまま返る。毎回 `match` で捌かせると使い勝手が落ちる。
 `Result` を返す `load*` を直接呼ぶのは engine の中と、失敗を画面に出せる側
-（Studio・editor_server・CLI）だけ。**既に fail-open で使われている口を `Result` へ変えない**
+（Studio・CLI）だけ。**既に fail-open で使われている口を `Result` へ変えない**
 （呼ぶ側全部に `match` が生える）。名前が実態と合っていないなら、直すのは名前の方。
 
 ## 決まり 2 — `bug!` を使ってよい場所
