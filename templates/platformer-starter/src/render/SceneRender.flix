@@ -52,6 +52,8 @@ mod SceneRender {
         discard allShots()
 
     /// 描き出せる場面の名前。make render の使い方も SHOT の当たり判定も、この並びが source of truth。
+    /// 場面の題と一言（Studio のギャラリーに出るラベル）は assets/*.scenes.json 側で、
+    /// name をここの名前とそろえる。ラベルを足しても描き出す場面は増えない。
     pub def shotNames(): List[String] =
         "title" :: "hill" :: "cave" :: "tower" :: Nil
 

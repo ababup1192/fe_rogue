@@ -73,6 +73,13 @@
         "role": "material"
       },
       {
+        "id": "scenes",
+        "pattern": "assets/*.scenes.json",
+        "title": "場面の説明（ギャラリーに出る題と一言）",
+        "schema": "assets/scenes.schema.json",
+        "role": "tuning"
+      },
+      {
         "id": "project",
         "pattern": "project.json",
         "title": "ゲームの題・画面",

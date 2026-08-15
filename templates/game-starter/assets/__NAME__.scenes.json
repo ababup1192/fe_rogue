@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "note": "gallery/ に描き出す場面の説明。name は SceneRender.shotNames() の名前とそろえる。ここを直すと Studio のギャラリーのカードの題と一言が変わる（絵そのものは変わらない）。",
+  "rows": [
+    {
+      "name": "main",
+      "title": "ゲーム画面",
+      "desc": "遊んでいる最中の画面をそのまま 1 枚。",
+      "tags": [
+        "顔"
+      ]
+    }
+  ]
+}
