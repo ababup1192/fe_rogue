@@ -12,6 +12,9 @@ mod World {
         keys = KeysDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
+        // ドット絵を 1 枚に焼いたアトラスと、その画素から導いた鍵（下の bakedOf を参照）。
+        atlas = PxSpriteAtlas.Baked,
+        atlasKey = String,
         shader = ShaderDoc.Spec,
         x = Float64,
         y = Float64,
@@ -49,10 +52,38 @@ mod World {
     pub def shaded(theme: ThemeDoc.Doc, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
         PxShade.shadeDoc(theme#shade, shadeRamp(), doc)
 
+    /// GPU に登録するアトラスの論理名（View の drawQuad と Main の withSpriteAtlases が
+    /// この名前で待ち合わせる）。
+    pub def atlasName(): String = "px"
+
+    /// ドット絵を 1 枚のアトラスに焼き、GPU キャッシュ用の鍵と対で返す。
+    ///
+    /// **なぜ焼くか**: 画面に出すとき 1 コマ = 1 クアッドで貼れる（PxSprite.drawQuad）。
+    /// 焼かずに描く PxSprite.draw は 1 コマを画素ぶんの四角に開くので、キャラ 1 体なら
+    /// どちらでも同じでも、マス目や群れを出した瞬間に組む数の桁が変わる
+    /// （予算と検査は engine の docs/performance.md §9）。焼くのは読み込みの 1 回だけ。
+    ///
+    /// **なぜ鍵に画素のハッシュを混ぜるか**: Doc や色票を保存し直して絵が変わったとき、
+    /// 鍵が同じままだと GPU に古いテクスチャが残って画面が更新されない。
+    def bakedOf(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc): (PxSpriteAtlas.Baked, String) =
+        let baked = PxSpriteAtlas.bake(sprites, key -> ThemeDoc.resolver(theme, key));
+        let h = baked#pixels |> Vector.foldLeft((acc, px) -> acc * 31 + px, 17);
+        (baked, "${atlasName()}:${Int32.toString(baked#side)}:${Int32.toString(h)}")
+
+    /// 色か絵が変わったときに、仕上げを掛け直してアトラスを焼き直す。
+    /// テーマにも絵にも触らない更新（位置・時刻）はここを通らない。
+    def withShadedSprites(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc, w: World): World =
+        let doc = shaded(theme, sprites);
+        let (baked, key) = bakedOf(theme, doc);
+        { theme = theme, sprites = doc, atlas = baked, atlasKey = key | w }
+
     /// ゲーム開始時の状態。主人公は画面の真ん中。
     pub def initial(doc: SampleDoc.Doc, keys: KeysDoc.Doc, theme: ThemeDoc.Doc,
                     sprites: PxSpriteDoc.Doc, shader: ShaderDoc.Spec): World =
-        { doc = doc, keys = keys, theme = theme, sprites = shaded(theme, sprites), shader = shader,
+        let shadedSprites = shaded(theme, sprites);
+        let (baked, key) = bakedOf(theme, shadedSprites);
+        { doc = doc, keys = keys, theme = theme, sprites = shadedSprites,
+          atlas = baked, atlasKey = key, shader = shader,
           x = width() / 2.0, y = height() / 2.0, t = 0.0, activeDocsWritten = "" }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
@@ -89,10 +120,10 @@ mod World {
 
     /// テーマには仕上げの強さ・光の向きも入っているので、色を変えたら絵も掛け直す。
     pub def withTheme(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc, w: World): World =
-        { theme = theme, sprites = shaded(theme, sprites) | w }
+        withShadedSprites(theme, sprites, w)
 
     pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World =
-        { sprites = shaded(w#theme, sprites) | w }
+        withShadedSprites(w#theme, sprites, w)
 
     pub def withShader(shader: ShaderDoc.Spec, w: World): World = { shader = shader | w }
 }

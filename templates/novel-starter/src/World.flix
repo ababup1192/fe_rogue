@@ -44,6 +44,9 @@ mod World {
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
+        // ドット絵を 1 枚に焼いたアトラスと、その画素から導いた鍵（下の bakedOf を参照）。
+        atlas = PxSpriteAtlas.Baked,
+        atlasKey = String,
         t = Float64,
         section = String,
         idx = Int32,
@@ -62,10 +65,30 @@ mod World {
 
     pub def spritePath(): String = "assets/novel.sprite.json"
 
+    /// GPU に登録するアトラスの論理名（View の drawQuad と Main の withSpriteAtlases が
+    /// この名前で待ち合わせる）。
+    pub def atlasName(): String = "px"
+
+    /// ドット絵を 1 枚のアトラスに焼き、GPU キャッシュ用の鍵と対で返す。
+    ///
+    /// **なぜ焼くか**: 画面に出すとき 1 コマ = 1 クアッドで貼れる（PxSprite.drawQuad）。
+    /// 焼かずに描く PxSprite.draw は 1 コマを画素ぶんの四角に開くので、額縁 1 枚でも
+    /// 毎フレーム百個規模の四角を組み直すことになる（予算と検査は engine の
+    /// docs/performance.md §9）。焼くのは読み込みの 1 回だけ。
+    ///
+    /// **なぜ鍵に画素のハッシュを混ぜるか**: Doc や色票を保存し直して絵が変わったとき、
+    /// 鍵が同じままだと GPU に古いテクスチャが残って画面が更新されない。
+    def bakedOf(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc): (PxSpriteAtlas.Baked, String) =
+        let baked = PxSpriteAtlas.bake(sprites, key -> ThemeDoc.resolver(theme, key));
+        let h = baked#pixels |> Vector.foldLeft((acc, px) -> acc * 31 + px, 17);
+        (baked, "${atlasName()}:${Int32.toString(baked#side)}:${Int32.toString(h)}")
+
     /// ゲーム開始時の状態。表紙から始まり、灯りは全部ついている。
     pub def initial(docs: Docs, ui: UiStore.UiWorld): World =
+        let (baked, key) = bakedOf(docs#theme, docs#sprites);
         { phase = Phase.Title,
           story = docs#story, kind = docs#kind, theme = docs#theme, sprites = docs#sprites,
+          atlas = baked, atlasKey = key,
           t = 0.0, section = docs#story#start, idx = 0,
           kit = NovelKit.closed(), cursor = 0, lightsOut = 0,
           ui = ui, docError = None, activeDocsWritten = "" }
@@ -199,9 +222,15 @@ mod World {
 
     pub def withKind(kind: KindDoc.Doc, w: World): World = { kind = kind | w }
 
-    pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
+    /// 色か絵が変わったら、アトラスも焼き直す（色は絵の中の意味色キーを解く材料なので、
+    /// テーマだけ替えても焼いた画素は変わる）。
+    pub def withTheme(theme: ThemeDoc.Doc, w: World): World =
+        let (baked, key) = bakedOf(theme, w#sprites);
+        { theme = theme, atlas = baked, atlasKey = key | w }
 
-    pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = { sprites = sprites | w }
+    pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World =
+        let (baked, key) = bakedOf(w#theme, sprites);
+        { sprites = sprites, atlas = baked, atlasKey = key | w }
 
     /// F1 リロード: ui.json を読み直す。失敗した分は元の表示のまま残し、
     /// エラー文字列を画面に出す（直して F1 で消える）。

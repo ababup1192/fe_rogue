@@ -89,7 +89,8 @@ mod SceneRender {
         // 絵を読めないので、アトラスを debug/ に落として texturePath で渡す
         // （gallery/ にスナップショット以外の生成物を置かない）。
         let images = PxSpriteAtlas.asImages(
-            { texture = TownMap.textureName(), baked = w0#townAtlas } :: Nil);
+            { texture = TownMap.textureName(), baked = w0#townAtlas } ::
+            { texture = World.charAtlasName(), baked = w0#charAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
         let cfg = { texturePath = texPaths | cfgOf(outDir, atlas, w0#theme#sky) };
         let shots = shotNames() |> List.filter(keep) |> List.filterMap(name ->
@@ -285,6 +286,12 @@ mod SceneRender {
             Render.movedAll(origin, List.append(statics, surface)));
         let (drawables, polygons) = Render.draw(items);
         HeadlessRender.renderPng(cfg, drawables, polygons, "terrain_grain");
+        // 絵の値段（docs/performance.md §9）へ「この分は毎フレーム組み直さない」と申告する。
+        // 地形の塗りと時刻を見ない粒は 1 回組んで持ち回る物なので、動的の数から引く。
+        // **renderPng の後に呼ぶ** — 先に呼ぶと render 側が前回の申告を消す規約に当たり、
+        // 申告が無かったことになる（そのときは動的が過大に出るだけで、緑にはならない）。
+        HeadlessRender.noteStaticItems(cfg, "terrain_grain",
+            List.append(statics, List.flatten(prebuiltSurface)));
         let path = "${cfg#outDir}/terrain_grain.png";
         println("rendered: ${path}");
         path
@@ -305,7 +312,8 @@ mod SceneRender {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w = World.confirm(loadWorld());
         let images = PxSpriteAtlas.asImages(
-            { texture = TownMap.textureName(), baked = w#townAtlas } :: Nil);
+            { texture = TownMap.textureName(), baked = w#townAtlas } ::
+            { texture = World.charAtlasName(), baked = w#charAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
         let cfg = { texturePath = texPaths | townCfgOf("debug", atlas, w#theme#sky) };
         let ctx = App.viewCtxOf(atlas, cfg#design);
@@ -326,7 +334,8 @@ mod SceneRender {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let playing = World.confirm(loadWorld()) |> withClock(2.1);
         let images = PxSpriteAtlas.asImages(
-            { texture = TownMap.textureName(), baked = playing#townAtlas } :: Nil);
+            { texture = TownMap.textureName(), baked = playing#townAtlas } ::
+            { texture = World.charAtlasName(), baked = playing#charAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
         let cfg = { texturePath = texPaths | cfgOf("debug", atlas, playing#theme#sky) };
         // カメラは 1 棟目の民家の見た目の中心（位置を変えても追随する）。
@@ -365,7 +374,8 @@ mod SceneRender {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let playing = World.confirm(loadWorld());
         let images = PxSpriteAtlas.asImages(
-            { texture = TownMap.textureName(), baked = playing#townAtlas } :: Nil);
+            { texture = TownMap.textureName(), baked = playing#townAtlas } ::
+            { texture = World.charAtlasName(), baked = playing#charAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
         let cfg = { texturePath = texPaths | cfgOf("debug", atlas, playing#theme#sky) };
         let shaderLoaded = run { ShaderJson.load(Controls.waterShaderPath()) } with Fs.FileRead.runWithIO;
@@ -395,7 +405,8 @@ mod SceneRender {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let playing = World.confirm(loadWorld()) |> withClock(2.1);
         let images = PxSpriteAtlas.asImages(
-            { texture = TownMap.textureName(), baked = playing#townAtlas } :: Nil);
+            { texture = TownMap.textureName(), baked = playing#townAtlas } ::
+            { texture = World.charAtlasName(), baked = playing#charAtlas } :: Nil);
         let texPaths = HeadlessRender.imagePngs("debug", images);
         let cfg = { texturePath = texPaths | cfgOf("debug", atlas, playing#theme#sky) };
         discard shootAt(cfg, atlas, images, playing, { x = 272.5, y = 120.5 }, "seam_half");
@@ -500,7 +511,8 @@ mod SceneRender {
                     // 候補テーマはアトラスの実色も変える — その候補の色で bake し直して渡す。
                     let wc = World.withTheme(cand, loadWorld());
                     let images = PxSpriteAtlas.asImages(
-                        { texture = TownMap.textureName(), baked = wc#townAtlas } :: Nil);
+                        { texture = TownMap.textureName(), baked = wc#townAtlas } ::
+                        { texture = World.charAtlasName(), baked = wc#charAtlas } :: Nil);
                     let texPaths = HeadlessRender.imagePngs("debug", images);
                     discard shoot({ background = cand#sky, texturePath = texPaths | cfg },
                         atlas, images, wc, stripJson(f))

@@ -85,6 +85,8 @@ mod World {
         townMap = TownMapDoc.Doc,
         townAtlas = PxSpriteAtlas.Baked,
         townAtlasKey = String,
+        charAtlas = PxSpriteAtlas.Baked,
+        charAtlasKey = String,
         tileSpec = TileLayerSpec,
         bridgeCells = List[Grid.Cell],
         waterRect = Option[Rect2.Rect2],
@@ -143,9 +145,25 @@ mod World {
     /// 同じ key のまま古いテクスチャが画面に残らないため（毎フレーム計算しない —
     /// 焼くのはここ 1 回で、World が結果を持つ）。
     pub def bakeTownAtlas(doc: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): (PxSpriteAtlas.Baked, String) =
+        bakedOf("town-tiles-v1", doc, theme)
+
+    /// 人と物（rpg.sprite.json）のアトラス。街タイルとは別の 1 枚に焼く
+    /// （絵の出どころが違う Doc なので、片方を保存し直したときにもう片方まで焼き直さない）。
+    pub def bakeCharAtlas(doc: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): (PxSpriteAtlas.Baked, String) =
+        bakedOf(charAtlasName(), doc, theme)
+
+    /// GPU に登録する人と物のアトラスの論理名（View の drawQuad と Main の
+    /// withSpriteAtlases がこの名前で待ち合わせる）。
+    pub def charAtlasName(): String = "chars"
+
+    /// ドット絵の Doc を 1 枚のアトラスに焼き、GPU キャッシュ用の鍵と対で返す。
+    /// 焼くのは読み込みの 1 回だけで、描くときは 1 コマ = 1 クアッドになる
+    /// （PxSprite.draw は 1 コマを画素ぶんの四角に開くので、人や物が増えるほど重くなる。
+    ///  予算と検査は engine の docs/performance.md §9）。
+    def bakedOf(tag: String, doc: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): (PxSpriteAtlas.Baked, String) =
         let baked = PxSpriteAtlas.bake(doc, key -> ThemeDoc.resolver(theme, key));
         let h = baked#pixels |> Vector.foldLeft((acc, px) -> acc * 31 + px, 17);
-        (baked, "town-tiles-v1:${Int32.toString(baked#side)}:${Int32.toString(h)}")
+        (baked, "${tag}:${Int32.toString(baked#side)}:${Int32.toString(h)}")
 
     /// 街タイル盤から導く値（タイル層の宣言・橋のマス・水面の矩形）を持ち直す。
     /// 毎フレーム計算しないのは、どれも全盤走査で 1 フレーム予算（120fps=8.3ms）を
@@ -159,10 +177,12 @@ mod World {
     /// ゲーム開始時の状態。表紙から始まる。
     pub def initial(docs: Docs): World =
         let (townAtlas, townKey) = bakeTownAtlas(docs#townSprites, docs#theme);
+        let (charAtlas, charKey) = bakeCharAtlas(docs#sprites, docs#theme);
         { map = docs#map, kind = docs#kind, theme = docs#theme, battleDoc = docs#battle,
           sprites = docs#sprites,
           townSprites = docs#townSprites, townMap = docs#townMap,
           townAtlas = townAtlas, townAtlasKey = townKey,
+          charAtlas = charAtlas, charAtlasKey = charKey,
           tileSpec = TownMap.spec(docs#townMap, townAtlas),
           bridgeCells = TownMap.bridgeCells(docs#townMap),
           waterRect = TownMap.waterRect(docs#townMap),
@@ -496,13 +516,18 @@ mod World {
     pub def withBattleDoc(doc: BattleDoc.Doc, w: World): World =
         { battleDoc = doc, heroHp = Int32.min(w#heroHp, doc#heroMaxHp) | w }
 
-    /// 色票の差し替え。街タイルのアトラスは色票から実色を焼き込んでいるので、一緒に焼き直す
-    /// （焼き直さないと、タイルだけ古い色のまま画面に残る）。
+    /// 色票の差し替え。アトラスは色票から実色を焼き込んでいるので、2 枚とも焼き直す
+    /// （焼き直さないと、タイルや人だけ古い色のまま画面に残る）。
     pub def withTheme(theme: ThemeDoc.Doc, w: World): World =
         let (townAtlas, townKey) = bakeTownAtlas(w#townSprites, theme);
-        refreshTownCache({ theme = theme, townAtlas = townAtlas, townAtlasKey = townKey | w })
+        let (charAtlas, charKey) = bakeCharAtlas(w#sprites, theme);
+        refreshTownCache({ theme = theme, townAtlas = townAtlas, townAtlasKey = townKey,
+                           charAtlas = charAtlas, charAtlasKey = charKey | w })
 
-    pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = { sprites = sprites | w }
+    /// 人と物の Doc の差し替え（保存即反映）。アトラスも一緒に焼き直す。
+    pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World =
+        let (charAtlas, charKey) = bakeCharAtlas(sprites, w#theme);
+        { sprites = sprites, charAtlas = charAtlas, charAtlasKey = charKey | w }
 
     /// 街タイルの Doc の差し替え（保存即反映）。アトラスも一緒に焼き直す。
     pub def withTownSprites(doc: PxSpriteDoc.Doc, w: World): World =

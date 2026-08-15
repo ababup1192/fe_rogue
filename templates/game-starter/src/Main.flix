@@ -41,6 +41,10 @@ def main(): Unit \ IO =
                     (World.shaderPath(), Controls.reloadShader) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
+                // ドット絵を焼いた 1 枚を GPU へ上げる（View はこの名前で 1 コマ 1 クアッドを貼る）。
+                // 鍵が同じ間は上げ直さないので、毎フレームの費用はゼロ。
+                |> App.withSpriteAtlases(w ->
+                    { texture = World.atlasName(), key = w#atlasKey, baked = w#atlas } :: Nil)
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
                 // 走行中の POST /render（Studio の「生成して」）は SceneRender.all と同じ実体を呼ぶ。
                 |> App.onRenderRequest(SceneRender.allShots)

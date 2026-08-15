@@ -40,9 +40,12 @@ def main(): Unit \ IO =
                 // 街タイル: World が焼いたアトラスを GPU へ上げ（同じ key の間は何も起きない）、
                 // タイル層として敷く。タイル層の zIndex は動的な絵と同じ z 空間で解釈される
                 // （z=0 の床は DualGrid 地形の下に隠れる — 見比べのため既存の絵は残してある）。
+                // 人と物（rpg.sprite.json）も同じ経路で 2 枚目のアトラスとして上げる。
                 |> App.withSpriteAtlases(w ->
                     { texture = TownMap.textureName(), key = w#townAtlasKey,
-                      baked = w#townAtlas } :: Nil)
+                      baked = w#townAtlas } ::
+                    { texture = World.charAtlasName(), key = w#charAtlasKey,
+                      baked = w#charAtlas } :: Nil)
                 // 宣言は World の持ち物を返すだけ — ここで TownMap.spec を呼ぶと
                 // エンジンが毎フレーム評価して全盤走査が 1 フレーム予算を食い潰す。
                 |> App.withTileLayers(w -> w#tileSpec :: Nil)

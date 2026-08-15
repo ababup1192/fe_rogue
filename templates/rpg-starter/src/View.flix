@@ -362,8 +362,11 @@ mod View {
         let off = PxSprite.anchorOffsetOf(w#sprites, spec#name, spec#frame,
             spec#flipX, spec#scale);
         let at = { x = spec#center#x + off#x, y = spec#center#y + off#y };
-        let items = PxSprite.draw(w#sprites, spec#name, spec#frame, at,
-            spec#flipX, spec#scale, key -> ThemeDoc.resolver(w#theme, key), spec#z);
+        // 焼いたアトラスから 1 コマ = 1 クアッドで貼る（街タイルと同じ経路。PxSprite.draw は
+        // 1 コマを画素ぶんの四角に開くので、人と物が増えるほど組む数が伸びる）。
+        // 焼く所は World.bakeCharAtlas。
+        let items = PxSprite.drawQuad(w#sprites, w#charAtlas, World.charAtlasName(),
+            spec#name, spec#frame, at, spec#flipX, spec#scale, spec#z);
         if (List.isEmpty(items))
             { at = topLeft, item = RawDraw.box(box, spec#fallback, spec#z) } :: Nil
         else

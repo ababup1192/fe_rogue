@@ -54,12 +54,16 @@ mod View {
     /// 絵は差し色 1 色で平らに塗ってあり、ふち光と影は World が読み込み時に
     /// PxShade で乗せている（走行中の負荷は増えない）。
     /// 立ち止まっていても少し上下する — 画面を完全に静止させないため。
+    ///
+    /// 描くのは drawQuad（焼いたアトラスから 1 コマ = 1 クアッド）。画素ぶんの四角に開く
+    /// PxSprite.draw もあるが、そちらは組む数が絵の大きさに比例するので、キャラが増えた
+    /// 瞬間に重くなる。焼く所と、なぜ焼くかは World.bakedOf。
     def hero(w: World.World): List[Render.PlacedItem] =
         let box = World.heroBox(w);
         let bob = Sway.wave(w#t, 0.0, 1.7) * 1.5;
         let topLeft = { x = w#x - box#x / 2.0, y = w#y - box#y / 2.0 + bob };
-        let items = PxSprite.draw(w#sprites, "hero", "idle", topLeft,
-            false, World.spriteScale(), key -> ThemeDoc.resolver(w#theme, key), zHero());
+        let items = PxSprite.drawQuad(w#sprites, w#atlas, World.atlasName(),
+            "hero", "idle", topLeft, false, World.spriteScale(), zHero());
         if (List.isEmpty(items))
             // fail-open: スプライトが無い・読めないときは差し色の四角。
             { at = topLeft, item = RawDraw.box(box, w#theme#accent, zHero()) } :: Nil

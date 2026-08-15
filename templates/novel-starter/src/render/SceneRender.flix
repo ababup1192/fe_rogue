@@ -80,10 +80,22 @@ mod SceneRender {
         discard (new File(outDir)).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
-        let cfg = cfgOf(outDir, atlas, w0#theme#bg);
+        let (cfg, texInfo) = withAtlasOf(cfgOf(outDir, atlas, w0#theme#bg), w0);
         let ctx = App.viewCtxOf(atlas, design());
         shotNames() |> List.filter(keep) |> List.filterMap(name ->
-            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, ctx, w, name)))
+            sceneOf(name, w0) |> Option.map(w -> shoot(cfg, texInfo, ctx, w, name)))
+
+    /// 実機が GPU へ上げるのと同じアトラスの画素を PNG に落とし、「そこから貼れる cfg」と
+    /// texInfo を返す（描き出しは PNG からしか絵を読めない）。View が drawQuad で貼るので、
+    /// これを通さないとドット絵が仮色の板になる。
+    /// 置き場所は生成先でなく debug/ に固定する — gallery/ に混ぜると、絵の顔ぶれを
+    /// 突き合わせる reference-check が「増えた絵」として落とす。
+    def withAtlasOf(cfg: HeadlessRender.RenderConfig, w: World.World):
+            (HeadlessRender.RenderConfig, String -> Option[GameEngine.TextureInfo]) \ IO =
+        let images = PxSpriteAtlas.asImages(
+            { texture = World.atlasName(), baked = w#atlas } :: Nil);
+        ({ texturePath = HeadlessRender.imagePngs("debug", images) | cfg },
+         HeadlessRender.imageTextureInfo(images))
 
     def envOr(key: String, fallback: String): String \ IO =
         let value = System.getenv(key);
@@ -91,10 +103,13 @@ mod SceneRender {
 
     /// 1 場面を PNG に描き出し、そのファイルパスを返す。hud の合流は実機と同じ
     /// App.composeScene を通す（カメラ無しなので center = None・等倍）。
-    def shoot(cfg: HeadlessRender.RenderConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
+    /// アトラスから貼るクアッドがあるので、素の Render.draw ではなく texInfo つきの
+    /// drawWith を通す。
+    def shoot(cfg: HeadlessRender.RenderConfig, texInfo: String -> Option[GameEngine.TextureInfo],
+              ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
         let items = App.composeScene(None, 1.0, cfg#design,
             { world = View.frame(ctx, w), hud = View.hud(ctx, w) });
-        let (drawables, polygons) = Render.draw(items);
+        let (drawables, polygons) = Render.drawWith(texInfo, items);
         HeadlessRender.renderPng(cfg, drawables, polygons, name);
         let path = "${cfg#outDir}/${name}.png";
         println("rendered: ${path}");
@@ -152,9 +167,10 @@ mod SceneRender {
             match (text |> Result.toOption |> Option.flatMap(ThemeDoc.fromJson)) {
                 case None => ()
                 case Some(cand) => {
-                    let w = loadWorld();
-                    discard shoot({ background = cand#bg | cfg }, ctx,
-                        World.withTheme(cand, w), stripJson(f))
+                    // 候補テーマは配色ごと変わる = アトラスの画素も変わるので、候補ごとに焼き直す。
+                    let candWorld = World.withTheme(cand, loadWorld());
+                    let (candCfg, candTex) = withAtlasOf({ background = cand#bg | cfg }, candWorld);
+                    discard shoot(candCfg, candTex, ctx, candWorld, stripJson(f))
                 }
             }
         })
