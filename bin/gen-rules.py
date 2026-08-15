@@ -30,6 +30,12 @@ RULES = {
             "**/src/render/*.flix",
             "**/src/hand/*.flix",
             "**/*Hand.flix",
+            # 絵を描くファイルの名前はゲームごとに違う (View / *Hand の他に
+            # *Scene / *Map がある)。名前を足していくのは追いつかないが、
+            # src/**/*.flix まで広げると Doc ローダーやテストの編集でも 7KB の
+            # rules が毎回乗って読まれなくなる。実在する 2 つだけ足して止める。
+            "**/*Scene.flix",
+            "**/*Map.flix",
             "**/*.sprite.json",
             "**/*.theme.json",
             "**/*.palette.json",

@@ -15,6 +15,7 @@
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -51,6 +52,31 @@ def check_manifest():
                 print(f"[sync-agents] NG: manifest の {key} が指す {e['src']} が"
                       " engine に実在しません", file=sys.stderr)
                 bad = 1
+    return bad | check_skill_links()
+
+
+def check_skill_links():
+    """配る markdown が指す .claude/skills/<名前>/ が実在するかを見る。
+
+    skill どうしは `.claude/skills/<名前>/SKILL.md` の形で互いを指す。指した先が
+    agents-pack/skills に無いと、ゲーム側ではリンク切れになる (エージェントは
+    「読め」と言われたファイルを開けず、黙ってその足場を飛ばす)。名前を変えた・
+    新設した skill をどこかから指し忘れる事故は目で見つからないので、ここで数える。
+    """
+    have = {d.name for d in SKILLS_DIR.iterdir() if d.is_dir()}
+    pat = re.compile(r"\.claude/skills/([A-Za-z0-9_-]+)/")
+    roots = [SKILLS_DIR, ROOT / "agents-pack" / "rules", ROOT / "docs"]
+    bad = 0
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for p in sorted(root.rglob("*.md")):
+            for name in sorted(set(pat.findall(p.read_text(encoding="utf-8")))):
+                if name not in have:
+                    rel = p.relative_to(ROOT)
+                    print(f"[sync-agents] NG: {rel} が指す .claude/skills/{name}/ は"
+                          " agents-pack/skills に実在しません", file=sys.stderr)
+                    bad = 1
     return bad
 
 

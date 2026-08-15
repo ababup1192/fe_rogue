@@ -4,6 +4,8 @@ paths:
   - "**/src/render/*.flix"
   - "**/src/hand/*.flix"
   - "**/*Hand.flix"
+  - "**/*Scene.flix"
+  - "**/*Map.flix"
   - "**/*.sprite.json"
   - "**/*.theme.json"
   - "**/*.palette.json"
