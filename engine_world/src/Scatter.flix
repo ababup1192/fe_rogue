@@ -17,18 +17,49 @@ mod Scatter {
     /// どこへ動いても同じ配置が再現される。
     pub def field(visible: Rect2.Rect2, spec: {cell = Float64, salt = Int32},
                   place: ({col = Int32, row = Int32}, Int32 -> Float64) -> List[a]): List[a] =
+        fieldExcept(visible, spec, Nil, place)
+
+    /// field の「ここだけ空ける」版。exclude の矩形（world 座標）に少しでも掛かるセルは
+    /// place を呼ばずに落とす。主役の立つ帯・道・水面から撒き物を空けるときに使う。
+    ///
+    /// 空けるのは**セル単位**で、置いた後の 1 個ずつを判定するのではない。理由は 2 つ:
+    /// 落とすセルが決まれば残りのセルは field と 1 個も変わらない（帯を足しても他の草が
+    /// 入れ替わらない）ことと、作ってから捨てるより作る前に捨てるほうが速いこと。
+    /// 帯の縁を細かく合わせたいときはセルを小さくする。
+    /// exclude は手で書く数本の帯を想定している（1 セルにつき全部を見るので、
+    /// 何百本も渡す使い方には向かない）。
+    pub def fieldExcept(visible: Rect2.Rect2, spec: {cell = Float64, salt = Int32},
+                        exclude: List[Rect2.Rect2],
+                        place: ({col = Int32, row = Int32}, Int32 -> Float64) -> List[a]): List[a] =
         let cs = spec#cell;
         let c0 = tileIndex(visible#position#x / cs);
         let r0 = tileIndex(visible#position#y / cs);
         let cols = tileIndex(visible#size#x / cs) + 2;
         let rows = tileIndex(visible#size#y / cs) + 2;
-        let cellAt = cell -> {
-            let idx = cell#col * 92821 + cell#row * 31 + spec#salt;
-            place(cell, k -> Hash01.at(idx, k))
-        };
+        let cellAt = cell ->
+            if (isExcluded(exclude, cs, cell)) Nil
+            else {
+                let idx = cell#col * 92821 + cell#row * 31 + spec#salt;
+                place(cell, k -> Hash01.at(idx, k))
+            };
         (forM (r <- List.range(0, rows); c <- List.range(0, cols))
             yield {col = c0 + c, row = r0 + r})
         |> List.flatMap(cellAt)
+
+    /// セルの占める矩形が exclude のどれかと重なるか。辺で触れただけ（重なりの幅・高さが 0）は
+    /// 重なりと見なさない — 帯の端をセルの境目に合わせたとき、隣のセルまで巻き添えに消えるため。
+    def isExcluded(exclude: List[Rect2.Rect2], cell: Float64,
+                   at: {col = Int32, row = Int32}): Bool =
+        if (List.isEmpty(exclude)) false
+        else {
+            let rect = { position = { x = Int32.toFloat64(at#col) * cell,
+                                      y = Int32.toFloat64(at#row) * cell },
+                         size = { x = cell, y = cell } };
+            exclude |> List.exists(box -> {
+                let hit = Rect2.intersect(rect, box);
+                hit#size#x > 0.0 and hit#size#y > 0.0
+            })
+        }
 
     /// 1 本のストリップ（横一列）にセルを敷く。疑似遠近の絵（奥のストリップほど広い世界が画面に入る）では
     /// ストリップごとに見える幅が違うので、矩形 1 枚を渡す field でなく、ストリップ 1 本ぶんの範囲 span

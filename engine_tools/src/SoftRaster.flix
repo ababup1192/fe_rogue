@@ -28,6 +28,13 @@ mod SoftRaster {
     /// `texturePath` は Drawable#texture 名 → PNG ファイルパス。フォント（`font_` テクスチャ）は
     /// アトラス PNG をサンプルせず、`fontTtf` の TTF を出力解像度サイズへ deriveFont して直接
     /// drawString する。グリフ Drawable から元文字を引くため `fontAtlas`（uvOffset↔codepoint の対応）を使う。
+    /// `shapeAntialias` は面の縁（fillRoundRect / fillPolygon）のなめらかさ。
+    /// **画素の格子に乗せる絵（ドット絵）では false にする** — true のままだと宣言した
+    /// パレットに無い中間色が縁に湧く（実測: 宣言 13 色の一人称の画面が PNG では 2884 色）。
+    ///
+    /// `textAntialias` は文字の縁と送り幅。こちらは**可読性**のつまみで、面とは理由が違う —
+    /// 7px の TTF は縁をならさないと字が潰れる。ドット絵のキャラと小さい TTF が同じ画面に
+    /// 出るゲーム（ノベル・RPG）は `shapeAntialias = false` / `textAntialias = true` にする。
     pub type alias RasterReq = {
         drawables = List[GameEngine.Drawable],
         polygons = List[GameEngine.PolygonRenderCmd],
@@ -37,8 +44,17 @@ mod SoftRaster {
         texturePath = Map[String, String],
         fontTtf = String,
         fontAtlas = FontAtlas,
-        outPath = String
+        outPath = String,
+        shapeAntialias = Bool,
+        textAntialias = Bool
     }
+
+    /// 描画品質ヒントの 2 つ組（面の縁 / 文字の縁と送り幅）。本体と下書き（blendedDraw）へ
+    /// 同じ組を渡して、重ね方の違いで見た目が変わらないようにする。
+    type alias QualityHints = { shapes = Bool, text = Bool }
+
+    def hintsOf(req: RasterReq): QualityHints =
+        { shapes = req#shapeAntialias, text = req#textAntialias }
 
     /// 追加フォント 1 本（既定フォント以外も混ぜて描き出すとき）。ttf = 実サイズ描き出し用の TTF、
     /// atlas = その TTF から HeadlessFont.buildAtlas で組んだメトリクス。
@@ -223,7 +239,7 @@ mod SoftRaster {
                     warnLog: TexWarnLog): Unit \ IO = region rc {
         let sf = Int32.toFloat64(req#scale);
         let g: Graphics2D = image.createGraphics();
-        applyQualityHints(g);
+        applyQualityHints(g, hintsOf(req));
         // 組み込みの放射テクスチャを土台に、ゲームのテクスチャ → extraImages の順で重ねる
         //（後から入れた方が勝つ。名前は `__` 予約なので実際に潰し合うことはない）。
         // GL 側は起動時に必ず GPU へ上げるため、描き出し側も配線ゼロで同じ名前が引けないと
@@ -271,7 +287,7 @@ mod SoftRaster {
                 if (d#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d, warnLog))
                 else
-                    blendedDraw(image, sf, d#blend, d#clip, drawableAabb(req#design, textures, d),
+                    blendedDraw(image, sf, hintsOf(req), d#blend, d#clip, drawableAabb(req#design, textures, d),
                                 gs -> drawDrawable(gs, sf, textures, fctx, d, warnLog))
             case RItem.RPoly(p) =>
                 if (not Option.isEmpty(p#grad))
@@ -279,7 +295,7 @@ mod SoftRaster {
                 else if (p#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
                 else
-                    blendedDraw(image, sf, p#blend, p#clip, polygonAabb(req#design, p),
+                    blendedDraw(image, sf, hintsOf(req), p#blend, p#clip, polygonAabb(req#design, p),
                                 gs -> drawPolygon(rc, gs, sf, p))
             case RItem.RSurf(s) => drawSurface(image, sf, texEnv, s)
         }, sorted);
@@ -368,15 +384,34 @@ mod SoftRaster {
             |> Int32.bitwiseOr(byteOf(f32(c#b)))
 
     /// 本体と下書き（blendedDraw）が同じ見た目で描くための描画品質ヒント一式。
-    def applyQualityHints(g: Graphics2D): Unit \ IO =
-        // box/poly の塗り（fillRoundRect/fillPolygon）は角丸の縁をなめらかにするため AA を効かせる。
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    ///
+    /// 面と文字を別のつまみにしてあるのは、**2 つが別の理由で効く**から。
+    /// 面の縁は「宣言していない中間色を画素に湧かせない」ため（色の予算）、
+    /// 文字の縁は「小さい字を読めるようにする」ため（可読性）。
+    /// ドット絵のキャラと 7px の TTF が同居する画面では、この 2 つは逆を向く。
+    ///
+    /// 送り幅（FRACTIONALMETRICS）は文字の側に付ける。効くのは字の置き場所と進み幅だけで、
+    /// 面には一切触らない — 面の縁を画素の格子に乗せたいという要求とは関係が無い。
+    /// 文字の縁をならさない（text = false）と決めた画面では、字も整数の画素位置に
+    /// 揃ってほしいので、2 つが同じつまみで動くのが正しい。
+    ///
+    /// スプライト拡大の補間だけはどちらにも載せない。あれは実機（GPU）の見え方に
+    /// そろえるための固定で、選ぶ余地が無い。
+    def applyQualityHints(g: Graphics2D, hints: QualityHints): Unit \ IO =
+        // 面の縁（fillRoundRect/fillPolygon）。切ると縁が画素の格子に乗る。
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+            if (hints#shapes) RenderingHints.VALUE_ANTIALIAS_ON else RenderingHints.VALUE_ANTIALIAS_OFF);
         // スプライト拡大（drawTextured の drawImage）は最近傍固定。実機の GPU 描画はドット絵を
         // 補間せず拡大するため、ここで補間すると実機と見え方がずれる（にじみ・輪郭ボケ）。
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         // 出力解像度で小サイズ文字をくっきり描くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+            if (hints#text) RenderingHints.VALUE_TEXT_ANTIALIAS_ON
+            else RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        // 字の送り幅。ON だと字が小数の位置に置ける（詰めが揃う）。OFF だと整数の画素に丸まる。
+        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS,
+            if (hints#text) RenderingHints.VALUE_FRACTIONALMETRICS_ON
+            else RenderingHints.VALUE_FRACTIONALMETRICS_OFF)
 
     // ════════════════════════════════════════════════════════
     // ブレンド合成（Add / Multiply — Java2D 標準 Composite に無い重ね方）
@@ -388,14 +423,14 @@ mod SoftRaster {
     /// getRGB/setRGB で往復する範囲は `aabb`（drawable/polygon の外形、画面クランプ・design px）
     /// だけに絞る — 全面走査だと 1 個の光源・炎エフェクトのために毎フレーム画面全体を
     /// 読み書きすることになり、drawable 数に対して不釣り合いに重くなるため。
-    def blendedDraw(image: BufferedImage, sf: Float64, blend: DrawCmd.BlendMode,
+    def blendedDraw(image: BufferedImage, sf: Float64, hints: QualityHints, blend: DrawCmd.BlendMode,
                     clip: Option[Rect2.Rect2], aabb: Rect2.Rect2,
                     draw: Graphics2D -> Unit \ ef): Unit \ IO + ef =
         let w = Int32.max(1i32, image.getWidth());
         let h = Int32.max(1i32, image.getHeight());
         let scratch = new BufferedImage(w, h, 2i32);
         let gs: Graphics2D = scratch.createGraphics();
-        applyQualityHints(gs);
+        applyQualityHints(gs, hints);
         withClip(gs, sf, clip, () -> draw(gs));
         gs.dispose();
         composeInto(image, scratch, blend, sf, aabb)

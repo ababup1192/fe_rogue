@@ -11,9 +11,12 @@ mod SceneRender {
     def ttf(): String = "assets/Xolonium-Regular.ttf"
 
     def cfgOf(outDir: String, atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
+        // 面の縁はならさない — 8×8 のドット絵を整数倍で置く画面なので、ならすと
+        // sprite.json の legend に無い中間色が縁に湧く。字は読めないと困るので既定のまま残す。
         { design = design(), scale = 2, background = bg,
-          texturePath = Map.empty(), fontTtf = ttf(), fontAtlas = atlas,
-          outDir = outDir, frameW = __WW__, frameH = __WH__, gifDelayMs = 66, gifFps = 15 }
+          fontTtf = ttf(), fontAtlas = atlas,
+          outDir = outDir, frameW = __WW__, frameH = __WH__,
+          shapeAntialias = false | HeadlessRender.defaults() }
 
     def loadWorld(): World.World \ IO =
         run {

@@ -176,7 +176,10 @@ mod PreviewSprite {
                                     design = design, scale = 1, background = bgc,
                                     texturePath = Map.empty(),
                                     fontTtf = primary#path, fontAtlas = primary#atlas,
-                                    outPath = "" });
+                                    // マス目を 1 個ずつ塗る絵なので面の縁はならさない — ならすと
+                                    // doc の legend に無い中間色がマスの境に湧き、編集画面の色と
+                                    // 実機の色が食い違う。見出しの字は読めないと困るので残す。
+                                    outPath = "", shapeAntialias = false, textAntialias = true });
                                 (200, JObject(Map#{
                                     "ok"       => JBool(true),
                                     "png"      => JString(PngBase64.encode(image)),

@@ -1,4 +1,4 @@
-<!-- engine v0.24.0 / 生成: 2026-08-14 -->
+<!-- engine v0.24.0 / 生成: 2026-08-15 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -309,6 +309,8 @@
   `pub def safeZoom(z: Float64): Float64`
 - center を画面中央に zoom 倍（大きいほど寄る・等倍は 1.0）で映す:
   `pub def centerOn(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2}, items: List[Render.PlacedItem]): List[Render.PlacedItem]`
+- world 座標 → 画面座標（centerOn が各 item の置き場所に使う式そのもの）:
+  `pub def toScreenPos(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2}, world: {world = Vec2.Vec2}): Vec2.Vec2`
 - center を中央に映したとき画面に見える world 範囲（大きさ design/zoom —
   `pub def visibleRect(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2}): Rect2.Rect2`
 - 画面座標 → world 座標（centerOn の逆変換）: world = (screen − design/2) / zoom + center。
@@ -404,6 +406,8 @@
   `pub def shadowAt(spec: ShadowSpec, t: Float64): Shadow`
 - 見下ろしの落ち影を 2 枚で置く（接地の暗がり + 太陽の日影）。
   `pub def groundShadow(spec: { sun = Shadow, at = Vec2.Vec2, radius = Float64, ink = Color, pixelStep = Float64, z = Int32 }): List[Render.PlacedItem]`
+- 横から見た絵の落ち影を 2 枚で置く（接地の暗がり + 太陽の日影）。
+  `pub def sideShadow(spec: { sun = Shadow, at = Vec2.Vec2, radii = Vec2.Vec2, ink = Color, pixelStep = Float64, z = Int32 }): List[Render.PlacedItem]`
 - 太陽の位置。height = 高さ（+1 が真上・0 が地平線・負は夜）、
   `pub def sunAt(t: Float64): { height = Float64, east = Float64 }`
 - 太陽の向きを、ドット絵の塗りが使う 8 方向のうち 1 つに丸める（-1 / 0 / +1）。
@@ -422,6 +426,14 @@
   `pub def place(range: ZRange, footY: Float64, items: List[Render.PlacedItem]): List[Render.PlacedItem]`
 - place の 1 個版。置き場所の下端（=足元）を自分で渡す。
   `pub def placeOne(range: ZRange, footY: Float64, placed: Render.PlacedItem): Render.PlacedItem`
+- 帯の名前 → その帯の底の zIndex。1 画面を「奥から手前へ」何段かに仕切ったときの地図。
+  `pub type alias Bands = Map[String, Int32]`
+- 奥から手前へ並べた名前の列から帯の地図を作る。
+  `pub def bands(spec: { base = Int32, stride = Int32 }, names: List[String]): Bands`
+- 帯 name の底の zIndex。知らない名前は一番奥（base 側 = 地図の最小値）へ落とす。
+  `pub def bandZ(map: Bands, name: String): Int32`
+- 帯 name の中で「足元が下にある物ほど手前」を作る ZRange。
+  `pub def bandRange(map: Bands, name: String, spec: { stride = Int32, top = Float64, bottom = Float64 }): ZRange`
 
 ## Dir4 — `engine_world/src/Dir4.flix`
 - 四方位のいずれか。斜めも「なし」も無い: 「方向があるかもしれない」を扱う呼び側は
@@ -981,6 +993,16 @@
 - items を距離の遠い順に並べ、(zIndex, item) を返す。zIndex は
   `pub def zOrdered(distOf: a -> Float64, zBase: Int32, zStride: Int32, items: List[a]): List[(Int32, a)]`
 
+## PaletteExport — `engine_world/src/PaletteExport.flix`
+- 色票 Doc の version。外形（version / note / colors）が変わるときだけ上げる。
+  `pub def version(): Int32`
+- 意味色キーの列を resolver に通して「名前 → 実色」の表にする。
+  `pub def fromKeys(resolver: String -> Color, keys: List[String]): Map[String, Color]`
+- 色票 Doc 1 枚ぶんの JSON テキスト（末尾に改行付き）。
+  `pub def build(spec: { note = String, colors = Map[String, Color] }): String`
+- 色票 Doc を path へ書き出す。親ディレクトリは作らない（`Fs.WriteFile` の流儀）。
+  `pub def write(path: String, spec: { note = String, colors = Map[String, Color] }): Result[String, Unit] \ Fs.FileWrite`
+
 ## Persistence — `engine_world/src/Persistence.flix`
 - `Saveable` を実装した値を `path` へ JSON で書き出す。
   `pub def save(path: String, value: a): Result[String, Unit] \ Fs.FileWrite with Saveable[a]`
@@ -1103,20 +1125,32 @@
   `pub def argbOf(c: Color): Int32`
 
 ## PxSpriteDoc — `engine_world/src/PxSpriteDoc.flix`
+- コマの回し方。絵そのものには現れないので、Doc が言わないと誰にも分からない。
+  `pub enum Loop with Eq, ToString { case Forward case PingPong case Once }`
 - スプライト 1 体: anchor(格子内の基準セル — draw の置き場所がこのセルに来る)と、
-  `pub type alias Sprite = { anchor = Vec2.Vec2, frames = Map[String, List[String]] }`
+  `pub type alias Sprite = { anchor = Vec2.Vec2, loop = Loop, frames = Map[String, List[String]] }`
 - sprite.json 全体。legend は 1 文字 → 意味色キー。
   `pub type alias Doc = { version = Int32, note = Option[String], legend = Map[Char, String], sprites = Map[String, Sprite] }`
 - 何も描かない空の Doc。「まだ読めていない」の置き場 — draw は常に空を返す。
   `pub def empty(): Doc`
+- コマも何も持たないスプライト。Sprite を組み立てる呼び側の土台
+  `pub def emptySprite(): Sprite`
 - テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
   `pub def fromJson(text: String): Option[Doc]`
 - パース済みの Json 値から Doc へ(エディタの doc/path 経路用 — fromJson と同じ fail-open)。
   `pub def fromJsonValue(json: Json): Option[Doc]`
+- 通し番号 step(0,1,2,…)を、回し方に沿ったコマ番号へ写す。
+  `pub def frameIndexAt(kind: Loop, count: Int32, step: Int32): Int32`
 - コマの格子の大きさ（列数・行数）。列数は一番長い行の文字数。
   `pub def gridSizeOf(doc: Doc, sprite: String, frame: String): Option[{ cols = Int32, rows = Int32 }]`
 - path の Doc を読む。読めない・壊れているときは empty(fail-open)。
   `pub def load(p: String): Doc \ Fs.FileRead`
+
+## PxTerrain — `engine_world/src/PxTerrain.flix`
+- 4x4 Bayer の敷居 0..1。同じ (x, y) からは同じ値が出る（何度描いても同じ絵）。
+  `pub def bayer4(x: Int32, y: Int32): Float64`
+- 上端と下端が場所ごとに動く帯を敷く。
+  `pub def fill(spec: { z = Int32, span = { x0 = Float64, x1 = Float64 }, topAt = Float64 -> Float64, bottomAt = Float64 -> Float64, rampAt = Vec2.Vec2 -> Vector[Color], valueAt = Vec2.Vec2 -> Float64, cell = Float64 }) : List[Render.PlacedItem]`
 
 ## Quad — `engine_world/src/Quad.flix`
 - 幅 `2*halfW`・高さ `2*halfH` の矩形を `center` を中心に `angle` ラジアン回した
@@ -1376,6 +1410,26 @@
 - 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
   `pub def toDrawables(item: Item, pos: Vec2.Vec2): List[GameEngine.Drawable]`
 
+## RenderManifest — `engine_world/src/RenderManifest.flix`
+- 画面の中でその物が何をしているか。**語彙はここで閉じる**（intent と違い、
+  `pub enum Role with Eq, ToString { case Subject case Prop case Backdrop case Effect }`
+- JSON に出す名前。
+  `pub def roleKey(r: Role): String`
+- 目録の 1 行 = 描いた物 1 つについての**作者の申告**。
+  `pub type alias Claim = { id = String, kind = String, material = String, role = Role, layer = String, zIndex = Int32, at = ViewProjection.WorldPos, src = String, aabb = Rect2.Rect2, colors = List[Color], intent = List[String] }`
+- 測れなかった検査と、その理由。黙って落とさないための行。
+  `pub type alias Unmeasured = { check = String, why = String }`
+- 欠けた欄の落ち先。1 行はこの上に足りる欄だけ載せて組む:
+  `pub def blank(): Claim`
+- intent は「作者が主張していること」の並び。**既定を「全部検査する」から
+  `pub def undeclaredIds(claims: List[Claim]): List[String]`
+- 目録 1 枚ぶんの JSON テキスト（末尾に改行付き）。
+  `pub def build(meta: { shot = String, projection = ViewProjection.ViewProjection, background = Color }, claims: List[Claim], palette: Map[String, Color], unmeasured: List[Unmeasured]): String`
+- PNG の隣に置く目録のパス。
+  `pub def pathOf(outDir: String, name: String): String`
+- 目録を path へ書き出す。親ディレクトリは作らない（`Fs.WriteFile` の流儀）。
+  `pub def write(path: String, text: String): Result[String, Unit] \ Fs.FileWrite`
+
 ## Replay — `engine_world/src/Replay.flix`
 - Trace の一拍: この input を frames フレームのあいだ保持する。入力型 i は多相
   `pub type alias Cue[i] = { input = i, frames = Int32 }`
@@ -1448,6 +1502,8 @@
 ## Scatter — `engine_world/src/Scatter.flix`
 - 見えている範囲 visible を覆うセルを走査し、各セルに place を呼んで結果を全部つなぐ。
   `pub def field(visible: Rect2.Rect2, spec: {cell = Float64, salt = Int32}, place: ({col = Int32, row = Int32}, Int32 -> Float64) -> List[a]): List[a]`
+- field の「ここだけ空ける」版。exclude の矩形（world 座標）に少しでも掛かるセルは
+  `pub def fieldExcept(visible: Rect2.Rect2, spec: {cell = Float64, salt = Int32}, exclude: List[Rect2.Rect2], place: ({col = Int32, row = Int32}, Int32 -> Float64) -> List[a]): List[a]`
 - 1 本のストリップ（横一列）にセルを敷く。疑似遠近の絵（奥のストリップほど広い世界が画面に入る）では
   `pub def strip(span: {lo = Float64, hi = Float64}, spec: {cell = Float64, salt = Int32, lane = Int32, reach = Float64, cellsMax = Int32}, place: (Int32, Int32 -> Float64) -> List[a]): List[a]`
 
@@ -2019,6 +2075,67 @@
   `pub def selectionMove(count: Int32, delta: Int32, current: Int32): Int32`
 - disabled 項目を飛ばしてカーソルを 1 つ動かす（端で反対側へ回り込む）。
   `pub def selectionMoveSkipping(count: Int32, delta: Int32, current: Int32, disabledAt: Int32 -> Bool): Int32`
+
+## ViewProjection — `engine_world/src/ViewProjection.flix`
+- world → screen の写し方。写し方ごとに要る数が違うので case ごとに持ち物を変える
+  `pub enum ViewProjection { case SideOf(FlatSpec) case TopDownOf(FlatSpec) case QuarterOf(QuarterSpec) case FirstPersonOf(FirstPersonSpec) }`
+- 4 つの写し方の名前。目録の "view" と、world 配列の長さを決める。
+  `pub enum Mode with Eq, ToString { case Side case TopDown case Quarter case FirstPerson }`
+- world の 1 点。h（高さ）を使うのは Quarter と FirstPerson だけで、
+  `pub type alias WorldPos = { x = Float64, y = Float64, h = Float64 }`
+- 高さを持たない world の点。
+  `pub def worldPos(x: Float64, y: Float64): WorldPos`
+- 高さつきの world の点。
+  `pub def worldPosAt(x: Float64, y: Float64, h: Float64): WorldPos`
+- Side / TopDown の持ち物。CameraRig と同じ形（映す中心 + zoom）で持つので、
+  `pub type alias FlatSpec = { design = Vec2.Vec2, center = Vec2.Vec2, zoom = Float64 }`
+- Quarter の持ち物。tile = タイル 1 マスの画面上の幅と高さ、
+  `pub type alias QuarterSpec =`
+- FirstPerson の持ち物。camera / persp / near はすべて呼ぶ側の意見。
+  `pub type alias FirstPersonSpec =`
+- screen → world の戻し方を持つ写し方だけを抜き出した形（inverseOf で取り出す）。
+  `pub enum Inverse { case FlatInverse(FlatSpec) case QuarterInverse(QuarterSpec) }`
+- `pub def all(): List[Mode]`
+- 目録や Makefile に出す名前。**視点名の文字列はここだけ**。
+  `pub def key(m: Mode): String`
+- world の h（高さ）が絵に効くか。Quarter は画面の上へ持ち上がり、
+  `pub def usesHeight(m: Mode): Bool`
+- 横から見た画面。center を画面の中央に zoom 倍（1 world = zoom px）で映す。
+  `pub def side(spec: FlatSpec): ViewProjection`
+- 真上から見た画面。持ち物も式も side と同じで、違うのは y の意味だけ
+  `pub def topDown(spec: FlatSpec): ViewProjection`
+- 斜め見下ろし（クォータービュー）。
+  `pub def quarter(spec: QuarterSpec): ViewProjection`
+- 一人称。**カメラは呼ぶ側が渡す**（既存の Persp.Camera をそのまま受ける）。
+  `pub def firstPerson(spec: FirstPersonSpec): ViewProjection`
+- `pub def modeOf(vp: ViewProjection): Mode`
+- `pub def designOf(vp: ViewProjection): Vec2.Vec2`
+- Quarter の持ち物。取り出せたら coveringCells がそのまま呼べる。
+  `pub def quarterOf(vp: ViewProjection): Option[QuarterSpec]`
+- FirstPerson の持ち物。取り出せたら yawOf / distanceOf / visibleFraction /
+  `pub def firstPersonOf(vp: ViewProjection): Option[FirstPersonSpec]`
+- screen → world の戻し方。FirstPerson だけ None — 画面の 1 点に当たる world の点が
+  `pub def inverseOf(vp: ViewProjection): Option[Inverse]`
+- world の点を画面 px へ。FirstPerson でカメラの真横〜後方に来た点は None
+  `pub def toScreen(vp: ViewProjection, at: WorldPos): Option[Vec2.Vec2]`
+- 画面 px の点が、高さ h の面のどの world 座標に当たるか。
+  `pub def toWorld(inv: Inverse, h: Float64, screen: Vec2.Vec2): WorldPos`
+- 画面で delta px だけ動かしたいとき、world の座標をいくら動かせばよいか。
+  `pub def toWorldDelta(inv: Inverse, delta: Vec2.Vec2): Vec2.Vec2`
+- 画面に重なるマスを盤の内側から並べる（Grid.cellsIn の斜め見下ろし版で、
+  `pub def coveringCells(q: QuarterSpec, spec: { maxHeight = Float64, cols = Int32, rows = Int32, margin = { left = Int32, top = Int32, right = Int32, bottom = Int32 } }): List[Grid.Cell]`
+- カメラの正面から見て何度ずれているか（- が左・+ が右）。
+  `pub def yawOf(f: FirstPersonSpec, at: WorldPos): Float64`
+- カメラからの距離（マス何個ぶんか）。
+  `pub def distanceOf(f: FirstPersonSpec, at: WorldPos): Float64`
+- 幅 width（world 単位）の物が、画面の中にどれだけ入っているか 0..1。
+  `pub def visibleFraction(f: FirstPersonSpec, at: WorldPos, width: Float64): Float64`
+- 壁 1 枚（足元の線分 a→b を strip の高さの帯まで立ち上げた面）の画面上の四隅と、
+  `pub def wallQuad(f: FirstPersonSpec, a: Vec2.Vec2, b: Vec2.Vec2, strip: { hTop = Float64, hBot = Float64 }): Option[{ corners = Persp.Corners, dist = Float64, t0 = Float64, t1 = Float64 }]`
+- マス目の上を四方位で歩くゲームのための Persp.Camera の作り方。
+  `pub def makeCamera(eye: Vec2.Vec2, facing: Dir4.Dir4): Persp.Camera`
+- ラジアンを度へ。人が読む向き（yawOf・目録の "facing"）はこの単位でそろえる。
+  `pub def toDegrees(radians: Float64): Float64`
 
 ## Viewport — `engine_world/src/Viewport.flix`
 - 軸平行の矩形領域。画面なら {0, 0, width, height}。

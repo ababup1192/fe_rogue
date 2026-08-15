@@ -12,9 +12,12 @@ mod SceneRender {
     def ttf(): String = "assets/Xolonium-Regular.ttf"
 
     def cfgOf(atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
+        // 面の縁はならさない — タイルもキャラも px.sprite.json のドット絵で、
+        // px.palette.json の色だけで塗る画面。字は読めないと困るので既定のまま残す。
         { design = design(), scale = 2, background = bg,
-          texturePath = Map.empty(), fontTtf = ttf(), fontAtlas = atlas,
-          outDir = "gallery", frameW = 1280, frameH = 720, gifDelayMs = 66, gifFps = 15 }
+          fontTtf = ttf(), fontAtlas = atlas,
+          outDir = "gallery", frameW = 1280, frameH = 720,
+          shapeAntialias = false | HeadlessRender.defaults() }
 
     def loadWorld(): World.World \ IO =
         run {

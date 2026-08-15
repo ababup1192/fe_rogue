@@ -91,4 +91,15 @@ mod TestColor {
         let b = Color.rgb(1.0, 0.5, 0.25);
         Assert.assertEq(expected = (ch(a), ch(b), (0.5, 0.25, 0.125)),
             (ch(Color.mix(a, b, 0.0)), ch(Color.mix(a, b, 1.0)), ch(Color.mix(a, b, 0.5))))
+
+    /// hex（読み）と toHex（書き）が同じ字を指す。色票を書き出すたびに同じ字が出ないと、
+    /// 生成した *.palette.json の差分が読めなくなる。
+    @Test
+    def testToHexRoundTripsWithHex(): Unit \ Assert =
+        Assert.assertEq(expected = Some("#3fa9c8"), Color.hex("#3fa9c8") |> Option.map(Color.toHex))
+
+    /// 計算で 0..1 を外れた色（明るくし過ぎ・暗くし過ぎ）も端で止めて字にできる。
+    @Test
+    def testToHexClampsOutOfRange(): Unit \ Assert =
+        Assert.assertEq(expected = "#ff0000", Color.toHex(Color.rgb(1.4, -0.2, 0.0)))
 }

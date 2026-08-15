@@ -36,6 +36,28 @@ mod TestDepth {
         let b = Depth.forRows({ back = 5, originY = 0.0, rows = 10, tileSize = 20.0 });
         Assert.assertEq(expected = (5, 15, 200.0), (b#back, b#front, b#bottom))
 
+    def sevenBands(): Depth.Bands =
+        Depth.bands({ base = 100, stride = 50 },
+            "back" :: "far" :: "ground" :: "shadow" :: "mid" :: "near" :: "front" :: Nil)
+
+    @Test
+    def testBandsAreOrderedBackToFront(): Unit \ Assert =
+        // 並べた順がそのまま奥→手前。1 本足しても以降を手で書き直さずに済む。
+        Assert.assertEq(expected = (100, 200, 400),
+            (Depth.bandZ(sevenBands(), "back"), Depth.bandZ(sevenBands(), "ground"),
+             Depth.bandZ(sevenBands(), "front")))
+
+    @Test
+    def testUnknownBandFallsToBackmost(): Unit \ Assert =
+        // 綴り違いは一番奥へ回る（見えるので気づける）。
+        Assert.assertEq(expected = 100, Depth.bandZ(sevenBands(), "grnd"))
+
+    @Test
+    def testBandRangeStaysInsideItsOwnBand(): Unit \ Assert =
+        // 帯の中で足元順に並べても、隣の帯（次は 250）へはみ出さない。
+        let r = Depth.bandRange(sevenBands(), "shadow", { stride = 50, top = 0.0, bottom = 100.0 });
+        Assert.assertEq(expected = (250, 299, 299), (r#back, r#front, Depth.zAt(r, 100.0)))
+
     def white(): Color = { r = 1.0, g = 1.0, b = 1.0 }
 
     def zOf(placed: Render.PlacedItem): Int32 =

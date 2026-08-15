@@ -32,6 +32,20 @@ mod Color {
             case _ => None
         }
 
+    /// 色を "#rrggbb" の文字列にする（hex の逆）。0〜1 の外へ出た値は端で止め、
+    /// 各チャンネルを 0〜255 の整数へ四捨五入する。色票 JSON（*.palette.json）や
+    /// theme を書き出すときの表記をここに一本化する — 桁の丸め方が呼び側ごとに違うと、
+    /// 同じ色が別の文字列になって差分が読めなくなる。
+    pub def toHex(color: Color): String =
+        "#${hexByte(color#r)}${hexByte(color#g)}${hexByte(color#b)}"
+
+    def hexByte(v: Float64): String =
+        let n = Num.clampInt(0, 255, Num.roundInt(Num.clamp01(v) * 255.0));
+        "${hexDigit(n / 16)}${hexDigit(Int32.remainder(n, 16))}"
+
+    def hexDigit(n: Int32): String =
+        Char.toString(String.charAt(Num.clampInt(0, 15, n), "0123456789abcdef"))
+
     /// 2 色の間を t（0〜1）で混ぜる。lighten（白へ）/ darken（黒へ）が「片方が決め打ち」
     /// なのに対し、こちらは任意の 2 色をつなぐ（グラデーションの段階・状態の移り変わり）。
     pub def mix(a: Color, b: Color, t: Float64): Color =

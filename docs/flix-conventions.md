@@ -2,12 +2,14 @@
 
 ## 予約語を識別子に使わない
 
-`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` / `project` / `solve`
+`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` / `project` / `solve` /
+`from` / `to`
 
 変数・関数名だけでなく**レコードのフィールド名**でも落ちる（`{ spawn = ... }` は不可）。
 エラーは `Expected ',' before '='` のような間接的なパースエラーで出るので、原因に見えない。
 ゲームで踏みやすいのは `spawn`（湧き位置 → `start`）、`run`（走り → `walkR` 等)、
-`project`（→ `apply`）。
+`project`（→ `apply`）、グラデーションの両端の `from` / `to`（→ `top` / `bottom`。
+engine の `Render.vgrad` も同じ理由で `{ top, bottom }`）。
 
 ## コメントの流儀
 

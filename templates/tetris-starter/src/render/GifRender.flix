@@ -14,8 +14,8 @@ mod GifRender {
 
     def cfg(atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
         { design = design(), scale = 2, background = bg,
-          texturePath = Map.empty(), fontTtf = ttf(), fontAtlas = atlas,
-          outDir = "debug", frameW = 512, frameH = 704, gifDelayMs = 66, gifFps = 15 }
+          fontTtf = ttf(), fontAtlas = atlas,
+          outDir = "debug", frameW = 512, frameH = 704 | HeadlessRender.defaults() }
 
     def loadWorld(): World.World \ IO =
         run { World.initial(Controls.loadDocs()) } with Fs.FileRead.runWithIO

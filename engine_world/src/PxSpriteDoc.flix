@@ -1,6 +1,6 @@
 // PxSpriteDoc — *.sprite.json(文字格子のドット絵)の宣言ドキュメント層。
 // 絵は「文字の格子」で書く: legend が文字→意味色キー(実色でなくテーマで解決する名前)を
-// 与え、sprites が 名前 →{frames: 名前付きコマ(rows = 文字列の配列), anchor} を並べる。
+// 与え、sprites が 名前 →{frames: 名前付きコマ(rows = 文字列の配列), anchor, loop} を並べる。
 // legend はファイルに 1 個でコマ間共有。legend に無い文字は透明(fail-open)。
 // 実色への解決は描く側(PxSprite.draw の resolver)が行う — Doc は色の名前しか知らない。
 //
@@ -10,10 +10,23 @@ mod PxSpriteDoc {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JString}
 
+    /// コマの回し方。絵そのものには現れないので、Doc が言わないと誰にも分からない。
+    /// Forward = 順送り(0→1→2→0)・PingPong = 往復(0→1→2→1→0)・Once = 最終コマで止まる。
+    ///
+    /// なぜ Doc に要るか: 往復のコマ列は「最終コマ → 0 コマ」が飛んで見えるが、それは
+    /// 正しい絵で、順送りの本物の破綻と数値では見分けが付かない(bin/lint-anim.py)。
+    /// 描く側にもここが要る — sin 波でコマを選ぶ絵は実体が往復なのに、Doc は順送りに見える。
+    pub enum Loop with Eq, ToString {
+        case Forward
+        case PingPong
+        case Once
+    }
+
     /// スプライト 1 体: anchor(格子内の基準セル — draw の置き場所がこのセルに来る)と、
-    /// 名前付きコマ(rows 形式: 上の行から順の文字列の配列)。
+    /// 名前付きコマ(rows 形式: 上の行から順の文字列の配列)と、コマの回し方。
     pub type alias Sprite = {
         anchor = Vec2.Vec2,
+        loop = Loop,
         frames = Map[String, List[String]]
     }
 
@@ -28,6 +41,11 @@ mod PxSpriteDoc {
     /// 何も描かない空の Doc。「まだ読めていない」の置き場 — draw は常に空を返す。
     pub def empty(): Doc =
         { version = 1, note = None, legend = Map.empty(), sprites = Map.empty() }
+
+    /// コマも何も持たないスプライト。Sprite を組み立てる呼び側の土台
+    /// （フィールドが増えてもここだけ直せばよい）。
+    pub def emptySprite(): Sprite =
+        { anchor = { x = 0.0, y = 0.0 }, loop = Loop.Forward, frames = Map.empty() }
 
     /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
@@ -84,7 +102,38 @@ mod PxSpriteDoc {
             { anchor = Map.get("anchor", obj)
                   |> Option.flatMap(JsonCodec.decodeVec2)
                   |> Option.getWithDefault({ x = 0.0, y = 0.0 }),
+              loop = loopOf(obj),
               frames = framesOf(obj) })
+
+    /// "loop": "forward" | "pingpong" | "once"。省略・知らない字は Forward(従来どおり)。
+    def loopOf(obj: Map[String, Json]): Loop =
+        Map.get("loop", obj)
+            |> Option.flatMap(JsonCodec.expectString)
+            |> Option.map(s -> match String.toLowerCase(s) {
+                   case "pingpong" => Loop.PingPong
+                   case "once"     => Loop.Once
+                   case _          => Loop.Forward
+               })
+            |> Option.getWithDefault(Loop.Forward)
+
+    /// 通し番号 step(0,1,2,…)を、回し方に沿ったコマ番号へ写す。
+    /// コマの名前の並びは呼び側が決める(Map の並び順・自前の列のどちらでもよい)。
+    /// 描く側とコマ間の検査が同じ式を見るように、ここに 1 つだけ置く。
+    pub def frameIndexAt(kind: Loop, count: Int32, step: Int32): Int32 =
+        if (count <= 1) 0
+        else {
+            let s = Int32.max(0, step);
+            match kind {
+                case Loop.Forward  => Int32.modulo(s, count)
+                case Loop.Once     => Int32.min(s, count - 1)
+                // 往復は「行って戻る」1 周が 2*(count-1) コマ。折り返しのコマを 2 度出さない
+                // ようにこの長さにする(出すと端で 1 コマぶん止まって見える)。
+                case Loop.PingPong =>
+                    let period = 2 * (count - 1);
+                    let m = Int32.modulo(s, period);
+                    if (m < count) m else period - m
+            }
+        }
 
     def framesOf(obj: Map[String, Json]): Map[String, List[String]] =
         Map.get("frames", obj)

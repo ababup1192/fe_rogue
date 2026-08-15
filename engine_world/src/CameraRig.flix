@@ -29,10 +29,17 @@ mod CameraRig {
     pub def centerOn(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2},
                      items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         let z = safeZoom(zoom#zoom);
-        let half = Vec2.div(design#design, 2.0);
         List.map(placed ->
-            { at = Vec2.add(Vec2.mul(Vec2.sub(placed#at, center), z), half),
+            { at = toScreenPos(center, zoom, design, { world = placed#at }),
               item = Render.scaled(z, placed#item) }, items)
+
+    /// world 座標 → 画面座標（centerOn が各 item の置き場所に使う式そのもの）:
+    /// screen = (world − center) × zoom + design/2。item の列でなく点 1 つを写したいとき
+    /// （物の目録を書く・当たりの矩形を画面で測る）に呼ぶ。toWorldPos がこの逆。
+    pub def toScreenPos(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2},
+                        world: {world = Vec2.Vec2}): Vec2.Vec2 =
+        Vec2.add(Vec2.mul(Vec2.sub(world#world, center), safeZoom(zoom#zoom)),
+                 Vec2.div(design#design, 2.0))
 
     /// center を中央に映したとき画面に見える world 範囲（大きさ design/zoom —
     /// 寄るほど狭く・引くほど広い）。背景タイルの敷き詰めなど「見える分だけ組む」計算に。

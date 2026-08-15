@@ -17,7 +17,9 @@
 //           {"kind":"rgb","r":{..},"g":{..},"b":{..}}
 //   出力:   {"kind":"fill","shade":{..},"alpha":{..}}
 //   トップ: {"name":..,"cycleRate":..,"out":{..}}
-// 色は "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）。WorleyOut は "f1"/"f2"/"f2mf1"、Axis は "u"/"v"。
+// 色は "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）か "@名前"（色票引き・parseWith / loadWith で
+// 色票を渡したときだけ解ける。UiDoc.colorOf と同じ語彙）。
+// WorleyOut は "f1"/"f2"/"f2mf1"、Axis は "u"/"v"。
 
 mod ShaderJson {
     import java.math.{BigDecimal => JBigDecimal}
@@ -35,6 +37,13 @@ mod ShaderJson {
     /// JSON をトップレベルの Spec へ読み取る。壊れていれば Err（パス付きの説明）。
     /// shared（bindings）は前方参照のみ・循環は Err・out や後の binding の未定義 Ref も Err。
     pub def parse(json: Json): Result[JsonError, ShaderDoc.Spec] =
+        parseWith(Map.empty(), json)
+
+    /// parse の「色を名前で書ける」版。palette は色票の名前 → 実色で、JSON 側は
+    /// `"@sky"` のように `@` を付けて引く（UiDoc.colorOf と同じ語彙）。名前が色票に
+    /// 無ければ Err — 黙って既定色にすると、theme を直したのに面だけ古い色のまま、
+    /// という食い違いが絵の中に残る。`#rrggbb` と `{r,g,b}` はそのまま使える。
+    pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, ShaderDoc.Spec] =
         match json {
             case JObject(top) =>
                 forM (
@@ -42,7 +51,7 @@ mod ShaderJson {
                     cycleRate <- numOr("cycleRate", 0.0, top);
                     bindings  <- parseBindings(top);
                     outJson   <- reqKey("out", top);
-                    out       <- parseOut(outJson);
+                    out       <- parseOut(palette, outJson);
                     _         <- checkOutRefs(bindings, out)
                 ) yield ({ name = name, cycleRate = cycleRate, bindings = bindings, out = out }: ShaderDoc.Spec)
             case _ => Err(err("ShaderDoc must be a JSON object"))
@@ -120,14 +129,14 @@ mod ShaderJson {
             case _                         => acc
         }, Nil, field) |> List.reverse
 
-    def parseOut(json: Json): Result[JsonError, ShaderDoc.Out] =
+    def parseOut(palette: Map[String, Color], json: Json): Result[JsonError, ShaderDoc.Out] =
         asObjKind(json, "out") |> Result.flatMap(km -> {
             let (kind, m) = km;
             match kind {
                 case "fill" =>
                     forM (
                         shadeJson <- reqKey("shade", m);
-                        shade     <- parseShade(shadeJson);
+                        shade     <- parseShade(palette, shadeJson);
                         alphaJson <- reqKey("alpha", m);
                         alpha     <- parseField(alphaJson)
                     ) yield ShaderDoc.Out.Fill({ shade = shade, alpha = alpha })
@@ -135,41 +144,41 @@ mod ShaderJson {
             }
         })
 
-    def parseShade(json: Json): Result[JsonError, ShaderDoc.Shade] =
+    def parseShade(palette: Map[String, Color], json: Json): Result[JsonError, ShaderDoc.Shade] =
         asObjKind(json, "shade") |> Result.flatMap(km -> {
             let (kind, m) = km;
             match kind {
                 case "solid" =>
                     forM (
                         colorJson <- reqKey("color", m);
-                        color     <- parseColor(colorJson)
+                        color     <- parseColorWith(palette, colorJson)
                     ) yield ShaderDoc.Shade.Solid(color)
                 case "ramp" =>
                     forM (
                         loJson    <- reqKey("lo", m);
-                        lo        <- parseColor(loJson);
+                        lo        <- parseColorWith(palette, loJson);
                         hiJson    <- reqKey("hi", m);
-                        hi        <- parseColor(hiJson);
+                        hi        <- parseColorWith(palette, hiJson);
                         fieldJson <- reqKey("field", m);
                         field     <- parseField(fieldJson)
                     ) yield ShaderDoc.Shade.Ramp({ lo = lo, hi = hi, field = field })
                 case "gradient" =>
                     forM (
                         stopsJson <- reqKey("stops", m);
-                        stops     <- parseStops(stopsJson);
+                        stops     <- parseStops(palette, stopsJson);
                         fieldJson <- reqKey("field", m);
                         field     <- parseField(fieldJson)
                     ) yield ShaderDoc.Shade.Gradient({ stops = stops, field = field })
                 case "cosine" =>
                     forM (
                         aJson     <- reqKey("a", m);
-                        a         <- parseColor(aJson);
+                        a         <- parseColorWith(palette, aJson);
                         bJson     <- reqKey("b", m);
-                        b         <- parseColor(bJson);
+                        b         <- parseColorWith(palette, bJson);
                         cJson     <- reqKey("c", m);
-                        c         <- parseColor(cJson);
+                        c         <- parseColorWith(palette, cJson);
                         dJson     <- reqKey("d", m);
-                        d         <- parseColor(dJson);
+                        d         <- parseColorWith(palette, dJson);
                         fieldJson <- reqKey("field", m);
                         field     <- parseField(fieldJson)
                     ) yield ShaderDoc.Shade.Cosine({ a = a, b = b, c = c, d = d, field = field })
@@ -187,21 +196,21 @@ mod ShaderJson {
         })
 
     /// gradient の stops = [[位置, 色], ...] を (Float64, Color) のリストへ（位置は数・色は #rrggbb か {r,g,b}）。
-    def parseStops(json: Json): Result[JsonError, List[(Float64, Color)]] =
+    def parseStops(palette: Map[String, Color], json: Json): Result[JsonError, List[(Float64, Color)]] =
         match json {
-            case JArray(items) => foldStops(Vector.toList(items), Nil)
+            case JArray(items) => foldStops(palette, Vector.toList(items), Nil)
             case _             => Err(err("gradient 'stops' must be an array of [pos, color]"))
         }
 
-    def foldStops(items: List[Json], acc: List[(Float64, Color)]):
+    def foldStops(palette: Map[String, Color], items: List[Json], acc: List[(Float64, Color)]):
             Result[JsonError, List[(Float64, Color)]] =
         match items {
             case Nil          => Ok(List.reverse(acc))
             case item :: rest =>
-                parseStop(item) |> Result.flatMap(stop -> foldStops(rest, stop :: acc))
+                parseStop(palette, item) |> Result.flatMap(stop -> foldStops(palette, rest, stop :: acc))
         }
 
-    def parseStop(item: Json): Result[JsonError, (Float64, Color)] =
+    def parseStop(palette: Map[String, Color], item: Json): Result[JsonError, (Float64, Color)] =
         match item {
             case JArray(v) => match Vector.toList(v) {
                 case JNumber(bd) :: colorJson :: Nil =>
@@ -209,7 +218,7 @@ mod ShaderJson {
                         pos   <- (match BigDecimal.tryToFloat64(bd) {
                                     case Some(p) => Ok(p)
                                     case None    => Err(err("gradient stop pos is not a finite number")) });
-                        color <- parseColor(colorJson)
+                        color <- parseColorWith(palette, colorJson)
                     ) yield (pos, color)
                 case _ => Err(err("gradient stop must be [pos(number), color]"))
             }
@@ -508,15 +517,26 @@ mod ShaderJson {
             case Some(_) => parseVec2(key, m)
         }
 
-    /// 色: "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）。他 Doc の色表記に合わせた素朴版。
-    def parseColor(json: Json): Result[JsonError, Color] =
+    /// 色: "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）か "@名前"（palette 引き）。
+    /// palette が空なら "@名前" は必ず Err になる — 解けない名前を灰色などに落とすと、
+    /// 色票の綴り違いが絵の中に隠れてしまう。
+    def parseColorWith(palette: Map[String, Color], json: Json): Result[JsonError, Color] =
         match json {
-            case JString(s)  => parseHexColor(s)
+            case JString(s)  =>
+                if (String.startsWith(prefix = "@", s))
+                    Map.get(String.drop(1, s), palette)
+                        |> Option.toOk(err("unknown palette color '${s}' (defined: ${paletteNames(palette)})"))
+                else parseHexColor(s)
             case JObject(m)  =>
                 forM (r <- numAt("r", m); g <- numAt("g", m); b <- numAt("b", m))
                     yield ({ r = unit01(r), g = unit01(g), b = unit01(b) }: Color)
-            case _ => Err(err("color must be \"#rrggbb\" or {r,g,b}"))
+            case _ => Err(err("color must be \"#rrggbb\", \"@name\" or {r,g,b}"))
         }
+
+    /// 色票に載っている名前を読みやすく並べる（空なら "none"）。
+    def paletteNames(palette: Map[String, Color]): String =
+        let names = Map.keysOf(palette) |> Set.toList;
+        if (List.isEmpty(names)) "none" else String.intercalate(", ", names)
 
     def parseHexColor(s: String): Result[JsonError, Color] =
         let hex = if (String.startsWith({ prefix = "#" }, s)) String.drop(1, s) else s;
@@ -818,18 +838,28 @@ mod ShaderJson {
     /// path を読んで Spec にする（読めない・崩れているときは Err）。フォールバックは呼び側が
     /// getWithDefault で与える（LightDoc.load と同じ流儀・fail-open）。
     pub def load(path: String): Result[JsonError, ShaderDoc.Spec] \ Fs.FileRead =
+        loadWith(Map.empty(), path)
+
+    /// load の「色を名前で書ける」版（parseWith を通す）。theme から作った色票を渡す。
+    pub def loadWith(palette: Map[String, Color], path: String):
+            Result[JsonError, ShaderDoc.Spec] \ Fs.FileRead =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         content
             |> Result.mapErr(readErr -> err("failed to read '${path}': ${readErr}"))
             |> Result.flatMap(text -> Util.Json.parse(String.trim(text)))
-            |> Result.flatMap(parse)
+            |> Result.flatMap(json -> parseWith(palette, json))
 
     /// path を読み、読めない・語彙が違うときは fallback の面へ落とす（fail-open）。
     /// 知らない kind で黙って落とすと「絵だけ別物」になって原因が追えないので、
     /// 落ちた理由を標準エラーへ 1 行知らせる。呼ばれるのは読み込み・リロード時だけで
     /// 毎フレームは通らない。stdout は描き出しのログが使うので混ぜない。
     pub def loadOr(fallback: ShaderDoc.Spec, path: String): ShaderDoc.Spec \ Fs.FileRead =
-        match load(path) {
+        loadOrWith(Map.empty(), fallback, path)
+
+    /// loadOr の「色を名前で書ける」版。
+    pub def loadOrWith(palette: Map[String, Color], fallback: ShaderDoc.Spec, path: String):
+            ShaderDoc.Spec \ Fs.FileRead =
+        match loadWith(palette, path) {
             case Ok(spec) => spec
             case Err(e)   => warnFellBack(fallback, path, e)
         }

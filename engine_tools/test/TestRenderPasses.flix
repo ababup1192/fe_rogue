@@ -28,7 +28,7 @@ mod TestRenderPasses {
           fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
                         ascent = 12.0, descent = 4.0, lineGap = 0.0, glyphs = Map.empty() },
           outDir = "build/test/renderpasses", frameW = 4, frameH = 4,
-          gifDelayMs = 66, gifFps = 15 }
+          gifDelayMs = 66, gifFps = 15, shapeAntialias = true, textAntialias = true }
 
     def emptyPass(op: RenderTarget.LoadOp): HeadlessRender.PassSpec =
         { name = "paper", clear = op, drawables = Nil, polygons = Nil }
@@ -78,7 +78,7 @@ mod TestRenderPasses {
             { drawables = { position = { x = 1.0, y = 1.0 } | drawable("paper") } :: Nil,
               polygons = Nil, design = c#design, scale = c#scale, background = c#background,
               texturePath = c#texturePath, fontTtf = c#fontTtf, fontAtlas = c#fontAtlas,
-              outPath = "" };
+              outPath = "", shapeAntialias = true, textAntialias = true };
         let img = SoftRaster.renderToImageFull(req, Nil, Map.empty(), Map#{"paper" => paper});
         Assert.assertEq(expected = (255, 0, 255, 0), channels(img.getRGB(2i32, 2i32)))
 
@@ -95,7 +95,7 @@ mod TestRenderPasses {
         let req: SoftRaster.RasterReq =
             { drawables = Nil, polygons = Nil, design = c#design, scale = c#scale,
               background = c#background, texturePath = c#texturePath, fontTtf = c#fontTtf,
-              fontAtlas = c#fontAtlas, outPath = "" };
+              fontAtlas = c#fontAtlas, outPath = "", shapeAntialias = true, textAntialias = true };
         let texOf = chan -> ShaderDoc.Field.Tex({ name = "paper", chan = chan });
         let surface: SoftRaster.SurfaceCmd =
             { rect = { position = { x = 0.0, y = 0.0 }, size = { x = 4.0, y = 4.0 } },
@@ -151,7 +151,7 @@ mod TestRenderPasses {
             { drawables = light :: Nil,
               polygons = Nil, design = { x = 256.0, y = 256.0 }, scale = c#scale,
               background = c#background, texturePath = c#texturePath, fontTtf = c#fontTtf,
-              fontAtlas = c#fontAtlas, outPath = "" };
+              fontAtlas = c#fontAtlas, outPath = "", shapeAntialias = true, textAntialias = true };
         let img = SoftRaster.renderToImageFull(req, Nil, Map.empty(), Map.empty());
         Assert.assertEq(expected = (255, 255, 255, 255) :: (255, 0, 0, 0) :: Nil,
             channels(img.getRGB(128i32, 128i32)) :: channels(img.getRGB(0i32, 0i32)) :: Nil)

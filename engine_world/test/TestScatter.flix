@@ -50,6 +50,23 @@ mod TestScatter {
     def testResultCount(): Unit \ Assert =
         Assert.assertEq(expected = 11, List.length(Scatter.field(smallVisible(), spec(), starPlace)))
 
+    /// 空ける帯を渡さなければ field と 1 個も変わらない（既存の絵が動かない）。
+    @Test
+    def testFieldExceptWithNoBandsMatchesField(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Scatter.field(smallVisible(), spec(), starPlace),
+            Scatter.fieldExcept(smallVisible(), spec(), Nil, starPlace))
+
+    /// 帯に掛かるセルだけが落ち、残るセルの物は帯を足す前と同じ位置のまま
+    /// （帯を足しても他の草が入れ替わらない＝セル単位で落とす理由）。
+    @Test
+    def testFieldExceptDropsOnlyCellsTouchingTheBand(): Unit \ Assert =
+        let band = { position = { x = 0.0, y = 0.0 }, size = { x = 32.0, y = 200.0 } };
+        let all = Scatter.field(smallVisible(), spec(), starPlace);
+        let kept = Scatter.fieldExcept(smallVisible(), spec(), band :: Nil, starPlace);
+        let outsideBand = List.filter(xy -> fst(xy) >= 32.0, all);
+        Assert.assertEq(expected = (true, outsideBand), (List.length(kept) < List.length(all), kept))
+
     /// 旧 Starfield と同じ星空 place を書いたとき、旧 TestStarfield が pin していた先頭星の
     /// 座標が再現される（機構＋チャンネル割当の互換性 pin）。
     @Test

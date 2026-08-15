@@ -17,7 +17,8 @@ import os
 import sys
 
 # Studio の FileIndex.excludedDirs と同じ。build/ は数十万ファイルに膨れるので降りない。
-EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
+EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules",
+                 "archive"}  # 退避済みの死んだ素材はゲートしない (戻すときに直す)
 
 # 色 1 つを object に包んで書く欄の名前 (Studio の colorWrapKeys と同じ)。
 COLOR_WRAP_KEYS = ("hex", "color", "value")

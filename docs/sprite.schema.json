@@ -22,7 +22,7 @@
     },
     "sprites": {
       "type": "object",
-      "description": "スプライト名 → { frames, anchor }。'//' で始まる名前はコメント。",
+      "description": "スプライト名 → { frames, anchor, loop }。'//' で始まる名前はコメント。",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -42,6 +42,11 @@
               "x": { "type": "number" },
               "y": { "type": "number" }
             }
+          },
+          "loop": {
+            "type": "string",
+            "enum": ["forward", "pingpong", "once"],
+            "description": "コマの回し方(省略時 forward)。forward = 順送り 0→1→2→0 / pingpong = 往復 0→1→2→1→0 / once = 最終コマで止まる。往復は最終コマ→0 コマが飛んで見えるが正しい絵で、宣言が無いと lint-anim が本物の破綻と区別できない。"
           },
           "frames": {
             "type": "object",

@@ -73,4 +73,22 @@ mod TestDaylightSun {
     @Test
     def testLightStepIsOverheadAtNoon(): Unit \ Assert =
         Assert.assertEq(expected = (0, -1), Daylight.lightStepAt(0.5))
+
+    def sideAt(t: Float64): List[Render.PlacedItem] =
+        Daylight.sideShadow({ sun = Daylight.shadowAt(spec(), t), at = { x = 100.0, y = 200.0 },
+                              radii = { x = 10.0, y = 3.0 }, ink = { r = 0.0, g = 0.0, b = 0.0 },
+                              pixelStep = 0.0, z = 4 })
+
+    @Test
+    def testSideShadowStaysOnTheGroundLine(): Unit \ Assert =
+        // 横視点では影は足元の高さから上下しない（上下に動くと地面から浮く）。
+        let ys = sideAt(0.3) |> List.map(p -> p#at#y);
+        Assert.assertEq(expected = 200.0 :: 200.0 :: Nil, ys)
+
+    @Test
+    def testSideShadowStretchesAwayFromTheSun(): Unit \ Assert =
+        // 朝は太陽が東（右）なので、伸びた影の中心は足元より左。夕は右。
+        let xOf = items -> items |> List.head |> Option.map(p -> p#at#x) |> Option.getWithDefault(0.0);
+        Assert.assertEq(expected = (true, true),
+            (xOf(sideAt(0.28)) < 100.0, xOf(sideAt(0.72)) > 100.0))
 }

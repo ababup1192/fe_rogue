@@ -594,12 +594,25 @@ api-digest:
 
 # ダイジェストの引き方の近道。例: make api Q=gradPolygon
 # ソースを開かずに pub 宣言 (型・引数・エフェクト・doc 1 行) だけ拾う。
+#
+# digest は作業ツリーの src/ から作るので、まだリリースしていない宣言も載る。
+# ゲームは flix.toml で版を固定して fpkg を引くため、digest を信じて書くと
+# コンパイルで落ちる (2026-08-14: Depth.bands / PxSpriteDoc.Loop で 2 本が落ちた)。
+# だから引くたびに「その名前は未リリースか」を後ろに出す (bin/check-api-released.py)。
 .PHONY: api
 api:
 	@test -n "$(Q)" || { echo "usage: make api Q=<関数名やモジュール名>"; exit 1; }
 	@out=$$(grep -h -i -- "$(Q)" docs/api-digest/*.md 2>/dev/null | head -40); \
 	 if [ -n "$$out" ]; then printf '%s\n' "$$out"; \
 	 else echo "[api] '$(Q)' はダイジェストに無い。docs/module-index.md で別名を探す"; fi
+	@# 2>/dev/null を付けない。この検査の存在理由は「digest の嘘を見えるようにする」ことなので、
+	@# 検査自体が黙って死ぬ形は自己矛盾になる (|| true は助言だから止めない、の意味で残す)。
+	@python3 bin/check-api-released.py "$(Q)" || true
+
+# リリース済みの版に無い pub 宣言を全部挙げる (make api が名前ごとに出す物の一覧版)。
+.PHONY: api-unreleased
+api-unreleased:
+	@python3 bin/check-api-released.py
 
 # 絵の下限（矩形と円だけになっていないか）。どの OS・どのエージェントからも同じ検査。
 .PHONY: lint-view

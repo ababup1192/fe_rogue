@@ -131,6 +131,37 @@ mod Daylight {
                 | contact } :: Nil)
             |> Render.snappedAll(spec#pixelStep)
 
+    /// 横から見た絵の落ち影を 2 枚で置く（接地の暗がり + 太陽の日影）。
+    ///
+    /// groundShadow との違いは、伸びる向きが横だけになること。見下ろしの絵では地面が画面と
+    /// ほぼ平行で、影は上下にも伸びる。横視点では地面が画面の下側に細い帯として見えるので、
+    /// 影は足元から左右どちらかへ伸び、縦には厚みぶんしか要らない。半径 1 つ（円）では
+    /// この形を表せないので、radii で横半径と縦半径を別々に受ける。
+    ///
+    /// radii = 影 1 枚ぶんの半径。x = 足元の幅の半分、y = 地面の帯の厚みの半分。
+    /// 太陽が高いほど短く濃く、低いほど横へ長く薄く伸びる（sun は shadowAt の出力）。
+    /// pixelStep はドット絵の升目（0 で切る）。
+    pub def sideShadow(spec: { sun = Shadow, at = Vec2.Vec2, radii = Vec2.Vec2,
+                               ink = Color, pixelStep = Float64,
+                               z = Int32 }): List[Render.PlacedItem] =
+        let sun = spec#sun;
+        let rx = spec#radii#x;
+        let ry = spec#radii#y;
+        // 伸びは足元の幅までに抑える（groundShadow と同じ理由 — 影の方が主役になる）。
+        let stretch = 1.0 + Float64.min(1.0, sun#scale - 1.0);
+        // 横向きの符号だけを使う。dir#y は見下ろしの「手前へ倒す」ぶんで、横視点では
+        // 影が地面から浮いて見えるので捨てる。
+        let side = if (sun#dir#x < 0.0) -1.0 else 1.0;
+        let half = rx * stretch;
+        let cast = RawDraw.ellipseAt(
+            { x = spec#at#x + side * (half - rx), y = spec#at#y },
+            { x = half, y = ry }, spec#ink, spec#z);
+        let contact = RawDraw.ellipseAt(spec#at, { x = rx * 0.7, y = ry * 0.8 },
+                                        spec#ink, spec#z + 1);
+        ({ item = Render.fade(sun#alpha * 0.7, cast#item) | cast }
+         :: { item = Render.fade(sun#alpha * 1.4, contact#item) | contact } :: Nil)
+            |> Render.snappedAll(spec#pixelStep)
+
     /// 太陽の位置。height = 高さ（+1 が真上・0 が地平線・負は夜）、
     /// east = 東西（+1 が東＝画面の右・-1 が西）。
     /// どちらも 1 日を通してなめらかで、日付が変わる所でも飛ばない。

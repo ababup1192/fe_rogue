@@ -1,4 +1,4 @@
-<!-- engine v0.24.0 / 生成: 2026-08-13 -->
+<!-- engine v0.24.0 / 生成: 2026-08-14 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_tools
@@ -33,7 +33,9 @@
 
 ## HeadlessRender — `engine_tools/src/HeadlessRender.flix`
 - ゲームごとに 1 回宣言する生成設定。design を `scale` 倍に拡大して出力する。
-  `pub type alias RenderConfig = { design = Vec2.Vec2, scale = Int32, background = Color, texturePath = Map[String, String], fontTtf = String, fontAtlas = FontAtlas, outDir = String, frameW = Int32, frameH = Int32, gifDelayMs = Int32, gifFps = Int32 }`
+  `pub type alias RenderConfig = { design = Vec2.Vec2, scale = Int32, background = Color, texturePath = Map[String, String], fontTtf = String, fontAtlas = FontAtlas, outDir = String, frameW = Int32, frameH = Int32, gifDelayMs = Int32, gifFps = Int32, shapeAntialias = Bool, textAntialias = Bool }`
+- 欠けた欄の落ち先。ゲームごとに違うのは design / outDir / フォント / 画風のつまみだけなので、
+  `pub def defaults(): RenderConfig`
 - 走行中に作った正方形の絵（ドット絵アトラスなど）を PNG に落とし、
   `pub def imagePngs(outDir: String, images: List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }]): Map[String, String] \ IO`
 - 同じ絵の一覧から「名前 → テクスチャの寸法」を引く関数を作る（Render.drawWith に渡す）。
@@ -45,11 +47,15 @@
 - 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
   `pub def renderPngWith(cfg: RenderConfig, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
 - シルエット生成の絞り方。既定に使うのは WorldBand — 全アイテムを黒にすると画面が
-  `pub enum SilhouetteScope { case WorldBand case All }`
+  `pub enum SilhouetteScope { case WorldBand case All case ZWindow({ lo = Int32, hi = Int32 }) }`
 - 描画コマンド列を「対象は真っ黒・それ以外は落とす」に写す純関数。背景を白にして
   `pub def silhouette(scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])`
+- 宣言シェーダー面も含めた silhouette。面は「rect と mask の形をそのまま黒で塗る」に
+  `pub def silhouetteWith(scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd])`
 - シルエット PNG を生成する（renderPng の変形版）。対象を黒・背景を白で <name>.png に書く。
   `pub def silhouettePng(cfg: RenderConfig, scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
+- silhouettePng の「宣言シェーダー面も写す」版。地面・空・水面を ShaderDoc の面で
+  `pub def silhouettePngWith(cfg: RenderConfig, scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
 - pass 1 枚ぶんの宣言（Render.Pass のコマンド列版）。name はそのままテクスチャ名になり、
   `pub type alias PassSpec = { name = String, clear = RenderTarget.LoadOp, drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd] }`
 - pass 1 枚を design 解像度（scale = 1）の画像に生成する。GL のターゲットが design ×1 の
@@ -186,7 +192,7 @@
 
 ## SoftRaster — `engine_tools/src/SoftRaster.flix`
 - ラスタライズ要求。design 解像度の Drawable 群を `scale` 倍に拡大して `outPath` に PNG 出力。
-  `pub type alias RasterReq = { drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd], design = Vec2.Vec2, scale = Int32, background = Color, texturePath = Map[String, String], fontTtf = String, fontAtlas = FontAtlas, outPath = String }`
+  `pub type alias RasterReq = { drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd], design = Vec2.Vec2, scale = Int32, background = Color, texturePath = Map[String, String], fontTtf = String, fontAtlas = FontAtlas, outPath = String, shapeAntialias = Bool, textAntialias = Bool }`
 - 追加フォント 1 本（既定フォント以外も混ぜて描き出すとき）。ttf = 実サイズ描き出し用の TTF、
   `pub type alias FontEntry = { ttf = String, atlas = FontAtlas }`
 - 宣言シェーダー面 1 枚の headless ラスタライズ要求（Render.ShaderSurface と同形の

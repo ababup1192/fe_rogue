@@ -39,6 +39,10 @@ ALLOWED_SUBSTRINGS = (
 )
 ALLOWED_SUFFIXES = (
     "/reference/title.png",
+    # ゲームのリポ直下 (プレフィックスの階層が無い) でも同じ例外が効くように
+)
+ALLOWED_EXACT = (
+    "reference/title.png",
 )
 
 
@@ -60,7 +64,7 @@ def tracked_images(root):
 def allowed(path):
     if path.startswith(ALLOWED_PREFIXES):
         return True
-    if path.endswith(ALLOWED_SUFFIXES):
+    if path.endswith(ALLOWED_SUFFIXES) or path in ALLOWED_EXACT:
         return True
     return any(s in path for s in ALLOWED_SUBSTRINGS)
 

@@ -62,7 +62,7 @@ mod PreviewHitbox {
             design = design, scale = scale, background = ctx#clearColor,
             texturePath = Map.empty(),
             fontTtf = primary#path, fontAtlas = primary#atlas,
-            outPath = "" });
+            outPath = "", shapeAntialias = true, textAntialias = true });
         JObject(Map#{
             "ok"       => JBool(true),
             "png"      => JString(PngBase64.encode(image)),

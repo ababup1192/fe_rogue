@@ -1,4 +1,4 @@
-<!-- engine v0.24.0 / 生成: 2026-08-13 -->
+<!-- engine v0.24.0 / 生成: 2026-08-14 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine
@@ -200,6 +200,8 @@
   `pub def rgb8(r: Int32, g: Int32, b: Int32): Color`
 - "#rrggbb"（先頭の # は省略可）から色を作る。6 桁の 16 進でなければ None。
   `pub def hex(text: String): Option[Color]`
+- 色を "#rrggbb" の文字列にする（hex の逆）。0〜1 の外へ出た値は端で止め、
+  `pub def toHex(color: Color): String`
 - 2 色の間を t（0〜1）で混ぜる。lighten（白へ）/ darken（黒へ）が「片方が決め打ち」
   `pub def mix(a: Color, b: Color, t: Float64): Color`
 - 3 チャンネルを組にして取り出す。Color は record なので **そのままでは比べられない**
@@ -419,6 +421,8 @@
   `pub def clamp01(x: Float64): Float64`
 - lo 以上 hi 以下に収める。lo > hi のときは lo を返す（範囲が無いので下端に丸める）。
   `pub def clamp(lo: Float64, hi: Float64, x: Float64): Float64`
+- 整数版の clamp。lo > hi のときは lo を返す（clamp と同じ）。
+  `pub def clampInt(lo: Int32, hi: Int32, x: Int32): Int32`
 - 小数部だけを残す（1.25 → 0.25）。負でも 0 以上 1 未満になる（-0.25 → 0.75）ので、
   `pub def fract(x: Float64): Float64`
 - 0 以上 period 未満へ折り返す。画面の端から端へ回り込む物（流れる雲・スクロールする床・
@@ -622,11 +626,17 @@
 ## ShaderJson — `engine/src/ShaderJson.flix`
 - JSON をトップレベルの Spec へ読み取る。壊れていれば Err（パス付きの説明）。
   `pub def parse(json: Json): Result[JsonError, ShaderDoc.Spec]`
+- parse の「色を名前で書ける」版。palette は色票の名前 → 実色で、JSON 側は
+  `pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, ShaderDoc.Spec]`
 - `pub def toJson(spec: ShaderDoc.Spec): Json`
 - path を読んで Spec にする（読めない・崩れているときは Err）。フォールバックは呼び側が
   `pub def load(path: String): Result[JsonError, ShaderDoc.Spec] \ Fs.FileRead`
+- load の「色を名前で書ける」版（parseWith を通す）。theme から作った色票を渡す。
+  `pub def loadWith(palette: Map[String, Color], path: String): Result[JsonError, ShaderDoc.Spec] \ Fs.FileRead`
 - path を読み、読めない・語彙が違うときは fallback の面へ落とす（fail-open）。
   `pub def loadOr(fallback: ShaderDoc.Spec, path: String): ShaderDoc.Spec \ Fs.FileRead`
+- loadOr の「色を名前で書ける」版。
+  `pub def loadOrWith(palette: Map[String, Color], fallback: ShaderDoc.Spec, path: String): ShaderDoc.Spec \ Fs.FileRead`
 
 ## Splash — `engine/src/render/Splash.flix`
 - 起動画面 1 枚の見え方。

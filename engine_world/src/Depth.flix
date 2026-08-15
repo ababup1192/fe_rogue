@@ -6,6 +6,9 @@
 // ZRange の考え方: back..front の整数の幅を、world の top..bottom の高さに割り当てる。
 // 範囲の外（もっと奥の地面、もっと手前の HUD）とは重ならない数の範囲を選ぶこと。
 // 範囲の幅は「マスの数 + 1」くらいあれば足りる（同じ行に立つ物は同じ数になってよい）。
+//
+// 1 画面に帯が何本も要るとき（奥・遠景・地面・影・中景・近景・手前）は Bands で名前を付けて
+// 並べる。帯の底の数をゲーム側の定数として手で並べると、1 本足すたびに以降を全部書き直す。
 mod Depth {
 
     /// 足元の高さ（world の y）を重なり順に写す z の範囲。
@@ -39,4 +42,40 @@ mod Depth {
     /// place の 1 個版。置き場所の下端（=足元）を自分で渡す。
     pub def placeOne(range: ZRange, footY: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.zShifted(zAt(range, footY), placed#item) | placed }
+
+    // ════════════════════════════════════════════════════════
+    // 帯を何本も並べる（奥・遠景・地面・影・中景・近景・手前 …）
+    // ════════════════════════════════════════════════════════
+
+    /// 帯の名前 → その帯の底の zIndex。1 画面を「奥から手前へ」何段かに仕切ったときの地図。
+    /// world の範囲（docs/z-bands.md）の中だけで完結する数で、UI・HUD の範囲には触らない。
+    pub type alias Bands = Map[String, Int32]
+
+    /// 奥から手前へ並べた名前の列から帯の地図を作る。
+    /// base = 一番奥の帯の底、stride = 1 帯に取る zIndex の幅。
+    /// stride は「その帯の中で前後を作れる余地」で、Depth.zAt で並べ替える帯なら
+    /// 「行の数 + 1」以上、ベタ 1 枚の帯なら小さくてよい。
+    ///
+    /// 同じ名前が 2 度出たら後の（手前の）方が勝つ。
+    pub def bands(spec: { base = Int32, stride = Int32 }, names: List[String]): Bands =
+        let step = Int32.max(1, spec#stride);
+        names
+            |> List.mapWithIndex((i, name) -> (name, spec#base + i * step))
+            |> List.toMap
+
+    /// 帯 name の底の zIndex。知らない名前は一番奥（base 側 = 地図の最小値）へ落とす。
+    /// 綴り違いは「その絵だけ一番奥へ回る」形で目に見えるので、黙って手前に出るより気づける。
+    pub def bandZ(map: Bands, name: String): Int32 =
+        match Map.get(name, map) {
+            case Some(z) => z
+            case None    => Map.valuesOf(map) |> List.minimum |> Option.getWithDefault(0)
+        }
+
+    /// 帯 name の中で「足元が下にある物ほど手前」を作る ZRange。
+    /// 帯の幅（stride）を超えないので、隣の帯へはみ出して前後が崩れることがない。
+    pub def bandRange(map: Bands, name: String,
+                      spec: { stride = Int32, top = Float64, bottom = Float64 }): ZRange =
+        let back = bandZ(map, name);
+        { back = back, front = back + Int32.max(1, spec#stride) - 1,
+          top = spec#top, bottom = spec#bottom }
 }

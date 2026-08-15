@@ -66,6 +66,23 @@ def write_text_lf(path, text):
         fh.write(text)
 
 
+def trigger_sentence(desc):
+    """description から「いつ使うか」の 1 文だけを取り出す。
+
+    description は「何をする物か」の能書き + 「〜ときに使う」の引き金 + 補足、の 3 部構成が多い。
+    AGENTS.md の一覧に要るのは引き金だけ (能書きは SKILL.md を開けば読める)。
+    13 本ぶんの全文を載せると 7KB を超え、しかも Claude Code のハーネスが同じ一覧を
+    毎ターン注入するので二重になる。引き金が見つからないときは先頭の 1 文へ落とす。
+    """
+    parts = [s for s in desc.split("。") if s.strip()]
+    if not parts:
+        return desc
+    for s in parts:
+        if s.rstrip().endswith("使う"):
+            return s.strip() + "。"
+    return parts[0].strip() + "。"
+
+
 def skill_description(skill_md):
     """frontmatter の description: の 1 行目 (囲みの \" は外す) を返す。
     SKILL.md が無い skill は Flix 版と同じく空文字にする。"""
@@ -97,7 +114,7 @@ def build_agents_md(game, version):
     parts.append("## 配られているスキル一覧（sync-agents が自動生成。手で編集しない）")
     parts.append("")
     for d in sorted(p for p in SKILLS_DIR.iterdir() if p.is_dir()):
-        desc = skill_description(d / "SKILL.md")
+        desc = trigger_sentence(skill_description(d / "SKILL.md"))
         parts.append(f"- `.claude/skills/{d.name}/SKILL.md` — {desc}")
     local = game / "AGENTS.local.md"
     if local.is_file():

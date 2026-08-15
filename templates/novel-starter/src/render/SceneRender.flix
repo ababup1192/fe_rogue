@@ -13,9 +13,13 @@ mod SceneRender {
     def ttf(): String = "assets/PixelMplus10-Regular.ttf"
 
     def cfgOf(outDir: String, atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
+        // 面の縁はならさない — 額縁は 16×12 のドット絵を 4 倍で置くので、ならすと
+        // legend に無い中間色が縁に湧く。字は残す（本文 9px・ヒント 7px の TTF は
+        // 縁をならさないと読めない）。この 2 つが逆を向くのがこのテンプレの形。
         { design = design(), scale = 2, background = bg,
-          texturePath = Map.empty(), fontTtf = ttf(), fontAtlas = atlas,
-          outDir = outDir, frameW = 960, frameH = 600, gifDelayMs = 66, gifFps = 15 }
+          fontTtf = ttf(), fontAtlas = atlas,
+          outDir = outDir, frameW = 960, frameH = 600,
+          shapeAntialias = false | HeadlessRender.defaults() }
 
     def loadWorld(): World.World \ IO =
         run {

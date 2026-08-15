@@ -13,8 +13,13 @@ mod SceneRender {
 
     def cfgOf(outDir: String, atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
         { design = design(), scale = 2, background = bg,
-          texturePath = Map.empty(), fontTtf = ttf(), fontAtlas = atlas,
-          outDir = outDir, frameW = 480, frameH = 720, gifDelayMs = 66, gifFps = 15 }
+          fontTtf = ttf(), fontAtlas = atlas,
+          // 縁のつまみは既定のまま。ドット絵（車・椰子・コーン）は PxSpriteAtlas に
+          // 焼いてテクスチャとして貼るので、面の縁のつまみは元から届かない。
+          // 届くのは疑似遠近の路面（行ごとに小数位置が変わる台形）だけで、そこは
+          // 画素の格子に乗らない絵 — 切っても宣言した色数には収まらず（実測 6952 → 3146 色）、
+          // 縁石と路肩が粗い階段になるだけになる。
+          outDir = outDir, frameW = 480, frameH = 720 | HeadlessRender.defaults() }
 
     def loadWorld(): World.World \ IO =
         run { World.initial(Controls.loadDocs()) } with Fs.FileRead.runWithIO

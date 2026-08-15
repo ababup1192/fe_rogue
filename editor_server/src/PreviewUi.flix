@@ -458,7 +458,7 @@ mod PreviewUi {
                     design = design, scale = job#scale, background = ctx#clearColor,
                     texturePath = ProjectCtx.texturePaths(ctx),
                     fontTtf = primary#path, fontAtlas = primary#atlas,
-                    outPath = "" });
+                    outPath = "", shapeAntialias = true, textAntialias = true });
                 let pathWarnings = match (job#drawPath, job#hovered) {
                     case (DrawPath.FlexPath, Some(_)) =>
                         "hover is not applied — documents using poly rotation render via the static path" :: Nil

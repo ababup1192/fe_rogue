@@ -16,9 +16,12 @@ mod SceneRender {
     def ttf(): String = "assets/PixelMplus10-Regular.ttf"
 
     def cfgOf(outDir: String, atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
+        // 面の縁はならさない — ドット絵は 16×16・等倍で、タイルの目に合わせて置く画面。
+        // ならすとタイルの継ぎ目に色票に無い中間色が湧く。字は既定のまま残す。
         { design = design(), scale = 3, background = bg,
-          texturePath = Map.empty(), fontTtf = ttf(), fontAtlas = atlas,
-          outDir = outDir, frameW = 960, frameH = 720, gifDelayMs = 66, gifFps = 15 }
+          fontTtf = ttf(), fontAtlas = atlas,
+          outDir = outDir, frameW = 960, frameH = 720,
+          shapeAntialias = false | HeadlessRender.defaults() }
 
     def loadWorld(): World.World \ IO =
         run { World.initial(Controls.loadDocs()) } with Fs.FileRead.runWithIO

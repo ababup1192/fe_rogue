@@ -14,19 +14,53 @@ mod HeadlessRender {
 
     /// ゲームごとに 1 回宣言する生成設定。design を `scale` 倍に拡大して出力する。
     /// texturePath は Drawable#texture 名 → PNG パス。fontAtlas はメトリクス、fontTtf は実サイズ生成用 TTF。
+    ///
+    /// `shapeAntialias` は面の縁のなめらかさ。**画素の格子に乗せる絵（ドット絵）は false にする** —
+    /// true のままだと、宣言したパレットに無い中間色が面の縁に湧く。
+    /// 実測（同じ 1 枚を焼いた PNG の実色数 / 宣言した色数）:
+    /// 矩形だけの画面は 25 → 19 で収まるが、多角形を使うと 25 → 506、
+    /// 台形（疑似 3D）だと 13 → 2884 になる。**矩形以外で描いた瞬間にドット絵でなくなる**。
+    ///
+    /// `textAntialias` は文字の縁と送り幅で、理由が別（色の予算ではなく可読性）。
+    /// 7px の TTF は縁をならさないと字が潰れるので、ドット絵のキャラと小さい字が
+    /// 同じ画面に出るゲームは `shapeAntialias = false` / `textAntialias = true` にする。
     pub type alias RenderConfig = {
-        design      = Vec2.Vec2,
-        scale       = Int32,
-        background  = Color,
-        texturePath = Map[String, String],
-        fontTtf     = String,
-        fontAtlas   = FontAtlas,
-        outDir      = String,
-        frameW      = Int32,
-        frameH      = Int32,
-        gifDelayMs  = Int32,
-        gifFps      = Int32
+        design         = Vec2.Vec2,
+        scale          = Int32,
+        background     = Color,
+        texturePath    = Map[String, String],
+        fontTtf        = String,
+        fontAtlas      = FontAtlas,
+        outDir         = String,
+        frameW         = Int32,
+        frameH         = Int32,
+        gifDelayMs     = Int32,
+        gifFps         = Int32,
+        shapeAntialias = Bool,
+        textAntialias  = Bool
     }
+
+    /// 欠けた欄の落ち先。ゲームごとに違うのは design / outDir / フォント / 画風のつまみだけなので、
+    /// 1 行はこの上に**その画面が実際に決めた欄だけ**載せて組む:
+    ///
+    ///   `{ design = design(), outDir = outDir, fontTtf = ttf(), fontAtlas = atlas,
+    ///      frameW = 960, frameH = 600, shapeAntialias = false | HeadlessRender.defaults() }`
+    ///
+    /// こう書くと、載っている欄がそのままその画面の判断の一覧になる（同じ値を全ゲームへ
+    /// 書き写さないので、載っている欄は必ず誰かが決めた欄）。
+    pub def defaults(): RenderConfig =
+        { design = { x = 640.0, y = 360.0 }, scale = 2,
+          background = { r = 0.0, g = 0.0, b = 0.0 },
+          texturePath = Map.empty(), fontTtf = "", fontAtlas = blankAtlas(),
+          outDir = "gallery", frameW = 640, frameH = 360,
+          gifDelayMs = 66, gifFps = 15,
+          shapeAntialias = true, textAntialias = true }
+
+    /// 字の無いフォントアトラス（defaults の落ち先）。文字を描くなら呼ぶ側が
+    /// HeadlessFont.buildUiAtlas などで作った物を載せる。
+    def blankAtlas(): FontAtlas =
+        { textureName = "", fontSize = 0.0, textureSize = 0.0,
+          ascent = 0.0, descent = 0.0, lineGap = 0.0, glyphs = Map.empty() }
 
     /// 走行中に作った正方形の絵（ドット絵アトラスなど）を PNG に落とし、
     /// 「名前 → PNG パス」の表を返す。RenderConfig#texturePath にそのまま入れられる。
@@ -62,7 +96,8 @@ mod HeadlessRender {
         { drawables = drawables, polygons = polygons,
           design = cfg#design, scale = cfg#scale, background = cfg#background,
           texturePath = cfg#texturePath, fontTtf = cfg#fontTtf, fontAtlas = cfg#fontAtlas,
-          outPath = outPath }
+          outPath = outPath,
+          shapeAntialias = cfg#shapeAntialias, textAntialias = cfg#textAntialias }
 
     def pngPath(cfg: RenderConfig, name: String): String = "${cfg#outDir}/${name}.png"
     def gifPath(cfg: RenderConfig, name: String): String = "${cfg#outDir}/${name}.gif"
@@ -111,6 +146,9 @@ mod HeadlessRender {
     pub enum SilhouetteScope {
         case WorldBand
         case All
+        /// z の窓（lo 以上 hi 未満）だけ。Depth.Bands で仕切った帯を 1 本ずつ焼き出して、
+        /// 地面・主役・手前を別の絵として見比べるための絞り。
+        case ZWindow({ lo = Int32, hi = Int32 })
     }
 
     /// scope が z を対象に含むか。world の範囲の上端は UI 層の底（CanvasLayer.layerStride）。
@@ -118,6 +156,7 @@ mod HeadlessRender {
         match scope {
             case SilhouetteScope.WorldBand => z < CanvasLayer.layerStride()
             case SilhouetteScope.All       => true
+            case SilhouetteScope.ZWindow(w) => z >= w#lo and z < w#hi
         }
 
     /// 描画コマンド列を「対象は真っ黒・それ以外は落とす」に写す純関数。背景を白にして
@@ -130,7 +169,30 @@ mod HeadlessRender {
         (drawables |> List.filter(d -> silhouetteKeeps(scope, d#zIndex)) |> List.map(blackenDrawable),
          polygons  |> List.filter(p -> silhouetteKeeps(scope, p#zIndex)) |> List.map(blackenPolygon))
 
+    /// 宣言シェーダー面も含めた silhouette。面は「rect と mask の形をそのまま黒で塗る」に
+    /// 写す（中の場・グラデーション・alpha の抜きは全部捨てる）。
+    /// 地面や空をシェーダーの面で塗る絵では、面を外したシルエットは地平線も接地も写らず、
+    /// 構図の検査（bin/lint-composition.py）が何も見ずに「壊れなし」と答えてしまう。
+    pub def silhouetteWith(scope: SilhouetteScope,
+                           drawables: List[GameEngine.Drawable],
+                           polygons: List[GameEngine.PolygonRenderCmd],
+                           surfaces: List[SoftRaster.SurfaceCmd]):
+                           (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd],
+                            List[SoftRaster.SurfaceCmd]) =
+        let (blackDrawables, blackPolygons) = silhouette(scope, drawables, polygons);
+        (blackDrawables, blackPolygons,
+         surfaces |> List.filter(s -> silhouetteKeeps(scope, s#zIndex)) |> List.map(blackenSurface))
+
     def silhouetteInk(): Color = { r = 0.0, g = 0.0, b = 0.0 }
+
+    /// シェーダー面を「黒のベタ・alpha は全面 1」に写す。alpha を場のまま残すと、
+    /// 面のふちの薄さが灰色として出てシルエットの縁がぼやける（blackenDrawable と同じ理由）。
+    /// rect と mask は触らない — 形はそこが持っている。
+    def blackenSurface(s: SoftRaster.SurfaceCmd): SoftRaster.SurfaceCmd =
+        { spec = { name = s#spec#name, cycleRate = 0.0, bindings = Nil,
+                   out = ShaderDoc.Out.Fill({ shade = ShaderDoc.Shade.Solid(silhouetteInk()),
+                                              alpha = ShaderDoc.Field.Const(1.0) }) },
+          blend = DrawCmd.BlendMode.Normal | s }
 
     /// Drawable を真っ黒の不透明に写す。texture は消さない — 絵の抜き（形）はテクスチャの
     /// α が持っていて、色は黒 tint の乗算で消えるため。blend は Normal にする（Add は黒を
@@ -154,9 +216,18 @@ mod HeadlessRender {
     pub def silhouettePng(cfg: RenderConfig, scope: SilhouetteScope,
                           drawables: List[GameEngine.Drawable],
                           polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
-        let (blackDrawables, blackPolygons) = silhouette(scope, drawables, polygons);
-        renderPng({ background = { r = 1.0, g = 1.0, b = 1.0 } | cfg },
-                  blackDrawables, blackPolygons, name)
+        silhouettePngWith(cfg, scope, drawables, polygons, Nil, name)
+
+    /// silhouettePng の「宣言シェーダー面も写す」版。地面・空・水面を ShaderDoc の面で
+    /// 塗っているなら必ずこちらを使う — 面を渡さないと、シルエットにその面が出ない。
+    pub def silhouettePngWith(cfg: RenderConfig, scope: SilhouetteScope,
+                              drawables: List[GameEngine.Drawable],
+                              polygons: List[GameEngine.PolygonRenderCmd],
+                              surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
+        let (blackDrawables, blackPolygons, blackSurfaces) =
+            silhouetteWith(scope, drawables, polygons, surfaces);
+        renderPngWith({ background = { r = 1.0, g = 1.0, b = 1.0 } | cfg },
+                      blackDrawables, blackPolygons, blackSurfaces, name)
 
     // ════════════════════════════════════════════════════════
     // pass（レンダーターゲット）— 本編より先に別画像へ描き、名前で本編から貼る

@@ -252,7 +252,9 @@ mod PreviewItems {
             design = designVec, scale = scale, background = ctx#clearColor,
             texturePath = ProjectCtx.texturePaths(ctx),
             fontTtf = primary#path, fontAtlas = primary#atlas,
-            outPath = "" });
+            // ここは PxSprite の格子ではなく、円・線・任意寸法のスプライトを小数座標に置ける
+            // 汎用キャンバス（プラグインが送る宣言列）。縁を切ると円と斜めの線が階段になる。
+            outPath = "", shapeAntialias = true, textAntialias = true });
         JObject(Map#{
             "ok"       => JBool(true),
             "png"      => JString(PngBase64.encode(image)),

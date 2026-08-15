@@ -154,7 +154,7 @@ mod TestSoftRaster {
             fontTtf = "../templates/game-starter/assets/Xolonium-Regular.ttf",
             fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
                           ascent = 12.0, descent = 4.0, lineGap = 0.0, glyphs = Map.empty() },
-            outPath = "" });
+            outPath = "", shapeAntialias = true, textAntialias = true });
         let grayAt = y -> { let (_, r, _, _) = channels(img.getRGB(1i32, y)); r };
         Assert.assertEq(expected = 32 :: 96 :: 159 :: 223 :: Nil,
             grayAt(0i32) :: grayAt(1i32) :: grayAt(2i32) :: grayAt(3i32) :: Nil)

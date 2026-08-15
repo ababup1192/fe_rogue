@@ -72,6 +72,7 @@
 | チップ絵タイルを 1 draw call で敷く(事前に生成・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene（実例: `templates/platformer-starter/src/Main.flix` / `templates/rpg-starter/src/TownMap.flix`） |
 | チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material（repo 内に見本なし。[dual-grid.md](dual-grid.md)） |
 | rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc（repo 内に見本なし。[dual-grid.md](dual-grid.md)） |
+| 側面・斜めの自然地形（丘・砂丘・崖）を高さの関数で 1px ドット絵に敷く | PxTerrain（init で 1 回組んで持ち回す） |
 | 重なり判定・物理 | Collision / Physics2D |
 | 当たり判定を JSON で宣言する | HitDoc + Hit（実例: `templates/platformer-starter/src/World.flix`） |
 | キーが押された瞬間を取る | InputEdge |
@@ -123,6 +124,10 @@
 | 見下ろしで「足元が下にある物ほど手前」に並べる（人が木の裏に回る） | Depth（実例: `templates/rpg-starter/src/View.flix`） |
 | 一人称・疑似 3D（2.5D）で世界の点を画面へ落とす（透視除算・近クリップ・逆投影・距離霧） | Persp |
 | マス目の迷路から「カメラに見える壁の面」だけを集める（内部面・裏面は落とす） | WallFaces |
+| world 座標を画面へ落とす・戻す（横視点・見下ろし・斜め見下ろし・一人称の 4 通り） | ViewProjection（横視点と見下ろしは CameraRig へ委譲・一人称は Persp・見下ろしの前後は Depth） |
+| 「画面のここを 16px 直したい」を配置 Doc の数字へ翻訳する | ViewProjection.inverseOf → toWorldDelta（斜め見下ろしでは x だけ動かしても world は 2 軸とも動く） |
+| 斜め見下ろしで画面を覆うマスを列挙する（外接だけでは四隅と高いマスが落ちる） | ViewProjection.quarterOf → coveringCells（軸に平行な盤は Grid.cellsIn） |
+| 焼いた 1 枚に「この塊は何として描いたか」の目録を添える（材質の色の潰れ・主役の埋没を数で出す） | RenderManifest（検査を鳴らす条件は intent。実行中の矩形の記録は Annotate、UI の幾何破綻は RenderLint） |
 | 距離の遠→近の描画順（zIndex）を振る（疑似 3D の上塗り） | Painter（見下ろしの前後は Depth） |
 | 壁越しに見えるか（視線の遮蔽）を判定する（壁の向こうの松明を消す・敵から見えるか） | GridRay |
 | ゲームの中の時計と暦を回す（分・時・日・季節・年） | Calendar |
@@ -164,22 +169,25 @@
 - **RawDraw** — 単色ベタの図形プリミティブ（box / circle / star / ellipse / sector / ngon など）。材料であって、
   View に直接並べる完成品ではない。正当な用途は HUD 下地・デバッグ描画・fail-open の仮板。
 - **CameraRig** — world のどこを・どれだけズームして映すかを描画物の列に掛ける道具箱。
-- **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。
+- **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。1 画面に帯が何本も要るとき（奥・遠景・地面・影・中景・近景・手前）は Bands で名前を付けて並べる（bandZ = 帯の底の z・bandRange = その帯の中の足元順）。
 - **Persp** — 疑似 3D（2.5D）カメラの数学一式。世界の点を前後 fwd・左右 lat に分解し、透視除算で画面へ落とす。近クリップ・逆投影（depthAtY）・距離霧の式も持つ。焦点距離や霧の色の実体はゲーム側の意見（theme Doc など）。
 - **WallFaces** — マス目の迷路から「カメラに見える壁の境界面」だけを集める純幾何。壁どうしの内部面と、カメラに背を向けた裏面は落とす。solid の判定は関数で注入する（MapDoc の形を知らない）。
 - **Painter** — カメラからの距離で遠→近に並べ、zBase から zStride 刻みの zIndex を振る（画家の順）。疑似 3D は z バッファを持たないので、遠い物から上塗りして前後を作る。見下ろしの前後は Depth（別物）。
-- **Daylight** — 1 日の進み（0〜1）から「空気の色」と「太陽の位置」を決める。色は画面全体に乗算で薄く掛け、太陽からは影の向き・長さ（shadowAt）とドット絵に当てる光の向き（lightStepAt）を導く。暗さ（darkness）を読めば、明かりの点灯と空の色が食い違わない。
+- **ViewProjection** — world 座標を画面（design px）へ写す 4 通り（Side / TopDown / Quarter / FirstPerson）と、その逆算。**斜め見下ろし（Quarter）の world↔screen はここにしかない**（横視点・見下ろしは CameraRig の centerOn / toWorldPos へそのまま渡す・一人称は Persp・見下ろしの前後は Depth）。**「その写し方にその操作が有るか」は Option で返さず、持ち物を取り出す口（quarterOf / firstPersonOf / inverseOf）で 1 回だけ捌く** — 取り出した後の toWorld / toWorldDelta / coveringCells / yawOf / distanceOf / visibleFraction / wallQuad は Option を返さない。Option が残るのは toScreen（カメラの後ろに来た点）だけ。画面を覆うマスの列挙は coveringCells（外接だけでは落ちるマスがある。契約は Grid.cellsIn とそろえてあり、cols / rows で盤の外を落とし margin で余分を足す）。壁の台形は wallQuad（四隅 + 描画順の dist + 模様を世界に固定する t0 / t1）。タイルの大きさ・カメラ・焦点距離は既定値を持たない（ゲーム側の意見）。
+- **RenderManifest** — 焼いた 1 枚の「目録」を JSON にする。1 行（Claim）は kind / material / role（4 つで閉じた enum） / layer / world 座標 / src / intent を持ち、画面ぜんたいの下地の色は design の隣にトップレベルで出る。PNG からは読めない欠陥（材質どうしの色が同じに潰れた・主役が背景に溶けた・地形が Doc と違う高さで描かれた）が数で出る。**検査は作者が intent に書いたことについてだけ動き、書かなかった行は undeclared に id を並べる**（沈黙もさせず、止めもしない）。**aabb と colors は作者の申告であって焼いた画素の計測ではない** — build が unmeasured にその断りを必ず 1 本足す。書き出し（write）は失敗を Result で返す（PaletteExport と同じ形）。
+- **Daylight** — 1 日の進み（0〜1）から「空気の色」と「太陽の位置」を決める。色は画面全体に乗算で薄く掛け、太陽からは影の向き・長さ（shadowAt）とドット絵に当てる光の向き（lightStepAt）を導く。暗さ（darkness）を読めば、明かりの点灯と空の色が食い違わない。落ち影は見下ろしが groundShadow（円 1 つ）、横視点が sideShadow（横半径と縦半径を別に取り、足元の高さから左右へだけ伸びる）。
 - **TextDraw** — 文字列を「中心をここに置きたい」で配置する。
 - **RichText** — 一部だけ色や太さの違う文章をスパンの列として持ち、描画アイテムへ組む。
 - **Quad** — 回転した矩形や太さのある線の、四隅の座標を計算する。
 - **Bezier** — ベジエ曲線の平坦化と、曲線から作る描画部品。
 - **Fx** — たくさんの粒を、保存せず「今の時刻から計算」して並べる薄い仕組み。「撃つたびに出る」効果の器（burst / expire / drawAll）も持つ。
 - **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。語彙は mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ dir.mode: even（粒の番号で射出方向を等分 — 衝撃の輪・花火）/ turn（粒の傾き base・spread と回る速さ spin・spinSpread。単位は回転数で 1 周 = 1.0）/ wobble（位置の正弦揺らぎ amp・freq・vary — 蛍・湯気の有界運動）/ shape: streak + stretch（速度方向に伸びた筋 — 雨・火花・流星）/ カーブ pulse（1 と min の間の正弦明滅）/ parseWith（"@名前" の色キーをパレットで解決）。
-- **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近のストリップ 1 本（ストリップごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。
+- **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近のストリップ 1 本（ストリップごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。fieldExcept は「ここだけ空ける」帯（主役の立つ帯・道・水面）をセル単位で落とす（落ちるセル以外は field と 1 個も変わらない）。
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
-- **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
+- **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor+loop）を読む fail-open の Doc 層。loop はコマの回し方の宣言（forward / pingpong / once・省略時 forward）で、frameIndexAt が通し番号をコマ番号へ写す。宣言が無いと往復のコマ列と本物の破綻を数値で見分けられない（bin/lint-anim.py）。
 - **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。drawQuad の scale は整数のみ（box 列とのバイト一致保証のため）。実数倍率のクアッドは templates/race-starter の ViewCar.pxQuadScaled が実戦例（遠景のヤシ・ニトロ残像。2 本目の使い手が現れたら昇格を相談）。
 - **PxShade** — 文字格子のドット絵に「塗りの仕上げ」を 1 度だけ掛ける純粋な filter（ふち光・接地影・ディザ・地肌の粒）。絵は平らに塗り、光の当て方は後から重みで指定する。掛けるのは読み込み直後の 1 回だけなので走行中の負荷は増えない。
+- **PaletteExport** — 導いた意味色キーの実色を色票 Doc（*.palette.json = version / note / colors）として書き出す。Studio のドット絵エディタが legend の名前を解けるようにするためだけの物で、ゲームの絵はここを読まない。fromKeys（意味色キーの列 × resolver → 表）と build（純粋・文字列）と write（Fs.FileWrite）。
 - **PxSpriteAtlas** — PxSpriteDoc×resolver を 1 枚のアトラス画素（ARGB+コマ→矩形の目次）に生成する純関数。GL（RenderTexture.loadTextureFromPixels）と PNG（SoftRaster.writeRadialPng）が同じ Baked を読む。
 - **Viewport** — 画面の矩形の外へ出た物を見つけて返す。
 - **Transition** — 進行度 t から画面を覆う/晴らす描画物を作る（フェード・ワイプ）。

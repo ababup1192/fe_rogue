@@ -13,6 +13,13 @@ mod TestNum {
         Assert.assertEq(expected = (2.0, 5.0), (Num.clamp(2.0, 8.0, -1.0), Num.clamp(5.0, 1.0, 3.0)))
 
     @Test
+    def testClampIntPinsBothEndsAndEmptyRange(): Unit \ Assert =
+        // Float64 版と同じ約束（lo > hi は下端）。Flix 標準の Int32.clamp は pub でなく呼べない。
+        Assert.assertEq(expected = (2, 5, 8, 5),
+            (Num.clampInt(2, 8, -1), Num.clampInt(2, 8, 5), Num.clampInt(2, 8, 99),
+             Num.clampInt(5, 1, 3)))
+
+    @Test
     def testFractIsAlwaysInsideZeroToOne(): Unit \ Assert =
         // 負でも 0 以上 1 未満。歩行の位相が逆向きでも途切れないための性質。
         Assert.assertEq(expected = (0.25, 0.75, 0.0), (Num.fract(1.25), Num.fract(-0.25), Num.fract(3.0)))

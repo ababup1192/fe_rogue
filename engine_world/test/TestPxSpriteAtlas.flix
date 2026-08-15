@@ -48,7 +48,7 @@ mod TestPxSpriteAtlas {
         { version = 1, note = None,
           legend = Map#{'a' => "body"},
           sprites = Map#{"wide" =>
-              { anchor = { x = 0.0, y = 0.0 },
+              { anchor = { x = 0.0, y = 0.0 }, loop = PxSpriteDoc.Loop.Forward,
                 frames = Map#{"f0" => String.repeat(3000, "a") :: Nil} }} }
 
     // ── bake ──

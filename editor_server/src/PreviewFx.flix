@@ -135,7 +135,7 @@ mod PreviewFx {
                             design = design, scale = req#scale, background = ctx#clearColor,
                             texturePath = Map.empty(),
                             fontTtf = primary#path, fontAtlas = primary#atlas,
-                            outPath = "" });
+                            outPath = "", shapeAntialias = true, textAntialias = true });
                         (200, JObject(Map#{
                             "ok"       => JBool(true),
                             "png"      => JString(PngBase64.encode(image)),

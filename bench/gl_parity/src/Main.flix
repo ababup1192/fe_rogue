@@ -73,12 +73,14 @@ mod ParityMain {
                    width = Scenes.designW(), height = Scenes.designH() })
         else None
 
+    /// 縁のつまみ（shapeAntialias / textAntialias）は既定のまま。ここは GL と SoftRaster の
+    /// 差だけを見る場なので、片方だけ切ると差がどちら由来か読めなくなる。
     def cfgOf(atlas: FontAtlas): HeadlessRender.RenderConfig =
         { design = { x = Scenes.designW(), y = Scenes.designH() }, scale = 1,
           background = black(),
           texturePath = Map#{"atlas" => "assets/atlas.png"},
           fontTtf = ttf(), fontAtlas = atlas, outDir = "debug/soft",
-          frameW = Scenes.designWi(), frameH = Scenes.designHi(), gifDelayMs = 66, gifFps = 15 }
+          frameW = Scenes.designWi(), frameH = Scenes.designHi() | HeadlessRender.defaults() }
 
     def softShoot(cfg: HeadlessRender.RenderConfig, sc: Scenes.Scene): Unit \ IO =
         match sc#via {

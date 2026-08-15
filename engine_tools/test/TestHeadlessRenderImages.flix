@@ -35,7 +35,7 @@ mod TestHeadlessRenderImages {
               background = { r = 0.0, g = 0.0, b = 0.0 },
               texturePath = Map.empty(), fontTtf = ttf, fontAtlas = atlas,
               outDir = "build/test/rendergifwith", frameW = 16, frameH = 12,
-              gifDelayMs = 66, gifFps = 15 };
+              gifDelayMs = 66, gifFps = 15, shapeAntialias = true, textAntialias = true };
         let spec: ShaderDoc.Spec = { name = "grad", cycleRate = 0.0, bindings = Nil,
             out = ShaderDoc.Out.Fill({
                 shade = ShaderDoc.Shade.Solid({ r = 1.0, g = 0.5, b = 0.2 }),

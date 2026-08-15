@@ -43,7 +43,7 @@ mod TestPxSpriteRaster {
         SoftRaster.renderToImage({
             drawables = drawables, polygons = polygons,
             design = design(), scale = 2, background = bg(),
-            texturePath = texPath, fontTtf = ttf(), fontAtlas = atlas, outPath = "" })
+            texturePath = texPath, fontTtf = ttf(), fontAtlas = atlas, outPath = "", shapeAntialias = true, textAntialias = true })
 
     /// 2 枚の画像の (不一致画素数, 背景以外の画素数[1 枚目]) を数える。
     def diffCount(a: BufferedImage, b: BufferedImage): (Int32, Int32) \ IO =

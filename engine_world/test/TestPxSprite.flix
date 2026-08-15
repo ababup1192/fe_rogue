@@ -45,7 +45,7 @@ mod TestPxSprite {
     def testFramesFollowRows(): Unit \ Assert =
         let d = doc();
         let sp = Map.get("guy", d#sprites) |> Option.getWithDefault(
-            { anchor = { x = 0.0, y = 0.0 }, frames = Map.empty() });
+            { anchor = { x = 0.0, y = 0.0 }, loop = PxSpriteDoc.Loop.Forward, frames = Map.empty() });
         Assert.assertEq(expected = (1, Some(".aa." :: "aaaa" :: "b?b." :: Nil), 1),
             (Map.size(d#sprites), Map.get("f0", sp#frames), Map.size(sp#frames)))
 

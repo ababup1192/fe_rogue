@@ -14,6 +14,11 @@ mod Num {
     pub def clamp(lo: Float64, hi: Float64, x: Float64): Float64 =
         Float64.max(lo, Float64.min(hi, x))
 
+    /// 整数版の clamp。lo > hi のときは lo を返す（clamp と同じ）。
+    /// Flix 標準の `Int32.clamp` は pub でなく呼べないので、こちらを使う。
+    pub def clampInt(lo: Int32, hi: Int32, x: Int32): Int32 =
+        Int32.max(lo, Int32.min(hi, x))
+
     /// 小数部だけを残す（1.25 → 0.25）。負でも 0 以上 1 未満になる（-0.25 → 0.75）ので、
     /// 歩行の位相・明滅・繰り返す模様がどちら向きに進んでも途切れない。
     pub def fract(x: Float64): Float64 =
