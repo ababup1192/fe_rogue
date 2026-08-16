@@ -39,7 +39,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check render render-all reference-check reference-update atelier-preview palette api hooks check-docs-sync
+.PHONY: status run debug test build check render render-all reference-check reference-update atelier-preview palette loc api hooks check-docs-sync
 
 run:
 	$(FLIX) run
@@ -78,6 +78,10 @@ check:
 		"$(PYTHON)" "$$ee" --status $$code --log .test-logs/check.log < .test-logs/check.log; \
 	fi; \
 	exit $$code
+
+# ロジックの大きさ。「全部読める大きさ」（上限 3,000 行）を保つための物差し。
+loc:
+	@find src test -name '*.flix' -print0 | xargs -0 wc -l | tail -1
 
 # エンジン API の型・引数を 1 行で引く ($(ENGINE)/docs/api-digest の grep)。
 # 例: make api Q=gradPolygon 。ソースの unzip や丸読みの前にまずこれ。

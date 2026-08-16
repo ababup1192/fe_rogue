@@ -57,6 +57,10 @@ BUNDLE_REQUIRED = [
     "bin/precommit.py",
     "bin/githooks/pre-commit",
     "bin/sync-agents.py",
+    # 3 面図から歩きを彫り出す道具。carve-sprite スキルは全ゲームへ配られ、
+    # その手順が $(ENGINE)/bin/carve/carve.py を直に叩く。スキルだけ届いて
+    # 道具が届かないと、実行して初めて「ファイルが無い」で気づく。
+    "bin/carve/carve.py",
     "docs/api-digest.md",
     "docs/api-digest/engine.md",
     "docs/api-digest/engine_world.md",

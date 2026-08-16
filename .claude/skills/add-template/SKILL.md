@@ -47,6 +47,11 @@ Studio のジャンルカードのサムネイルは `GET /genesis/title` がこ
 他のリファレンス画像 PNG は管理外（`make reference-check` は一覧と突き合わせて退行を見る）。
 `SHA256SUMS.txt` を作り忘れると、clone した人の `make reference-check` が「リファレンス画像がまだ作られていません」で止まる。
 
+**トークン式（game-starter）だけは `SHA256SUMS.txt` を持てない。** `__W__` を埋める前は
+型検査が通らず描き出せないので、退行検知そのものが成り立たない（`TEMPLATE_DIRS` から
+除外されているのも同じ理由）。`title.png` は Studio のサムネイル用に手で置く。
+この 1 本を「期待値の更新し忘れ」として直そうとしない。
+
 ### 3. `make lint-palette` を通す
 
 ドット絵（`*.sprite.json`）の `legend` に書いた意味色キーは、`*.theme.json` のトップレベル・

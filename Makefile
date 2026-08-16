@@ -809,7 +809,7 @@ new-game: engine-full-fresh
 	echo "  次にやること:"; \
 	echo "    cd $(GAME) && make run              … ウィンドウを開いて遊ぶ（矢印キーで移動）"; \
 	echo "    make reference-update                 … いまの絵をリファレンス画像(基準)にする"; \
-	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
+	echo "    Studio で $(GAME) を開く            … 色や数値をフォームから調整する"; \
 	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"
 
 # ── ゲームの engine バージョン追随 ────────────────────────────────
