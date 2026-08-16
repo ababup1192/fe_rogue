@@ -92,6 +92,10 @@
 - `make reference-update`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
   `make gallery-sounds` の sounds.png / music.png）で**目と耳で確かめて**批評する。
+- 口の一覧は `make help`。共通の口の実体はエンジンの `mk/game.mk` で、ゲームの Makefile は
+  それを include している。**共通ターゲットをゲームの Makefile へ写さない** — 写すと
+  エンジンを直しても届かず（`upgrade-game` は Makefile を運ばない）、写経元からずれていく。
+  ゲーム側に置くのは `SHOTS` / `PALETTE` / `RENDER_NOTE` とそのゲーム固有の口だけ。
 
 ## テスト方針（要約）
 

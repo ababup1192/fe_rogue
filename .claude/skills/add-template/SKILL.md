@@ -29,6 +29,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 ```
 - [ ] 1. templates/<genre>-starter/ を作った（rpg-starter を写経元に。具体値式ならリファレンス画像も生成する）
+- [ ] 1b. Makefile は共有 mk を include するだけにした（共通ターゲットを書かない）
 - [ ] 2. reference/title.png を用意した
 - [ ] 3. make lint-palette が通った
 - [ ] 4. Doc の外形規約を守った（全 Doc に version・schema は sections 方言）
@@ -36,6 +37,17 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 - [ ] 6. Studio に登録した（Genesis.flix の families の starter）
 - [ ] 7. make swap-jar して Studio を Cmd+Q → 開き直した
 ```
+
+### 1b. Makefile に共通ターゲットを書かない
+
+`run` / `test` / `check` / `render` / `status` などの共通の口は engine の `mk/game.mk` が持つ。
+テンプレの Makefile はそれを include し、`SHOTS`・`PALETTE`・`PALETTE_DEPS`・`RENDER_NOTE` と
+そのテンプレ固有のターゲットだけを持つ（写経元は `templates/rpg-starter/Makefile`。
+`-include local.mk` → `ENGINE ?= ../..` → ENGINE 不在の `$(error)` ガード → 空白を退避した
+`include` の順で、この 4 つはそのまま写す）。
+
+写すと engine を直しても既に産まれたゲームへ届かない（`upgrade-game` が運ぶのは flix.toml の
+バージョンと `lib/` と agents-pack だけで、Makefile は取り残される）。
 
 ### 2. `reference/title.png` を必ず用意する
 
