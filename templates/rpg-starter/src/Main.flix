@@ -22,19 +22,10 @@ def main(): Unit \ IO =
                 update = (f, w) ->
                     checked_ecast(Controls.step(f, w))
                         |> (w1 -> checked_ecast(Controls.interact(f, w1)))
-                        |> (w2 -> ActiveDocs.step(World.activeDocs(w2), w2)),
+                        |> (w2 -> ActiveDocs.step(Controls.activeDocs(w2), w2)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
-                reloads =
-                    (MapDoc.path(), Controls.reloadMap) ::
-                    (KindDoc.path(), Controls.reloadKind) ::
-                    (ThemeDoc.path(), Controls.reloadTheme) ::
-                    (BattleDoc.path(), Controls.reloadBattle) ::
-                    (World.spritePath(), Controls.reloadSprites) ::
-                    (World.townSpritePath(), Controls.reloadTownSprites) ::
-                    (TownMapDoc.path(), Controls.reloadTownMap) ::
-                    (Controls.waterShaderPath(), Controls.reloadWaterShader) ::
-                    (Controls.smokeFxPath(), Controls.reloadSmokeFx) :: Nil
+                reloads = Controls.reloads()
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 // 街タイル: World が焼いたアトラスを GPU へ上げ（同じ key の間は何も起きない）、

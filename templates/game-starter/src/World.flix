@@ -86,19 +86,6 @@ mod World {
           atlas = baked, atlasKey = key, shader = shader,
           x = width() / 2.0, y = height() / 2.0, t = 0.0, activeDocsWritten = "" }
 
-    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
-    /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
-    /// この骨組みは場面が 1 つで、5 つの Doc を常に表示に使っている —
-    /// 場面（表紙・クリア等）が増えたら、ここで使っている物だけに絞ること
-    /// （全部を常時 active にするとバッジの意味が死ぬ）。
-    pub def activeDocs(_w: World): List[(String, List[String])] =
-        ("sample", SampleDoc.path() :: Nil)
-            :: ("keys", KeysDoc.path() :: Nil)
-            :: ("theme", ThemeDoc.path() :: Nil)
-            :: ("sprite", spritePath() :: Nil)
-            :: ("shader", shaderPath() :: Nil)
-            :: Nil
-
     /// 大きさ box の物が画面から出ない位置へ丸める（端で止まるのはルール）。
     pub def clampInside(box: Vec2.Vec2, p: Vec2.Vec2): Vec2.Vec2 =
         { x = Num.clamp(box#x / 2.0, width() - box#x / 2.0, p#x),

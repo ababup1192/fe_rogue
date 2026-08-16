@@ -24,13 +24,10 @@ def main(): Unit \ IO =
                 // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。
                 update = (f, w) ->
                     checked_ecast(Controls.step(f, w))
-                        |> (w1 -> ActiveDocs.step(World.activeDocs(w1), w1)),
+                        |> (w1 -> ActiveDocs.step(Controls.activeDocs(w1), w1)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
-                reloads =
-                    (RulesDoc.path(), Controls.reloadRules) ::
-                    (ThemeDoc.path(), Controls.reloadTheme) ::
-                    (World.shaderPath(), Controls.reloadShader) :: Nil
+                reloads = Controls.reloads()
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 // HUD（NEXT・スコア・幕）は withHudView — world 側の z に隠されない。

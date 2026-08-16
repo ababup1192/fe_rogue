@@ -1,4 +1,4 @@
-<!-- engine v0.25.0 / 生成: 2026-08-15 -->
+<!-- engine v0.25.0 / 生成: 2026-08-16 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -484,14 +484,26 @@
   `pub def describe(e: JsonError): String`
 
 ## DocTable — `engine_world/src/DocTable.flix`
+- この行がどの読み直しに載るか。Both が既定。
+  `pub enum ReloadOn with Eq, ToString { case Both case Watch case ReloadAll }`
 - テーブルの 1 行。docId は project.json の editor 宣言 id(ActiveDocs のキー)。
-  `pub type alias Entry[w] = { docId = Option[String], path = String, reload = w -> w \ {Fs.FileRead} }`
-- App.game の reloads(保存即反映の watchFile)へそのまま渡す形。
+  `pub type alias Entry[w] = { docId = Option[String], path = String, reload = w -> w \ {Fs.FileRead}, reloadOn = ReloadOn, activeWhen = w -> Bool }`
+- 既定の 1 行 — 保存即反映にも F1 にも載り、常に表示中を名乗る。
+  `pub def row(docId: String, path: String, reload: w -> w \ {Fs.FileRead}): Entry[w]`
+- 名乗らない 1 行 — 監視も F1 もするが Studio の「表示中」には出さない。
+  `pub def unnamedRow(path: String, reload: w -> w \ {Fs.FileRead}): Entry[w]`
+- 保存を検知しても読み直さない。読み直すと今の表示が壊れる Doc に使う
+  `pub def withoutWatch(e: Entry[w]): Entry[w]`
+- F1 の一括では読み直さない。別の行の読み直しが巻き添えで焼き直す Doc に使う
+  `pub def withoutReloadAll(e: Entry[w]): Entry[w]`
+- 表示中を名乗る条件。場面によって画面から消える Doc に使う
+  `pub def withActiveWhen(pred: w -> Bool, e: Entry[w]): Entry[w]`
+- App.game の reloads(保存即反映の watchFile)へ渡す形。
   `pub def reloads(rows: List[Entry[w]]): List[(String, w -> w \ {Fs.FileRead})]`
-- テーブルの並び順に全 Doc を読み直す(App.reloadOn の一括リロードへ渡す形)。
+- テーブルの並び順に Doc を読み直す(App.reloadOn の一括リロードへ渡す形)。
   `pub def reloadAll(rows: List[Entry[w]], world: w): w \ Fs.FileRead`
-- ActiveDocs.step へ渡す形(id → パスの列)。同じ id の行は、行が離れていても
-  `pub def activeDocs(rows: List[Entry[w]]): List[(String, List[String])]`
+- ActiveDocs.step へ渡す形(id → パスの列)。いま world で activeWhen を満たす行のうち
+  `pub def activeDocs(rows: List[Entry[w]], world: w): List[(String, List[String])]`
 
 ## DualGrid — `engine_world/src/DualGrid.flix`
 - 角のまわり4セルの埋まり方。tl=左上 tr=右上 bl=左下 br=右下。

@@ -282,25 +282,6 @@ mod World {
         if (total <= 0.0) 0.0
         else t - total * Float64.floor(t / total)
 
-    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
-    /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
-    /// 表紙とクリアの幕でも盤は霧の下に見えているので map / theme / sprite は常に表示中。
-    /// 手触り（kind: 歩く速さ・文字送り）は里を歩いている間だけ —
-    /// 全部を常時 active にしない（バッジの意味が死ぬ）。
-    pub def activeDocs(w: World): List[(String, List[String])] =
-        let base = ("map", MapDoc.path() :: Nil)
-            :: ("theme", ThemeDoc.path() :: Nil)
-            :: ("sprite", spritePath() :: Nil)
-            :: Nil;
-        match w#phase {
-            case Phase.Play   => List.append(base, ("kind", KindDoc.path() :: Nil) :: Nil)
-            // 戦いの最中は盤が隠れる。出ているのは魔物の絵と戦いの数・文言だけ。
-            case Phase.Battle => ("sprite", spritePath() :: Nil)
-                                     :: ("theme", ThemeDoc.path() :: Nil)
-                                     :: ("battle", BattleDoc.path() :: Nil) :: Nil
-            case _            => base
-        }
-
     // ── 歩ける・ぶつかるの規則 ──
 
     /// cell へ歩けるか。盤の中で、石垣でなく、住人が立っておらず、閉じた扉でもないこと。

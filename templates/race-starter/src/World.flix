@@ -711,17 +711,5 @@ mod World {
     /// 生成した WAV に入っている（make render-all で生成し直して起動し直すと届く）。
     pub def withSfxTune(sfxtune: SfxTuneDoc.Doc, w: World): World = { sfxtune = sfxtune | w }
 
-    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。Studio の「表示中」バッジの材料。
-    pub def activeDocs(_w: World): List[(String, List[String])] =
-        ("rules", RulesDoc.path() :: Nil)
-            :: ("rivals", RivalsDoc.path() :: Nil)
-            :: ("theme", ThemeDoc.path() :: Nil)
-            :: ("course", CourseDoc.path() :: Nil)
-            :: ("props", PropsDoc.path() :: Nil)
-            :: ("palette", PaletteDoc.path() :: Nil)
-            :: ("sprite", spritePath() :: Nil)
-            :: ("sfxtune", SfxTuneDoc.path() :: Nil)
-            :: Nil
-
     pub def spritePath(): String = "assets/race.sprite.json"
 }

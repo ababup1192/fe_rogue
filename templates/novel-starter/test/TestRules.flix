@@ -122,11 +122,20 @@ mod TestRules {
     def testActiveDocsFollowPhase(): Unit \ Assert =
         // 表紙ではダイアログ（ui）と手触り（kind）を名乗らない — 本文に入ってから加わる。
         // id は project.json の editor 宣言と対（Studio が突き合わせに使う）。
+        // 並びは Controls.docTable() の行の順。
         Assert.assertEq(
             expected = ("story" :: "theme" :: "sprite" :: Nil,
-                        "story" :: "theme" :: "sprite" :: "ui" :: "kind" :: Nil),
-            (World.activeDocs(w0()) |> List.map(fst),
-             World.activeDocs(World.advance(w0())) |> List.map(fst)))
+                        "story" :: "kind" :: "theme" :: "sprite" :: "ui" :: Nil),
+            (Controls.activeDocs(w0()) |> List.map(fst),
+             Controls.activeDocs(World.advance(w0())) |> List.map(fst)))
+
+    /// ui は 1 つの id に 2 本のパスが束なる（ダイアログと選択肢）。
+    @Test
+    def testActiveDocsGroupsBothUiPaths(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Some(NovelKit.uiPaths()),
+            Controls.activeDocs(World.advance(w0()))
+                |> List.filter(e -> fst(e) == "ui") |> List.map(snd) |> List.head)
 
     // ── fixture の分岐から期待値を引く小物 ──
 

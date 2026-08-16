@@ -111,8 +111,36 @@ mod Controls {
     pub def reloadSfxTune(w: World.World): World.World \ Fs.FileRead =
         World.withSfxTune(SfxTuneDoc.load(SfxTuneDoc.path()), w)
 
-    /// F1: Doc を全部読み直す（fx は reloadTheme が一緒に読み直す）。
+    /// Doc の一覧表(DocTable)。watchFile(保存即反映)・F1 の一括リロード・Studio へ名乗る
+    /// 「表示中」の 3 つは、どれもこの 1 枚から導出する — 足し忘れで
+    /// 「保存しても効かない」「印が付かない」を作らないため。
+    /// docId は project.json の editor.resources[] の id と同じ物。
+    ///
+    /// fx 5 本はどれを保存しても reloadFx（5 本まとめ読み）— 1 本ずつ差し替えるほど
+    /// 数が多くないので、配管を 1 種類に保つ。F1 では reloadTheme が同じ物を
+    /// 焼き直すので withoutReloadAll（一括で 5 回読み直さない）。
+    pub def docTable(): List[DocTable.Entry[World.World]] =
+        DocTable.row("rules",   RulesDoc.path(),     reloadRules)
+            :: DocTable.row("rivals",  RivalsDoc.path(),    reloadRivals)
+            :: DocTable.row("theme",   ThemeDoc.path(),     reloadTheme)
+            :: DocTable.row("course",  CourseDoc.path(),    reloadCourse)
+            :: DocTable.row("props",   PropsDoc.path(),     reloadProps)
+            :: DocTable.row("palette", PaletteDoc.path(),   reloadPalette)
+            :: DocTable.row("sprite",  World.spritePath(),  reloadSprites)
+            :: DocTable.row("sfxtune", SfxTuneDoc.path(),   reloadSfxTune)
+            :: List.map(p -> DocTable.unnamedRow(p, reloadFx) |> DocTable.withoutReloadAll,
+                   fxSmokePath() :: fxSparkPath() :: fxFlamePath()
+                       :: fxShockPath() :: fxCrashPath() :: Nil)
+
+    /// App.game の reloads(保存即反映の watchFile)へ渡す形。
+    pub def reloads(): List[(String, World.World -> World.World \ Fs.FileRead)] =
+        DocTable.reloads(docTable())
+
+    /// F1: 一覧表の順に Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadRules |> reloadRivals |> reloadTheme
-          |> reloadCourse |> reloadProps |> reloadPalette |> reloadSprites |> reloadSfxTune
+        DocTable.reloadAll(docTable(), w)
+
+    /// いま画面に出ている Doc（Studio の「表示中」バッジの材料）。
+    pub def activeDocs(w: World.World): List[(String, List[String])] =
+        DocTable.activeDocs(docTable(), w)
 }

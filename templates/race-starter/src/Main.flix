@@ -25,25 +25,10 @@ def main(): Unit \ IO =
                 // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。
                 update = (f, w) ->
                     checked_ecast(Controls.step(f, w))
-                        |> (w1 -> ActiveDocs.step(World.activeDocs(w1), w1)),
+                        |> (w1 -> ActiveDocs.step(Controls.activeDocs(w1), w1)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
-                // fx 5 本はどれを保存しても reloadFx（5 本まとめ読み）— 1 本ずつ差し替える
-                // ほど数が多くないので、配管を 1 種類に保つ。
-                reloads =
-                    (RulesDoc.path(), Controls.reloadRules) ::
-                    (RivalsDoc.path(), Controls.reloadRivals) ::
-                    (ThemeDoc.path(), Controls.reloadTheme) ::
-                    (CourseDoc.path(), Controls.reloadCourse) ::
-                    (PropsDoc.path(), Controls.reloadProps) ::
-                    (PaletteDoc.path(), Controls.reloadPalette) ::
-                    (World.spritePath(), Controls.reloadSprites) ::
-                    (SfxTuneDoc.path(), Controls.reloadSfxTune) ::
-                    (Controls.fxSmokePath(), Controls.reloadFx) ::
-                    (Controls.fxSparkPath(), Controls.reloadFx) ::
-                    (Controls.fxFlamePath(), Controls.reloadFx) ::
-                    (Controls.fxShockPath(), Controls.reloadFx) ::
-                    (Controls.fxCrashPath(), Controls.reloadFx) :: Nil
+                reloads = Controls.reloads()
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 // HUD（チップ・幕）は withHudView — world 側の z に隠されない。

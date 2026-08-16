@@ -83,7 +83,44 @@ mod Controls {
     pub def reloadSprites(w: World.World): World.World \ Fs.FileRead =
         World.withSprites(PxSpriteDoc.load(World.spritePath()), w)
 
-    /// F1: Doc も ui.json も全部読み直す。
+    /// Doc の一覧表(DocTable)。watchFile(保存即反映)・F1 の一括リロード・Studio へ名乗る
+    /// 「表示中」の 3 つは、どれもこの 1 枚から導出する — 足し忘れで
+    /// 「保存しても効かない」「印が付かない」を作らないため。
+    /// docId は project.json の editor.resources[] の id と同じ物。
+    ///
+    /// ui.json は F1 だけ（withoutWatch）。保存を検知して読み直すと
+    /// UiSpec.reloadAllWithReport がホバー・カーソル・文字送りを捨てるので、
+    /// 読んでいる最中に表示が飛ぶ。行はパス 1 本につき 1 行で、F1 では
+    /// レジストリの読み直しが行の数だけ走る（押した時だけなので数え直しはしない）。
+    ///
+    /// 表紙も部屋と額縁と台本の題を描くので story / theme / sprite は出しっぱなし。
+    /// ダイアログ（ui）と手触り（kind: 文字送り・暗さ）は本文に入ってから —
+    /// 全部を常時 active にしない（バッジの意味が死ぬ）。
+    pub def docTable(): List[DocTable.Entry[World.World]] =
+        DocTable.row("story", StoryDoc.path(), reloadStory)
+            :: (DocTable.row("kind", KindDoc.path(), reloadKind)
+                |> DocTable.withActiveWhen(inStory))
+            :: DocTable.row("theme", ThemeDoc.path(), reloadTheme)
+            // accentLight の宣言元。theme の行が F1 で同じ物を読むので withoutReloadAll。
+            :: (DocTable.unnamedRow(ThemeDoc.palettePath(), reloadTheme)
+                |> DocTable.withoutReloadAll)
+            :: DocTable.row("sprite", World.spritePath(), reloadSprites)
+            :: List.map(p -> DocTable.row("ui", p, World.reloadUi)
+                                 |> DocTable.withoutWatch
+                                 |> DocTable.withActiveWhen(inStory),
+                   NovelKit.uiPaths())
+
+    def inStory(w: World.World): Bool = w#phase == World.Phase.Story
+
+    /// App.game の reloads(保存即反映の watchFile)へ渡す形。
+    pub def reloads(): List[(String, World.World -> World.World \ Fs.FileRead)] =
+        DocTable.reloads(docTable())
+
+    /// F1: 一覧表の順に Doc も ui.json も全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadStory |> reloadKind |> reloadTheme |> reloadSprites |> World.reloadUi
+        DocTable.reloadAll(docTable(), w)
+
+    /// いま画面に出ている Doc（Studio の「表示中」バッジの材料）。
+    pub def activeDocs(w: World.World): List[(String, List[String])] =
+        DocTable.activeDocs(docTable(), w)
 }

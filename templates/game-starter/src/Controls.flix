@@ -41,6 +41,30 @@ mod Controls {
     pub def reloadShader(w: World.World): World.World \ Fs.FileRead =
         World.withShader(loadShader(), w)
 
+    /// Doc の一覧表(DocTable)。watchFile(保存即反映)・F1 の一括リロード・Studio へ名乗る
+    /// 「表示中」の 3 つは、どれもこの 1 枚から導出する — 足し忘れで
+    /// 「保存しても効かない」「印が付かない」を作らないため。
+    /// docId は project.json の editor.resources[] の id と同じ物。
+    /// この骨組みは場面が 1 つで、5 行とも常に絵に効いている。場面（表紙・クリア等）が
+    /// 増えたら、出ていない行に activeWhen を被せること
+    /// （全部を常時 active にするとバッジの意味が死ぬ）。
+    pub def docTable(): List[DocTable.Entry[World.World]] =
+        DocTable.row("sample", SampleDoc.path(),     reloadDoc)
+            :: DocTable.row("keys",   KeysDoc.path(),       reloadKeys)
+            :: DocTable.row("theme",  ThemeDoc.path(),      reloadTheme)
+            :: DocTable.row("sprite", World.spritePath(),   reloadSprites)
+            :: DocTable.row("shader", World.shaderPath(),   reloadShader)
+            :: Nil
+
+    /// App.game の reloads(保存即反映の watchFile)へ渡す形。
+    pub def reloads(): List[(String, World.World -> World.World \ Fs.FileRead)] =
+        DocTable.reloads(docTable())
+
+    /// F1: 一覧表の順に Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadDoc |> reloadKeys |> reloadTheme |> reloadSprites |> reloadShader
+        DocTable.reloadAll(docTable(), w)
+
+    /// いま画面に出ている Doc（Studio の「表示中」バッジの材料）。
+    pub def activeDocs(w: World.World): List[(String, List[String])] =
+        DocTable.activeDocs(docTable(), w)
 }

@@ -93,9 +93,39 @@ mod Controls {
     pub def reloadSmokeFx(w: World.World): World.World \ Fs.FileRead =
         World.withSmokeFx(loadSmokeFx(), w)
 
-    /// F1: Doc を全部読み直す。
+    /// Doc の一覧表(DocTable)。watchFile(保存即反映)・F1 の一括リロード・Studio へ名乗る
+    /// 「表示中」の 3 つは、どれもこの 1 枚から導出する — 足し忘れで
+    /// 「保存しても効かない」「印が付かない」を作らないため。
+    /// docId は project.json の editor.resources[] の id と同じ物。
+    ///
+    /// activeWhen は「その場面で画面に出ているか」。表紙とクリアの幕でも盤は霧の下に
+    /// 見えているので map / theme / sprite は出しっぱなし。手触り（kind: 歩く速さ・
+    /// 文字送り）は里を歩いている間だけ。戦いの最中は盤が隠れ、出ているのは魔物の絵と
+    /// 戦いの数・文言だけ。全部を常時 active にしない（バッジの意味が死ぬ）。
+    pub def docTable(): List[DocTable.Entry[World.World]] =
+        (DocTable.row("map", MapDoc.path(), reloadMap)
+                |> DocTable.withActiveWhen(w -> w#phase != World.Phase.Battle))
+            :: (DocTable.row("kind", KindDoc.path(), reloadKind)
+                |> DocTable.withActiveWhen(w -> w#phase == World.Phase.Play))
+            :: DocTable.row("theme", ThemeDoc.path(), reloadTheme)
+            :: (DocTable.row("battle", BattleDoc.path(), reloadBattle)
+                |> DocTable.withActiveWhen(w -> w#phase == World.Phase.Battle))
+            :: DocTable.row("sprite", World.spritePath(), reloadSprites)
+            :: DocTable.unnamedRow(World.townSpritePath(), reloadTownSprites)
+            :: DocTable.unnamedRow(TownMapDoc.path(), reloadTownMap)
+            :: DocTable.unnamedRow(waterShaderPath(), reloadWaterShader)
+            :: DocTable.unnamedRow(smokeFxPath(), reloadSmokeFx)
+            :: Nil
+
+    /// App.game の reloads(保存即反映の watchFile)へ渡す形。
+    pub def reloads(): List[(String, World.World -> World.World \ Fs.FileRead)] =
+        DocTable.reloads(docTable())
+
+    /// F1: 一覧表の順に Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadMap |> reloadKind |> reloadTheme |> reloadBattle
-          |> reloadSprites |> reloadTownSprites |> reloadTownMap
-          |> reloadWaterShader |> reloadSmokeFx
+        DocTable.reloadAll(docTable(), w)
+
+    /// いま画面に出ている Doc（Studio の「表示中」バッジの材料）。
+    pub def activeDocs(w: World.World): List[(String, List[String])] =
+        DocTable.activeDocs(docTable(), w)
 }

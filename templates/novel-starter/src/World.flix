@@ -97,24 +97,6 @@ mod World {
     pub def lampsLit(w: World): Int32 =
         Int32.max(0, w#story#lamps - w#lightsOut)
 
-    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
-    /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
-    /// 表紙も部屋と額縁と台本の題を描くので story / theme / sprite は常に表示中。
-    /// ダイアログ（ui）と手触り（kind: 文字送り・暗さ）は本文に入ってから —
-    /// 全部を常時 active にしない（バッジの意味が死ぬ）。
-    pub def activeDocs(w: World): List[(String, List[String])] =
-        let base = ("story", StoryDoc.path() :: Nil)
-            :: ("theme", ThemeDoc.path() :: Nil)
-            :: ("sprite", spritePath() :: Nil)
-            :: Nil;
-        match w#phase {
-            case Phase.Title => base
-            case Phase.Story => List.append(base,
-                   ("ui", NovelKit.uiPaths())
-                :: ("kind", KindDoc.path() :: Nil)
-                :: Nil)
-        }
-
     // ── 進行の規則 ──
 
     /// 表紙から物語をはじめる。灯りは全部つき直る（新しい夜）。[遷移: Title→Story]

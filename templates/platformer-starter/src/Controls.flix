@@ -26,14 +26,14 @@ mod Controls {
     /// docId は project.json の editor.resources[] の id と同じ物 — これで
     /// 「いま画面に出ているファイル」を Studio に名乗れる(ActiveDocs)。
     pub def docTable(): List[DocTable.Entry[World.World]] =
-        { docId = Some("motion"), path = MotionDoc.path(),      reload = World.reloadMotion }
-            :: { docId = Some("keys"),    path = KeysDoc.path(),     reload = World.reloadKeys }
-            :: { docId = Some("rules"),   path = RulesDoc.path(),    reload = World.reloadRules }
-            :: { docId = Some("enemies"), path = EnemyDoc.path(),    reload = World.reloadEnemies }
-            :: { docId = Some("stages"),  path = StageDoc.path(),    reload = World.reloadStages }
-            :: { docId = Some("theme"),   path = Theme.path(),       reload = World.reloadTheme }
-            :: { docId = Some("text"),    path = UiText.path(),      reload = World.reloadUiText }
-            :: { docId = Some("sprite"),  path = World.spritePath(), reload = World.reloadSprites }
+        DocTable.row("motion",  MotionDoc.path(),     World.reloadMotion)
+            :: DocTable.row("keys",    KeysDoc.path(),       World.reloadKeys)
+            :: DocTable.row("rules",   RulesDoc.path(),      World.reloadRules)
+            :: DocTable.row("enemies", EnemyDoc.path(),      World.reloadEnemies)
+            :: DocTable.row("stages",  StageDoc.path(),      World.reloadStages)
+            :: DocTable.row("theme",   Theme.path(),         World.reloadTheme)
+            :: DocTable.row("text",    UiText.path(),        World.reloadUiText)
+            :: DocTable.row("sprite",  World.spritePath(),   World.reloadSprites)
             :: Nil
 
     /// App.game の reloads(保存即反映の watchFile)へ渡す形。

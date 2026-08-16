@@ -31,14 +31,9 @@ def main(): Unit \ IO =
                 // 「表示中」バッジ用の補助で、ゲーム進行には関与しない（一覧が変わった瞬間だけ書く）。
                 update = (f, w) ->
                     checked_ecast(Controls.step(f, w))
-                        |> (w1 -> ActiveDocs.step(World.activeDocs(w1), w1)),
+                        |> (w1 -> ActiveDocs.step(Controls.activeDocs(w1), w1)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
-                reloads =
-                    (SampleDoc.path(), Controls.reloadDoc) ::
-                    (KeysDoc.path(), Controls.reloadKeys) ::
-                    (ThemeDoc.path(), Controls.reloadTheme) ::
-                    (World.spritePath(), Controls.reloadSprites) ::
-                    (World.shaderPath(), Controls.reloadShader) :: Nil
+                reloads = Controls.reloads()
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 // ドット絵を焼いた 1 枚を GPU へ上げる（View はこの名前で 1 コマ 1 クアッドを貼る）。

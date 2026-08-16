@@ -23,16 +23,10 @@ def main(): Unit \ IO =
                 update = (f, w) ->
                     checked_ecast(Controls.step(f, w))
                         |> (w1 -> checked_ecast(Controls.interact(f, w1)))
-                        |> (w2 -> ActiveDocs.step(World.activeDocs(w2), w2)),
+                        |> (w2 -> ActiveDocs.step(Controls.activeDocs(w2), w2)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
-                reloads =
-                    (StoryDoc.path(), Controls.reloadStory) ::
-                    (KindDoc.path(), Controls.reloadKind) ::
-                    (ThemeDoc.path(), Controls.reloadTheme) ::
-                    // accentLight の宣言元（palette.json）もテーマとして読み直す（保存即反映）。
-                    (ThemeDoc.palettePath(), Controls.reloadTheme) ::
-                    (World.spritePath(), Controls.reloadSprites) :: Nil
+                reloads = Controls.reloads()
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 // 会話窓・本文・エラーバナーは withHudView — world 側の z に隠されない。

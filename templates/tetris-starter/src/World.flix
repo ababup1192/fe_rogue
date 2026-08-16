@@ -354,9 +354,4 @@ mod World {
     /// 紙の面を差し替える。
     pub def withShader(shader: ShaderDoc.Spec, w: World): World = { shader = shader | w }
 
-    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
-    /// Studio の「表示中」バッジの材料。盤・ミノは常に色（theme）と数値（rules）で描かれる。
-    pub def activeDocs(_w: World): List[(String, List[String])] =
-        ("rules", RulesDoc.path() :: Nil) :: ("theme", ThemeDoc.path() :: Nil)
-            :: ("shader", shaderPath() :: Nil) :: Nil
 }
