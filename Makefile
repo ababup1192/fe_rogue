@@ -207,7 +207,7 @@ test-par:
 # テンプレ側の素の `render` は場面名 (SHOT) を要求して失敗するので、ここからは必ず render-all を打つ。
 render-all:
 	@for dir in $(TEMPLATE_DIRS:%=%/); do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^render-all:" "$$dir/Makefile"; then \
+		if [ -f "$$dir/Makefile" ] && grep -qE "^render-all:|mk/game.mk" "$$dir/Makefile"; then \
 			echo "===== $$dir ====="; \
 			(cd "$$dir" && make render-all) || exit 1; \
 		fi \
@@ -241,7 +241,7 @@ render-changed:
 	fi; \
 	ran=0; \
 	for dir in $$targets; do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^render-all:" "$$dir/Makefile"; then \
+		if [ -f "$$dir/Makefile" ] && grep -qE "^render-all:|mk/game.mk" "$$dir/Makefile"; then \
 			echo "===== $$dir ====="; \
 			(cd "$$dir" && make render-all) || exit 1; \
 			ran=$$((ran + 1)); \
@@ -255,7 +255,7 @@ RENDER_PAR_JOBS ?= 4
 render-par:
 	@mkdir -p .test-logs; rm -f .test-logs/render-*.log .test-logs/render-*.fail; \
 	for dir in $(TEMPLATE_DIRS:%=%/); do \
-		if [ -f "$$dir/Makefile" ] && grep -q "^render-all:" "$$dir/Makefile"; then echo "$$dir"; fi; \
+		if [ -f "$$dir/Makefile" ] && grep -qE "^render-all:|mk/game.mk" "$$dir/Makefile"; then echo "$$dir"; fi; \
 	done | xargs -P $(RENDER_PAR_JOBS) -n 1 sh -c ' \
 		dir="$$0"; name=$$(basename "$$dir"); \
 		if (cd "$$dir" && make render-all) > ".test-logs/render-$$name.log" 2>&1; then \

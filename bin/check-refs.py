@@ -8,7 +8,7 @@ reference-*.sh が漏れて、Makefile とテンプレの参照が宙に浮い�
 
 検査は 3 面 + バンドル:
   1. engine Makefile が書く bin/* ・ docs/* が実在するか
-  2. templates/*/Makefile の $(ENGINE)/bin/* ・ $(ENGINE)/docs/* が engine に実在するか。
+  2. templates/*/Makefile と mk/*.mk の $(ENGINE)/bin/* ・ $(ENGINE)/docs/* が engine に実在するか。
      ゲーム側 bin/* の参照は sync-agents の配布リスト (Makefile の cp 行) に載っているか
   3. agents-pack/AGENTS.core.md・settings.json が存在を前提とするパス
      (rules・bin のツール・engine docs・フック) が実在し、配布リストに載っているか
@@ -45,6 +45,11 @@ BUNDLE_REQUIRED = [
     # 絵の値段の判定。reference-check.sh と status.py が $(ENGINE)/bin/ から呼ぶ。
     # どちらも「無ければ飛ばす」で fail-open するので、同梱し忘れると判定が黙って消える。
     "bin/check-render-budget.py",
+    # ゲームの Makefile が include する共通部。バンドルから漏れると include ごと
+    # 落ち、make は「そんなファイルは無い」としか言わない — run も status も
+    # 打てなくなる（テンプレ側の $(error) ガードが直し方を出すが、Studio 同梱では
+    # 直しようが無い）。
+    "mk/game.mk",
     "bin/img-digest.py",
     "bin/status.py",
     "bin/lint-view.py",
@@ -163,7 +168,8 @@ def check_makefile(problems):
 
 
 def check_templates(problems, dist):
-    for mk in sorted(ROOT.glob("templates/*/Makefile")):
+    targets = sorted(ROOT.glob("templates/*/Makefile")) + sorted(ROOT.glob("mk/*.mk"))
+    for mk in targets:
         text = strip_mk_comments(mk.read_text(encoding="utf-8"))
         rel_mk = mk.relative_to(ROOT).as_posix()
         # $(ENGINE)/bin/... や $(ENGINE)/docs/... は engine リポの実体を指す。

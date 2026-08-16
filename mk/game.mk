@@ -1,0 +1,189 @@
+# game.mk — ゲームの Makefile が include する共通部（run / test / check / 描き出し / status …）。
+#
+# ここに置くのは「どのゲームでも同じ物」だけ。ゲーム側の Makefile に残るのは
+# ENGINE の場所・SHOTS・そのゲーム固有の口だけになる。
+#
+# WhyNot: 各ゲームへ写して配らない。写すと engine を直しても既に産まれたゲームへ届かず、
+# upgrade-game が運ぶのは flix.toml の版と lib/ と agents-pack だけなので Makefile だけが
+# 取り残される（実際に写経元から 200 行以上ずれたゲームが出た）。ゲームは既に
+# $(ENGINE)/bin/... を直に叩いていて engine 無しでは動かないので、参照に変えても前提は増えない。
+#
+# 使う側の決まり:
+#   include するより前に ENGINE を決めておくこと（-include local.mk → ENGINE ?= ... → include）。
+#   SHOTS       … 描き出せる場面の名前（render の使い方に出す）
+#   PALETTE     … 色票 JSON のパス。定義したゲームだけ palette の口が生える
+#   RENDER_NOTE … render の使い方に足す 1 行（任意）
+#
+# Flix コンパイラの呼び方は OS で変える:
+#   - macOS/Linux … エンジンリポの bin/flix ラッパ（nix store の flix.jar 解決と JVM フラグ
+#     （-XstartOnFirstThread、test/render の headless）を面倒みる）
+#   - Windows … ラッパ（bash）が無いので、JRE の java で bin/flix.jar を直接叩く
+
+# $(wildcard) は空白入りパス (Studio.app 同梱の engine) を扱えないので shell の test で見る
+ifeq ($(shell test -e "$(ENGINE)/bin/flix" -o -e "$(ENGINE)/bin/flix.jar" && echo ok),)
+$(warning ENGINE が見当たりません ($(ENGINE)) — local.mk に「ENGINE := /path/to/flix_game_engine」を書くか、make <対象> ENGINE=... で指定してください)
+endif
+ifeq ($(OS),Windows_NT)
+JAVA   ?= java
+PYTHON ?= python
+# 常駐 checkd は bash ラッパー (bin/flix) しか起動を知らず、Windows の
+# JAVA+flix.jar 経路では落ちる。checkd が教わるまで Windows では素の check を使う。
+CHECKD := 0
+# -Xss64m: View の式が深く入れ子になると、既定のスタックでは型検査が StackOverflow で落ちる。
+FLIX   := "$(JAVA)" -Xss64m -jar "$(ENGINE)/bin/flix.jar"
+else
+PYTHON ?= python3
+FLIX   := "$(ENGINE)/bin/flix"
+endif
+
+.PHONY: help status run debug test build check render render-all reference-check reference-update loc api hooks check-docs-sync
+
+# 共通の口の一覧。engine を上げるとここも一緒に新しくなる
+# （ゲーム側の Makefile へ写さないので、口が増えても書き足しに回らなくて済む）。
+# そのゲーム固有の口は、各 Makefile の頭のコメントを見る。
+help:
+	@echo "共通の口 ($(ENGINE)/mk/game.mk):"
+	@echo "  make run                ゲームを起動する（ウィンドウが開く）"
+	@echo "  make debug              保存即反映(watchFile)と F8 を有効にして起動"
+	@echo "  make check              型検査だけ（一番速い確認。常駐が居れば 2 回目からサブ秒）"
+	@echo "  make test               テストを headless で実行（記録は .test-logs/）"
+	@echo "  make build              パッケージをビルドする"
+	@echo "  make status             現状 1 画面（テスト記録・絵・チケット・git）。何も実行しない"
+	@echo "  make render SHOT=<場面>  1 枚だけ debug/<場面>.png へ描き出す"
+	@echo "                          場面: $(SHOTS)"
+	@echo "  make render-all         全部 gallery/ へ描き出す（決定的）"
+	@echo "  make reference-check    描き出した絵をリファレンス画像とバイト比較する"
+	@echo "  make reference-update   いまの gallery をリファレンス画像として更新する"
+	$(if $(PALETTE),@echo "  make palette            Studio が読む色の写し ($(PALETTE)) を無条件に作り直す")
+	@echo "  make api Q=<名前>        エンジン API の型・引数を 1 行で引く（ソースを読む前にまずこれ）"
+	@echo "  make loc                src/ + test/ の .flix 合計行数（上限 3,000 行）"
+	@echo "  make engine-upgrade     engine の版に追随する（status の「engine 版ズレ」を見たらこれ）"
+	@echo "  make hooks              コミット時のゲートをこの clone に配線する（clone ごとに 1 回）"
+	@echo ""
+	@echo "このゲーム固有の口は Makefile の頭のコメントを見る。"
+
+run:
+	$(FLIX) run
+
+debug:
+	DEBUG=true $(FLIX) run
+
+# 出力は .test-logs/test.log に落とし、緑なら末尾 5 行だけ見せる。
+# make status が「最後にいつ・緑か赤か」をこの記録から読む。
+test:
+	@mkdir -p .test-logs; rm -f .test-logs/test.fail
+	@if JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test > .test-logs/test.log 2>&1; then \
+		tail -5 .test-logs/test.log; \
+	else \
+		touch .test-logs/test.fail; tail -40 .test-logs/test.log; exit 1; \
+	fi
+
+build:
+	$(FLIX) build
+
+# check の全文は .test-logs/check.log に落とし、画面には要約だけ出す:
+# 成功 = 1 行、失敗 = 最初のエラー全文 + 残りの file:line 一覧 + 処方箋 1 行
+# (bin/explain-error が整形。全文が欲しいときは QUIET=0 make check かログを開く)。
+# 常駐 (bin/checkd) が居れば 2 回目からサブ秒。CHECKD=0 make check で素の check。
+check:
+	@mkdir -p .test-logs
+	@if [ "$(CHECKD)" != "0" ] && [ -f bin/checkd ]; then \
+		"$(PYTHON)" bin/checkd . > .test-logs/check.log 2>&1; code=$$?; \
+	else \
+		$(FLIX) check > .test-logs/check.log 2>&1; code=$$?; \
+	fi; \
+	ee=bin/explain-error; [ -f "$$ee" ] || ee="$(ENGINE)/bin/explain-error"; \
+	if [ "$(QUIET)" = "0" ] || [ ! -f "$$ee" ]; then \
+		cat .test-logs/check.log; \
+	else \
+		"$(PYTHON)" "$$ee" --status $$code --log .test-logs/check.log < .test-logs/check.log; \
+	fi; \
+	exit $$code
+
+# ロジックの大きさ。「全部読める大きさ」（上限 3,000 行）を保つための物差し。
+loc:
+	@find src test -name '*.flix' -print0 | xargs -0 wc -l | tail -1
+
+# エンジン API の型・引数を 1 行で引く ($(ENGINE)/docs/api-digest の grep)。
+# 例: make api Q=gradPolygon 。ソースの unzip や丸読みの前にまずこれ。
+api:
+	@test -n "$(Q)" || { echo "usage: make api Q=<関数名やモジュール名>"; exit 1; }
+	@out=$$(grep -h -i -- "$(Q)" "$(ENGINE)/docs/api-digest/"*.md 2>/dev/null | head -40); \
+	if [ -n "$$out" ]; then printf '%s\n' "$$out"; \
+	else echo "[api] '$(Q)' に当たりなし。$(ENGINE)/docs/module-index.md で別名を探す"; fi
+
+# 色票を持つゲームでは、入力が変わっていれば先に作り直してから描く。
+render-all: $(PALETTE)
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint SceneRender.all
+
+# 1 枚だけ debug/<場面>.png へ描き出す（gallery/ は render-all だけが書く）。
+render:
+	@if [ -z "$(SHOT)" ]; then \
+		echo "usage: make render SHOT=<場面>   1 枚だけ debug/<場面>.png へ描き出す"; \
+		$(if $(word 2,$(SHOTS)),echo "       make render SHOT=\"$(word 1,$(SHOTS)) $(word 2,$(SHOTS))\"  何枚か";) \
+		echo "       make render-all           全部 gallery/ へ描き出す"; \
+		echo "  場面: $(SHOTS)"; \
+		$(if $(RENDER_NOTE),echo "  $(RENDER_NOTE)";) \
+		exit 1; \
+	fi
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" SHOT="$(SHOT)" $(FLIX) run --entrypoint SceneRender.one
+
+reference-check: render-all
+	"$(ENGINE)/bin/reference-check.sh"
+
+reference-update: render-all
+	"$(ENGINE)/bin/reference-update.sh"
+
+# 現状 1 画面 (テスト記録・スナップショット・チケット・git)。何も実行しない。
+# .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
+# pack が欠けたゲーム (sync-agents を配りきらない産み方をされた物) はここで配り直す —
+# AGENTS.md がセッションの入口を必ずこの target にしているため、最初の 1 回で自己修復できる。
+status:
+	@if [ ! -f bin/status.py ]; then \
+		echo "[status] agents-pack が未配布です (bin/status.py が無い) — $(ENGINE) から配り直します"; \
+		$(MAKE) -C "$(ENGINE)" sync-agents GAME="$(CURDIR)" || { echo "[status] 配布に失敗 — engine リポで make sync-agents GAME=$(CURDIR) を実行してください"; exit 1; }; \
+	fi
+	@$(PYTHON) bin/status.py
+
+# engine の版に追随する (flix.toml と lib/ の fpkg 差し替え + pack 配り直し + check)。
+# status の「engine 版ズレ」を見たらこれ。実体は engine 側の upgrade-game。
+engine-upgrade:
+	@$(MAKE) -C "$(ENGINE)" upgrade-game GAME="$(CURDIR)"
+
+# コミット時のゲート (描き出した絵の混入・矩形だけの View・規約の配線ずれを止める)。
+# .git/hooks は git 管理外なので clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
+hooks:
+	@git config core.hooksPath bin/githooks
+	@echo "[hooks] 配線しました: pre-commit = bin/githooks/pre-commit (中身は bin/precommit.py)"
+
+# 規約の配線ずれの軽い検査 (engine 版のうちゲームで見るべき 3 点だけ)。
+# pre-commit (bin/precommit.py) が .md / .flix を触ったコミットで呼ぶ。生成はしない。
+check-docs-sync:
+	@ok=1; \
+	if ! grep -q '^@AGENTS.md' CLAUDE.md 2>/dev/null; then \
+	  echo "[check-docs-sync] NG: CLAUDE.md は @AGENTS.md の 1 行にする (作り直しは engine 側の make sync-agents GAME=$(CURDIR))"; ok=0; \
+	fi; \
+	if ! head -n 1 AGENTS.md 2>/dev/null | grep -q 'generated by flix_game_engine agents-pack'; then \
+	  echo "[check-docs-sync] NG: AGENTS.md に agents-pack の刻印がありません (手書きせず engine 側の sync-agents で作り直す)"; ok=0; \
+	fi; \
+	for s in $$(grep -o '\.claude/skills/[a-z][a-z0-9-]*' AGENTS.md 2>/dev/null | sed 's|.*/||' | sort -u); do \
+	  if [ ! -f ".claude/skills/$$s/SKILL.md" ]; then \
+	    echo "[check-docs-sync] NG: AGENTS.md が挙げるスキル $$s が .claude/skills にありません"; ok=0; \
+	  fi; \
+	done; \
+	if [ "$$ok" = "1" ]; then echo "[check-docs-sync] OK"; else exit 1; fi
+
+# 色票（Studio の編集画面が読む写し）。PALETTE を決めたゲームにだけ口が生える。
+# render のたびに無条件で走らせると、絵を描くのと同じだけのコンパイル時間を二重に払う。
+# 入力の洗い出しに漏れがあったときは `make palette` で無条件に作り直す。
+ifdef PALETTE
+.PHONY: palette
+$(PALETTE): $(PALETTE_DEPS)
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+
+palette:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+endif
+
+# 何も指定せず make と打ったらゲームが起動する（テンプレの元の既定と同じ）。
+.DEFAULT_GOAL := run
