@@ -6,16 +6,19 @@ reference-*.sh が漏れて、Makefile とテンプレの参照が宙に浮い�
 はソース unzip に戻った)。参照と実体のずれは人任せの目視では見つからないので、
 コミット時 (check-docs-sync 経由) とリリース作成時に必ずここを通す。
 
-検査は 3 面 + バンドル:
+検査は 4 面 + バンドル:
   1. engine Makefile が書く bin/* ・ docs/* が実在するか
   2. templates/*/Makefile と mk/*.mk の $(ENGINE)/bin/* ・ $(ENGINE)/docs/* が engine に実在するか。
      ゲーム側 bin/* の参照は sync-agents の配布リスト (Makefile の cp 行) に載っているか
   3. agents-pack/AGENTS.core.md・settings.json が存在を前提とするパス
      (rules・bin のツール・engine docs・フック) が実在し、配布リストに載っているか
+  4. templates/*/ が 1 本ずつ複製元として成り立つか (Makefile・flix.toml・project.json・
+     src の .flix・reference/title.png)。バンドルでも同じ物差しを当てる
 
   python3 bin/check-refs.py                 # リポ自身を検査 (check-docs-sync が呼ぶ)
   python3 bin/check-refs.py --bundle DIR    # ステージ済みバンドル DIR に必須物が揃っているか
                                             # (Studio の stage-engine 後に呼ぶ想定)
+  python3 bin/check-refs.py --bundle DIR --windows   # 同上。bash 前提の物だけ免除する
 
 バンドルの必須物一覧 BUNDLE_REQUIRED はここが唯一の実体。同梱物を増やしたら
 この一覧と Studio 側 stage-engine の cp を一緒に更新する。
@@ -88,6 +91,13 @@ BUNDLE_REQUIRED = [
     "engine_full/flix.toml",
     "engine_full/artifact/engine_full.fpkg",
 ]
+
+# Windows 版の zip にだけ入らない物と、その代わりに要る物。
+# bin/flix は同梱 JRE と隣の flix.jar を呼ぶ bash のラッパで、Windows では走らない。
+# あちらは mk/game.mk が java と bin/flix.jar を直に叩くので、jar の方を必須にする。
+# reference-*.sh も bash 前提 (絵の焼き直しは Windows では打てない、が今の割り切り)。
+BUNDLE_SKIP_ON_WINDOWS = {"bin/flix", "bin/reference-update.sh", "bin/reference-check.sh"}
+BUNDLE_WINDOWS_EXTRA = ["bin/flix.jar"]
 
 # 文章・Makefile から拾うパス片。変数展開やプレースホルダ入りは照合しない。
 PATH_RE = re.compile(r"(?<![\w$.:/-])(bin|docs)/[A-Za-z0-9_*/.-]+")
@@ -233,6 +243,85 @@ def check_agents_pack(problems, dist):
                     "見当たりません".format(hook))
 
 
+# テンプレ 1 本が複製元として成り立つのに要る物。数え上げた templates/*/ の全部に当てるので、
+# テンプレを足すときにこの一覧を足す必要は無い (足し忘れが無言で通るのを防ぐのが狙い)。
+TEMPLATE_REQUIRED = ["Makefile", "flix.toml", "project.json", "reference/title.png"]
+
+
+def check_templates_shape(problems, base: Path, label: str):
+    """base/templates/*/ の 1 本ずつが複製元として成り立つかを見る。
+
+    new-game はテンプレを丸ごと写すだけなので、欠けた物はゲームが生まれた後に
+    初めて分かる (make が include で落ちる・Studio のジャンルカードが顔無しになる)。
+    """
+    dirs = sorted(p for p in (base / "templates").glob("*") if p.is_dir())
+    if not dirs:
+        problems.append("{}: templates/ にテンプレが 1 本もありません".format(label))
+        return dirs
+    for d in dirs:
+        name = d.name
+        for rel in TEMPLATE_REQUIRED:
+            if not (d / rel).exists():
+                problems.append("{}: templates/{}/{} がありません".format(label, name, rel))
+        if not list(d.glob("src/*.flix")):
+            problems.append("{}: templates/{}/src に .flix がありません".format(label, name))
+    return dirs
+
+
+GENESIS_STARTER_RE = re.compile(r'starter\s*=\s*"([^"]*)"')
+
+
+def find_genesis(base: Path):
+    """バンドルの置き場所から Studio の Genesis.flix を探す (見つからなければ None)。
+
+    バンドルは Studio の中の深い所 (app/src-tauri/resources/engine) に作られるが、
+    段数を直に書くと Studio 側の置き場所が変わった日に黙って検査が消える。
+    server/src/Genesis.flix を目印に親を遡る。
+    """
+    for parent in [base] + list(base.parents)[:6]:
+        cand = parent / "server" / "src" / "Genesis.flix"
+        if cand.is_file():
+            return cand
+    return None
+
+
+def check_genesis_starters(problems, base: Path, template_dirs):
+    """Studio のジャンルカードの starter と、同梱テンプレの集合を両方向で突き合わせる。
+
+    片方向だけだと、Genesis に無いテンプレ (Studio から一生選べない) も、
+    テンプレの無い starter (選んだ瞬間に複製が転ぶ) も、どちらも無言で通る。
+    """
+    genesis = find_genesis(base)
+    if genesis is None:
+        print("[check-refs] Genesis 対照は飛ばしました (Studio の外のバンドル)")
+        return
+    text = genesis.read_text(encoding="utf-8")
+    declared = {m.group(1) for m in GENESIS_STARTER_RE.finditer(text) if m.group(1)}
+    present = {"templates/" + d.name for d in template_dirs}
+    if declared == present:
+        print("[check-refs] Genesis 対照 OK: starter {} 件 = テンプレ {} 本 ({})".format(
+            len(declared), len(present), genesis))
+        return
+    for rel in sorted(declared - present):
+        problems.append(
+            "{}: starter = \"{}\" のテンプレがバンドルにありません"
+            " (Studio でそのジャンルを選ぶと複製が転びます)".format(genesis, rel))
+    for rel in sorted(present - declared):
+        problems.append(
+            "{}: {} がどのジャンルの starter にもなっていません"
+            " (Studio から選べないテンプレです)".format(genesis, rel))
+
+
+def hooks_in_settings(base: Path):
+    """base/agents-pack/settings.json が名指しするフックの実体パス。読めなければ空。"""
+    try:
+        text = (base / "agents-pack" / "settings.json").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return sorted({".claude/hooks/" + m.group(1)
+                   for m in re.finditer(r"\.claude/hooks/([A-Za-z0-9_.-]+\.py)", text)})
+
+
 def check_bundle_manifest(problems):
     """BUNDLE_REQUIRED 自身の書き損じ (リポに無い物を必須と言う) を止める。"""
     for rel in BUNDLE_REQUIRED:
@@ -241,12 +330,19 @@ def check_bundle_manifest(problems):
                 "BUNDLE_REQUIRED: {} がこのリポにありません (一覧の書き損じ?)".format(rel))
 
 
-def check_bundle(bundle_dir):
+def check_bundle(bundle_dir, windows=False):
     base = Path(bundle_dir)
     if not base.is_dir():
         print("バンドルが見つかりません: {}".format(bundle_dir), file=sys.stderr)
         return 1
-    missing = [rel for rel in BUNDLE_REQUIRED if not exists_in(base, rel)]
+    required = [r for r in BUNDLE_REQUIRED if not (windows and r in BUNDLE_SKIP_ON_WINDOWS)]
+    if windows:
+        required += BUNDLE_WINDOWS_EXTRA
+    # フックの実体は settings.json が名指しする分だけ要る。手書きの一覧に足すのを
+    # 忘れると、産まれたゲームに「呼ぶ先の無いフック」が付き、走らせるまで気づかない。
+    # 一覧を減らす向きには効かない (導出したぶんを足すだけ)。
+    required += [rel for rel in hooks_in_settings(base) if rel not in required]
+    missing = [rel for rel in required if not exists_in(base, rel)]
     if missing:
         print("[check-refs] バンドル欠損 {} 件 ({}):".format(len(missing), bundle_dir),
               file=sys.stderr)
@@ -255,8 +351,15 @@ def check_bundle(bundle_dir):
         print("同梱リスト (Studio の stage-engine) に cp を足してください。"
               "必須一覧は bin/check-refs.py の BUNDLE_REQUIRED。", file=sys.stderr)
         return 1
-    print("OK: バンドルに必須 {} 点が揃っています ({})".format(
-        len(BUNDLE_REQUIRED), bundle_dir))
+    problems = []
+    dirs = check_templates_shape(problems, base, bundle_dir)
+    check_genesis_starters(problems, base, dirs)
+    if problems:
+        for p in problems:
+            print(p, file=sys.stderr)
+        return 1
+    print("OK: バンドルに必須 {} 点が揃っています ({}{}・テンプレ {} 本)".format(
+        len(required), bundle_dir, " / Windows" if windows else "", len(dirs)))
     return 0
 
 
@@ -264,14 +367,15 @@ def main(argv):
     if "--bundle" in argv:
         i = argv.index("--bundle")
         if i + 1 >= len(argv):
-            print("usage: check-refs.py --bundle DIR", file=sys.stderr)
+            print("usage: check-refs.py --bundle DIR [--windows]", file=sys.stderr)
             return 2
-        return check_bundle(argv[i + 1])
+        return check_bundle(argv[i + 1], windows="--windows" in argv)
 
     problems = []
     dist = check_makefile(problems)
     check_templates(problems, dist)
     check_agents_pack(problems, dist)
+    check_templates_shape(problems, ROOT, "engine")
     check_bundle_manifest(problems)
 
     if problems:
