@@ -56,6 +56,10 @@ tag は現在の HEAD SHA に固定される。
   よく引っかかるのは ①pub 宣言・doc コメントを触ったのに `docs/api-digest.md` が古い
   （`make api-digest` で作り直してから一緒にステージ）②docs / skills を触った時の
   `make check-docs-sync`（AGENTS.md と agents-pack の sync 印ずれ・切れたリンク）
+  ③`bin/lint-jargon.py` の独自語
+- **jargon は `python3 bin/lint-jargon.py <触ったパス…>` で素振りする**（コミットコマンドを
+  人へ渡す前に自分で通す）。precommit 経由は `git diff --cached` を読むので、`git add` の
+  後に直しても同じ指摘が出続ける
 - **sync の出し忘れ**: engine / engine_world / engine_tools のソースを触ったら対応する
   `make sync-<name>` を通してからテストする。古い fpkg のまま緑になっても信用できない
 - **lint 群は先に手で回す**: フック任せにせず `make lint-view lint-palette lint-ui lint-audio` を

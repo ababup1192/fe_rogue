@@ -386,6 +386,13 @@ sync-engine-full:
 		done; \
 	done; \
 	find $(ENGINE_FULL_DIR)/src -type l | awk 'END { print "[sync-engine-full] " NR " source symlink(s)" }'
+	# 固める前に型検査する。build-pkg はソースを zip にするだけで、コンパイルが通るかを
+	# 見ない。ここで検査しないと、壊れたエンジンが fpkg → Studio 同梱 → /Applications まで
+	# 全部 exit 0 で運ばれ、誰かが新しいゲームを産んだ時に初めて落ちる。
+	# WhyNot: bin/checkd は使わない。symlink で束ねたこのパッケージでは常駐が偽の緑を
+	# 返す (checkd 自身がこの形を見つけたら素の CLI へ落ちるようにしてある)。
+	@echo "[sync-engine-full] 固める前に型検査"
+	cd $(ENGINE_FULL_DIR) && "$(FLIX)" check
 	cd $(ENGINE_FULL_DIR) && "$(FLIX)" build-pkg
 	@for dir in templates/*/ bench/*/; do \
 		toml="$$dir/flix.toml"; \

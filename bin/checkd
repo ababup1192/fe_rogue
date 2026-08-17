@@ -260,7 +260,26 @@ def debug(msg):
         print(f"[checkd] {msg}", file=sys.stderr, flush=True)
 
 
+def has_symlinked_sources(pkg):
+    """src/ の .flix を symlink で束ねたパッケージか (engine_full がこれ)。
+
+    WhyNot: 温めた repl はこの形のソースの書き換えを読み直さず、直した後も直す前も
+    「緑」を返し続ける（実測: 壊したソースに exit=0 を出し続け、素の flix check は
+    exit=1）。symlink 自身を touch しても変わらないので、こちらから知らせる手が無い。
+    偽の緑は偽の赤より悪い（壊れた物が配られる）ので、この形のときは常駐を使わない。
+    """
+    src = os.path.join(pkg, "src")
+    for root, _dirs, files in os.walk(src):
+        for f in files:
+            if f.endswith(".flix") and os.path.islink(os.path.join(root, f)):
+                return True
+    return False
+
+
 def client_run(pkg, verb):
+    if has_symlinked_sources(pkg):
+        debug(f"{pkg} は src が symlink → 常駐を使わず素の {verb} へ")
+        return run_fallback(pkg, verb)
     for attempt in (1, 2):
         try:
             code, out = request(pkg, verb.upper(), timeout=CHECK_TIMEOUT)
