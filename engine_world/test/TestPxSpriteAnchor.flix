@@ -3,7 +3,7 @@ mod TestPxSpriteAnchor {
 
     def doc(): PxSpriteDoc.Doc =
         { version = 1, note = None, legend = Map#{ 'm' => "metal" },
-          sprites = Map#{ "tool" => { anchor = { x = 0.0, y = 3.0 }, loop = PxSpriteDoc.Loop.Forward,
+          sprites = Map#{ "tool" => { anchor = { x = 0.0, y = 3.0 }, clips = Map.empty(),
                                       frames = Map#{ "idle" => "m..." :: "m..." :: "m..." :: "m..." :: Nil } } } }
 
     @Test

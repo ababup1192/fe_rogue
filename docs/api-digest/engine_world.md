@@ -1,4 +1,4 @@
-<!-- engine v0.29.0 / 生成: 2026-08-17 -->
+<!-- engine v0.29.0 / 生成: 2026-08-18 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -1139,18 +1139,24 @@
 ## PxSpriteDoc — `engine_world/src/PxSpriteDoc.flix`
 - コマの回し方。絵そのものには現れないので、Doc が言わないと誰にも分からない。
   `pub enum Loop with Eq, ToString { case Forward case PingPong case Once }`
+- 動き 1 つ。どのコマをどの順で、1 秒に何コマで、どう回すか。
+  `pub type alias Clip = { frames = List[String], fps = Float64, loop = Loop }`
 - スプライト 1 体: anchor(格子内の基準セル — draw の置き場所がこのセルに来る)と、
-  `pub type alias Sprite = { anchor = Vec2.Vec2, loop = Loop, frames = Map[String, List[String]] }`
+  `pub type alias Sprite = { anchor = Vec2.Vec2, frames = Map[String, List[String]], clips = Map[String, Clip] }`
 - sprite.json 全体。legend は 1 文字 → 意味色キー。
   `pub type alias Doc = { version = Int32, note = Option[String], legend = Map[Char, String], sprites = Map[String, Sprite] }`
 - 何も描かない空の Doc。「まだ読めていない」の置き場 — draw は常に空を返す。
   `pub def empty(): Doc`
 - コマも何も持たないスプライト。Sprite を組み立てる呼び側の土台
   `pub def emptySprite(): Sprite`
+- コマを 1 枚も持たない動き。既定の速さは 8fps(人が歩く絵でだいたい合う)。
+  `pub def emptyClip(): Clip`
 - テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
   `pub def fromJson(text: String): Option[Doc]`
 - パース済みの Json 値から Doc へ(エディタの doc/path 経路用 — fromJson と同じ fail-open)。
   `pub def fromJsonValue(json: Json): Option[Doc]`
+- 動きの t 秒後に出すコマの名前。動きが無い・fps が 0 以下なら None
+  `pub def clipFrameAt(doc: Doc, sprite: String, clip: String, seconds: Float64): Option[String]`
 - 通し番号 step(0,1,2,…)を、回し方に沿ったコマ番号へ写す。
   `pub def frameIndexAt(kind: Loop, count: Int32, step: Int32): Int32`
 - コマの格子の大きさ（列数・行数）。列数は一番長い行の文字数。

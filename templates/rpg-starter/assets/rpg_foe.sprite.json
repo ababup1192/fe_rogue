@@ -53,6 +53,23 @@
           "..iiiiiiiiiiii..",
           "................"
         ]
+      },
+      "clips": {
+        "idle": {
+          "frames": [
+            "idle"
+          ],
+          "fps": 1,
+          "loop": "forward"
+        },
+        "hurt": {
+          "frames": [
+            "hit",
+            "idle"
+          ],
+          "fps": 8,
+          "loop": "once"
+        }
       }
     }
   }

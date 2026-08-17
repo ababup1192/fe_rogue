@@ -22,12 +22,23 @@ mod PxSpriteDoc {
         case Once
     }
 
+    /// 動き 1 つ。どのコマをどの順で、1 秒に何コマで、どう回すか。
+    ///
+    /// frames と分けてあるのは、frames が「名前の付いた姿勢の束」だから。
+    /// 向き違いの立ち絵と歩き絵が 1 つの Map に同居していて、そこには順番も
+    /// 時間も無い。どのコマが 1 つの動きを作るかは、絵からは分からない。
+    pub type alias Clip = {
+        frames = List[String],
+        fps = Float64,
+        loop = Loop
+    }
+
     /// スプライト 1 体: anchor(格子内の基準セル — draw の置き場所がこのセルに来る)と、
-    /// 名前付きコマ(rows 形式: 上の行から順の文字列の配列)と、コマの回し方。
+    /// 名前付きコマ(rows 形式: 上の行から順の文字列の配列)と、動きの一覧。
     pub type alias Sprite = {
         anchor = Vec2.Vec2,
-        loop = Loop,
-        frames = Map[String, List[String]]
+        frames = Map[String, List[String]],
+        clips = Map[String, Clip]
     }
 
     /// sprite.json 全体。legend は 1 文字 → 意味色キー。
@@ -45,7 +56,11 @@ mod PxSpriteDoc {
     /// コマも何も持たないスプライト。Sprite を組み立てる呼び側の土台
     /// （フィールドが増えてもここだけ直せばよい）。
     pub def emptySprite(): Sprite =
-        { anchor = { x = 0.0, y = 0.0 }, loop = Loop.Forward, frames = Map.empty() }
+        { anchor = { x = 0.0, y = 0.0 }, frames = Map.empty(), clips = Map.empty() }
+
+    /// コマを 1 枚も持たない動き。既定の速さは 8fps(人が歩く絵でだいたい合う)。
+    pub def emptyClip(): Clip =
+        { frames = Nil, fps = 8.0, loop = Loop.Forward }
 
     /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ落とす。
     pub def fromJson(text: String): Option[Doc] =
@@ -102,10 +117,54 @@ mod PxSpriteDoc {
             { anchor = Map.get("anchor", obj)
                   |> Option.flatMap(JsonCodec.decodeVec2)
                   |> Option.getWithDefault({ x = 0.0, y = 0.0 }),
-              loop = loopOf(obj),
-              frames = framesOf(obj) })
+              frames = framesOf(obj),
+              clips = clipsOf(obj) })
 
-    /// "loop": "forward" | "pingpong" | "once"。省略・知らない字は Forward(従来どおり)。
+    /// "clips": { "walk_down": { "frames": ["down","down_walk"], "fps": 6, "loop": "pingpong" } }。
+    /// コマを 1 枚も挙げていない動きは捨てる(再生しても何も起きないため)。
+    def clipsOf(obj: Map[String, Json]): Map[String, Clip] =
+        Map.get("clips", obj)
+            |> Option.flatMap(JsonCodec.expectObject)
+            |> Option.map(m -> m
+                |> Map.toList
+                |> List.filter(entry -> { let (name, _) = entry;
+                    not String.startsWith(prefix = "//", name) })
+                |> List.filterMap(entry -> {
+                    let (name, json) = entry;
+                    clipOf(json) |> Option.map(c -> (name, c))
+                })
+                |> List.toMap)
+            |> Option.getWithDefault(Map.empty())
+
+    def clipOf(json: Json): Option[Clip] =
+        JsonCodec.expectObject(json) |> Option.flatMap(o -> {
+            let names = Map.get("frames", o)
+                |> Option.flatMap(JsonCodec.decodeList(JsonCodec.expectString))
+                |> Option.getWithDefault(Nil);
+            if (List.isEmpty(names)) None
+            else Some({ frames = names,
+                        fps = JsonCodec.floatOr("fps", emptyClip()#fps, o),
+                        loop = loopOf(o) })
+        })
+
+    /// 動きの t 秒後に出すコマの名前。動きが無い・fps が 0 以下なら None
+    /// (呼ぶ側は今までどおり自分でコマの名前を選べばよい)。
+    ///
+    /// 名前を返すのは、描く口(PxSprite.draw / drawQuad)がコマの名前で引くため。
+    /// ここが番号を返すと、呼ぶ側が並びを持ち直すことになる。
+    pub def clipFrameAt(doc: Doc, sprite: String, clip: String, seconds: Float64): Option[String] =
+        Map.get(sprite, doc#sprites)
+            |> Option.flatMap(sp -> Map.get(clip, sp#clips))
+            |> Option.flatMap(c ->
+                if (c#fps <= 0.0) None
+                else {
+                    let count = List.length(c#frames);
+                    let elapsed = Float64.max(0.0, seconds) * c#fps;
+                    let step = Float64.tryToInt32(Float64.floor(elapsed)) |> Option.getWithDefault(0);
+                    List.nth(frameIndexAt(c#loop, count, step), c#frames)
+                })
+
+    /// "loop": "forward" | "pingpong" | "once"。省略・知らない字は Forward。
     def loopOf(obj: Map[String, Json]): Loop =
         Map.get("loop", obj)
             |> Option.flatMap(JsonCodec.expectString)

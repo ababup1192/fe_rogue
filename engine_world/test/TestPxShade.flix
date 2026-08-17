@@ -112,7 +112,7 @@ mod TestPxShade {
     @Test
     def testPolishDocTouchesEveryFrame(): Unit \ Assert =
         let doc = { version = 1, note = None, legend = Map#{ 'm' => "metal" },
-                    sprites = Map#{ "x" => { anchor = { x = 0.0, y = 0.0 }, loop = PxSpriteDoc.Loop.Forward,
+                    sprites = Map#{ "x" => { anchor = { x = 0.0, y = 0.0 }, clips = Map.empty(),
                                              frames = Map#{ "a" => block(), "b" => block() } } } };
         let out = PxShade.shadeDoc(spec(), ramp(), doc);
         let frameOf = name -> Map.get("x", out#sprites)
