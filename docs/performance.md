@@ -223,10 +223,27 @@ List.reverse(List.reverse(folded#current) :: folded#rows)
 
 ## 7. 残っている二乗の一覧
 
-**最終確認日: 2026-08-13**
+**最終確認日: 2026-08-17**
 
 `lint-quadratic`（二乗の形を機械で裁く検査）は**作らないと決めた**ので、
 **宿題の置き場はここしか無い**。触るときに見る。
+
+### この一覧が緑のテストに騙されていた（2026-08-17）
+
+`TestAllocGrowth` が緑でも、**二乗が無い証拠にはならない**。閾値の置き方に窓がある。
+
+前の回は `RichText.placeLine` の `List.append` を直したが、**同じファイルの `wrapLinesBy` /
+`take` / `plainText` には文字列連結の二乗が残っていた**。それでも
+`testPlaceAllocatesLinearlyInLineLength` は緑のまま通っていた（実ログ `PASS 389.0ms`）。
+
+理由は混合の比率。N=100 → 800 で二乗の項だけなら 42.7 倍だが、線形の項が太いので
+全体の比は 15.3 倍に薄まり、閾値 16.0 を下回る。**1 文字あたりの線形の割り当てが
+約 600 バイトを超えると、二乗はこの検査の下に隠れる。**
+
+**閾値は「比例なら 8 倍」に近づける。** 実測の最大 × 1.4 程度が線で、16 は緩すぎた
+（`place` は 16.0 → 11.5 に締めた。実測 8.0 前後）。ただし 10 を切ると偽陽性を出す
+（線形の床が消えないため）。**2 点しか測らないので混合を分離できない**のも同じ理由で、
+このテストの限界として残る。
 
 ### `UiHierarchy.childrenOf` — 1 つの親が子を 100 個以上持つ UI で今も二乗（要相談）
 
@@ -243,6 +260,20 @@ List.reverse(List.reverse(folded#current) :: folded#rows)
 
 **直すと並び順が変わりうる**（安定ソートへ替えると、order が同値の兄弟の順が変わる）。
 `childrenOf` は pub なので pub 不変の門に当たる。**着手前に相談する。**
+
+### 毎フレームの `sortBy` — キーは比較のたびに 2 回組まれる
+
+**Flix の `List.sortBy(f, l)` は `sortWith(Order.compare `on` f)`** なので、
+**1 回の比較でキー関数を 2 回呼ぶ**（メモ化しない）。キーが重い関数を呼ぶ形は、
+それだけで `2·N·log N` 回の呼び出しになる。
+
+直し方は decorate-sort-undecorate（`(キー, 要素)` を 1 回だけ作り `sortBy(fst)` で並べて戻す）。
+**キー列が同一なら出力の順列はビット同一**になる（`quicksortPartition` の swap は
+比較の結果だけで決まり、要素の同一性は制御フローに入らない）。並びは変わらない。
+
+2026-08-17 にこの形で直したのは `UiExtract` の 3 本（`extract` / `extractPolys` /
+`extractShapes`）と `Painter.zOrdered`。**残りの `sortBy` を触るときは、キーが何を
+呼んでいるかを先に見る。**
 
 ### 走査 5 本の同乗（適用 E）— 測って打ち切り済み
 
@@ -267,6 +298,47 @@ List.reverse(List.reverse(folded#current) :: folded#rows)
 `List.memberOf` の約 12 件は**大半が 3〜10 要素の許可リストに対する会員判定**で、
 N が定数なので実害は無いと判断している。**N を決めるのがゲームになる場所
 （Doc から来る一覧・entity の一覧）だけは、見つけたら 3-a として直す。**
+
+2026-08-17 に engine / engine_world / render_gl / engine_tools を洗い直し、
+**`List.foldLeft` の中で蓄積へ `List.append` する形は engine / engine_world から消えた**
+（残っていた `ReferenceSite.scenariosOf` / `tagsOf` の 2 件もこの回で直した）。
+文字列版（`String.concat` / 補間で 1 文字ずつ足す）は見落としていた形で、
+`RichText` の 3 件と `PxShade.shade` がこれに当たり、直した。
+
+同じ日の追加調査で **`ShaderGen` の 3 件が漏れていた**ことが分かり、直した
+（`bindingPrelude` / `gradientExpr` / `powProduct`。N はそれぞれ Doc の binding 本数・
+グラデーションの区切り数・Doc に書かれた指数で、**どれもゲームが決める**）。
+`AllocMeter` で要素数を 8 倍にしたときの割り当ての増え方を測ると **61 / 61 / 26 倍**
+（比例なら 8 倍）で、二乗であることが数字で出た。`preludeSource` の 119 個の `+` 連鎖も
+同じ回で 1 回組みに替えている（項数は固定なので二乗ではないが、`compile` の割り当ての
+7 割を占めていた）。`compile` 1 回の割り当ては 314,848 → **121,608 バイト（−61%）**。
+検査は `engine/test/TestShaderGrowth.flix` に常設した。
+
+### 要相談として残した物（2026-08-17 に調べて、手を付けなかった）
+
+| 場所 | 事実 | 止めた理由 |
+|---|---|---|
+| `ShaderGen.compile`（`LwjglLayer:1253` 経由） | **毎フレーム GLSL 全文を組んでから、その文字列をキャッシュキーにする**。ヒットしても生成の費用は払い済み。面 1 枚で 0.032ms/フレーム | **測って、やらないと決めた（2026-08-17）。** 凝った Doc でも割り当ては 1.23 倍にしかならず（prelude が固定費として支配）、0.8ms に届くには面が同時に 20 枚要る。加えて `ShaderGen` は headless の経路を通らないので、キーの取り違えを退行検知が見られない。数字と理由は `docs/backlog.md` |
+| `Sprite.buildMaskData:470` | mask 付き描画ごとに毎フレーム再三角形化（凹なら二乗） | mask はカメラ変換後の座標で毎フレーム値が変わる。**鍵にできる不変量が無い** |
+| `Shadow.rimBlocked:109` | 前面辺 × 全影四角形の O(E²) | 本物の二乗だが `Light.items` の呼び出し元がテストのみ。直しは空間分割 = 3-b |
+| `UiExtract.measureTexts:10` | 毎フレーム全テキストを再計測（可視でなくても・変わっていなくても） | 二乗ではなく係数。§10 の「まだ 1 度も採っていない手」に当たる |
+| `SoftRaster` の資産の読み直し | GIF は **コマ数 ×(1+pass 枚数)** だけ全 PNG と TTF を読み直す | 予算の門の右下。置き場は `RenderConfig` ではなく既存の `extraImages` / `extraFonts` 経路へ private で通す形（pub を増やさない）。**寿命は 1 回の描き出しの中に閉じる** |
+| `Material.grain` の静的化 | エンジン側に「この fx は静的か」の口が無い | pub 追加 + エンジン拡張。相談の前に**既存の `prebuilt` へ寄せられるか**を調べること |
+
+### 調べて「穴ではない」と分かった物（同じ調査をやり直さないため）
+
+- `ViewProjection.coveringCells:276` — **入力は整列済みではない**（生成は行優先、キーは `x+y` で鋸歯）。
+  末尾ピボットの最悪 O(N²) には当たらない
+- `Hit.firstHit` / `hits` / `anyHit` — **1 対 N の O(N)** であって二乗ではない。
+  `Collision` の一様格子は全ペア用で、API の形が違うので比較にならない
+- `UiFocus.hitTestUi:32` — 毎フレームではない。しかも `measures` が空 vs 実測で
+  **計算そのものが違う**ので、`UiRender` と共有すると絵が変わる
+- `Terrain.surfaceItems:75` — 二乗ではなく線形。カリングは呼び側の仕事
+- `ShaderEval.neighborCells:368` — `envOf` と同じ経路・同じ性質・同じ分母で、そちらは打ち切り済み
+- `SoftRaster.drawGlyph` の `deriveFont` — JDK が font strike をキャッシュしている
+- `RenderLint.pairsOf:193` — 全ペアが仕様で、出力自体が N²/2 要素ある
+- `TileLayer.sourceIdAt:117` — 形は正しいが**呼び出し元がゼロ**（`isWall` / `isFloor` にも無い）。
+  生死の門により、直す前に「消すか」を問う対象
 
 ---
 

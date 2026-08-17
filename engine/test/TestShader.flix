@@ -67,6 +67,13 @@ def bodyOfField(field: ShaderDoc.Field): String =
 def testPreludeLength(): Unit \ Assert =
     Assert.assertEq(expected = 4592, String.length(ShaderGen.preludeSource()))
 
+/// prelude の中身も pin する。長さだけでは、断片を入れ替えても総文字数が同じなら緑のまま通り、
+/// GLSL の宣言順が狂って面が代替の絵に落ちても誰も気づけない。
+/// 組み立て方（+ の連鎖か 1 回組みか）を変えるときは、この値が動かないことが唯一の証拠になる。
+@Test
+def testPreludeContent(): Unit \ Assert =
+    Assert.assertEq(expected = 914099489, Hash.hash(ShaderGen.preludeSource()))
+
 /// demoSurface の main 式（prelude 抜き）。Ramp の三角波位相・Uv 展開まで含めて決定論で pin。
 @Test
 def testDemoBodySnapshot(): Unit \ Assert =
@@ -365,6 +372,26 @@ def testScanlineBodySnapshot(): Unit \ Assert =
         "(0.5 + (0.5 * sin((((vUv).y * 40.0) - (uTime * 3.0 + (0.0)))))));";
     Assert.assertEq(expected = expected, bodyOfField(scanlineField()))
 
+/// 整数指数の Pow は pow() でなく反復積の入れ子になる。指数 4 で括弧が 3 段。
+/// 入れ子の段数と括弧の位置を pin する — 組み立て方を変えたとき、段が 1 つ増減しても
+/// GLSL としては通ってしまい、絵だけが変わるため。
+@Test
+def testPowProductSnapshot(): Unit \ Assert =
+    let expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), " +
+        "(((max(0.0, (vUv).x) * max(0.0, (vUv).x)) * max(0.0, (vUv).x)) * max(0.0, (vUv).x)));";
+    let field = ShaderDoc.Field.Pow({ of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }), p = 4.0 });
+    Assert.assertEq(expected = expected, bodyOfField(field))
+
+/// 指数 1 は底そのもの・指数 0 は 1.0（境目で括弧が湧かない）。
+@Test
+def testPowProductEdges(): Unit \ Assert =
+    let at = p -> bodyOfField(ShaderDoc.Field.Pow({ of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }), p = p }));
+    Assert.assertEq(
+        expected = ("outColor = vec4(vec3(0.0, 0.0, 0.0), max(0.0, (vUv).x));",
+                    "outColor = vec4(vec3(0.0, 0.0, 0.0), 1.0);"),
+        (at(1.0), at(0.0)))
+
 /// 同じ木の CPU 代表点 pin。v=0.3, t=0.1 → 位相 = 40*0.3 - 3*0.1 = 11.7（連続 sin ＝ 安全）。
 @Test
 def testScanlineEval(): Unit \ Assert =
@@ -622,6 +649,26 @@ def testGradientNodeSnapshot(): Unit \ Assert =
         "outColor = vec4(mix(mix(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), " +
         "smoothstep(0.0, 0.5, clamp((vUv).x, 0.0, 1.0))), vec3(1.0, 1.0, 0.0), " +
         "smoothstep(0.5, 1.0, clamp((vUv).x, 0.0, 1.0))), 1.0);";
+    Assert.assertEq(expected = expected, bodyOfGradient(stops, field))
+
+/// 区切り 5 個の Gradient。3 個では入れ子が 2 段しかなく、段の作り方を変えたとき
+/// 1 段ずれても偶然合ってしまう余地がある。4 段まで伸ばして、
+/// 各段が「1 つ前の式全体 + 次の色 + 次の smoothstep」で閉じることを pin する。
+@Test
+def testGradientFiveStopsSnapshot(): Unit \ Assert =
+    let stops =
+        (0.0,  { r = 0.0, g = 0.0, b = 0.0 }) ::
+        (0.25, { r = 1.0, g = 0.0, b = 0.0 }) ::
+        (0.5,  { r = 0.0, g = 1.0, b = 0.0 }) ::
+        (0.75, { r = 0.0, g = 0.0, b = 1.0 }) ::
+        (1.0,  { r = 1.0, g = 1.0, b = 1.0 }) :: Nil;
+    let field = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U });
+    let expected =
+        "outColor = vec4(mix(mix(mix(mix(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), " +
+        "smoothstep(0.0, 0.25, clamp((vUv).x, 0.0, 1.0))), vec3(0.0, 1.0, 0.0), " +
+        "smoothstep(0.25, 0.5, clamp((vUv).x, 0.0, 1.0))), vec3(0.0, 0.0, 1.0), " +
+        "smoothstep(0.5, 0.75, clamp((vUv).x, 0.0, 1.0))), vec3(1.0, 1.0, 1.0), " +
+        "smoothstep(0.75, 1.0, clamp((vUv).x, 0.0, 1.0))), 1.0);";
     Assert.assertEq(expected = expected, bodyOfGradient(stops, field))
 
 /// representativeColor は field を評価せず f=0.5 の補間色を返す（GL なし経路のベタ塗り）。

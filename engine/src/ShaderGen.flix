@@ -25,139 +25,148 @@ mod ShaderGen {
 
     /// ノイズ関数の固定テンプレ（hash2 / worley / fbm）。Spec に依存しないので 1 度だけ pin し、
     /// Spec スナップショットからは除外する（テストで preludeSource を別途スナップする）。
-    pub def preludeSource(): String =
-        "float sg_hash1(vec2 p, float seed) {\n" +
-        "    return fract(sin(dot(p, vec2(127.1, 311.7)) + seed * 0.017) * 43758.5453123);\n" +
-        "}\n" +
-        "vec2 sg_hash2(vec2 p, float seed) {\n" +
-        "    return vec2(sg_hash1(p, seed), sg_hash1(p + vec2(19.19, 7.31), seed));\n" +
-        "}\n" +
+    pub def preludeSource(): String = joinParts(
+        "float sg_hash1(vec2 p, float seed) {\n" ::
+        "    return fract(sin(dot(p, vec2(127.1, 311.7)) + seed * 0.017) * 43758.5453123);\n" ::
+        "}\n" ::
+        "vec2 sg_hash2(vec2 p, float seed) {\n" ::
+        "    return vec2(sg_hash1(p, seed), sg_hash1(p + vec2(19.19, 7.31), seed));\n" ::
+        "}\n" ::
         // Worley: 近傍 3x3 セルの特徴点までの距離から F1(最近) と F2(次近) を求める。
-        "vec2 sg_worleyF1F2(vec2 p, float seed) {\n" +
-        "    vec2 ip = floor(p);\n" +
-        "    vec2 fp = fract(p);\n" +
-        "    float f1 = 8.0; float f2 = 8.0;\n" +
-        "    for (int j = -1; j <= 1; j++) {\n" +
-        "        for (int i = -1; i <= 1; i++) {\n" +
-        "            vec2 g = vec2(float(i), float(j));\n" +
-        "            vec2 o = sg_hash2(ip + g, seed);\n" +
-        "            vec2 r = g + o - fp;\n" +
-        "            float d = length(r);\n" +
-        "            if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) { f2 = d; }\n" +
-        "        }\n" +
-        "    }\n" +
-        "    return vec2(f1, f2);\n" +
-        "}\n" +
+        "vec2 sg_worleyF1F2(vec2 p, float seed) {\n" ::
+        "    vec2 ip = floor(p);\n" ::
+        "    vec2 fp = fract(p);\n" ::
+        "    float f1 = 8.0; float f2 = 8.0;\n" ::
+        "    for (int j = -1; j <= 1; j++) {\n" ::
+        "        for (int i = -1; i <= 1; i++) {\n" ::
+        "            vec2 g = vec2(float(i), float(j));\n" ::
+        "            vec2 o = sg_hash2(ip + g, seed);\n" ::
+        "            vec2 r = g + o - fp;\n" ::
+        "            float d = length(r);\n" ::
+        "            if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) { f2 = d; }\n" ::
+        "        }\n" ::
+        "    }\n" ::
+        "    return vec2(f1, f2);\n" ::
+        "}\n" ::
         // value noise（格子 4 点の hash を双一次補間）と、その多重和 fbm。
-        "float sg_valueNoise(vec2 p, float seed) {\n" +
-        "    vec2 ip = floor(p);\n" +
-        "    vec2 fp = fract(p);\n" +
-        "    vec2 w = fp * fp * (3.0 - 2.0 * fp);\n" +
-        "    float a = sg_hash1(ip + vec2(0.0, 0.0), seed);\n" +
-        "    float b = sg_hash1(ip + vec2(1.0, 0.0), seed);\n" +
-        "    float c = sg_hash1(ip + vec2(0.0, 1.0), seed);\n" +
-        "    float d = sg_hash1(ip + vec2(1.0, 1.0), seed);\n" +
-        "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" +
-        "}\n" +
+        "float sg_valueNoise(vec2 p, float seed) {\n" ::
+        "    vec2 ip = floor(p);\n" ::
+        "    vec2 fp = fract(p);\n" ::
+        "    vec2 w = fp * fp * (3.0 - 2.0 * fp);\n" ::
+        "    float a = sg_hash1(ip + vec2(0.0, 0.0), seed);\n" ::
+        "    float b = sg_hash1(ip + vec2(1.0, 0.0), seed);\n" ::
+        "    float c = sg_hash1(ip + vec2(0.0, 1.0), seed);\n" ::
+        "    float d = sg_hash1(ip + vec2(1.0, 1.0), seed);\n" ::
+        "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" ::
+        "}\n" ::
         // 行ごとに stagger だけずらした格子点への最近距離（0→1）。
         // 近傍 3x3 の格子点を見て最短を取るので、隙間なくタイル状に繋がる（孤立した円にならない）。
-        "float sg_scales(vec2 uv, float scale, float stagger) {\n" +
-        "    vec2 p = uv * scale;\n" +
-        "    vec2 ip = floor(p);\n" +
-        "    float best = 8.0;\n" +
-        "    for (int j = -1; j <= 1; j++) {\n" +
-        "        for (int i = -1; i <= 1; i++) {\n" +
-        "            vec2 cell = ip + vec2(float(i), float(j));\n" +
-        "            vec2 center = cell + vec2(0.5 + mod(cell.y, 2.0) * stagger, 0.5);\n" +
-        "            best = min(best, length(p - center));\n" +
-        "        }\n" +
-        "    }\n" +
-        "    return clamp(best, 0.0, 1.0);\n" +
-        "}\n" +
+        "float sg_scales(vec2 uv, float scale, float stagger) {\n" ::
+        "    vec2 p = uv * scale;\n" ::
+        "    vec2 ip = floor(p);\n" ::
+        "    float best = 8.0;\n" ::
+        "    for (int j = -1; j <= 1; j++) {\n" ::
+        "        for (int i = -1; i <= 1; i++) {\n" ::
+        "            vec2 cell = ip + vec2(float(i), float(j));\n" ::
+        "            vec2 center = cell + vec2(0.5 + mod(cell.y, 2.0) * stagger, 0.5);\n" ::
+        "            best = min(best, length(p - center));\n" ::
+        "        }\n" ::
+        "    }\n" ::
+        "    return clamp(best, 0.0, 1.0);\n" ::
+        "}\n" ::
         // まばらに明滅する短い横線のきらめき。セルごとに density で点灯・位相ずれで sin 明滅。
-        "float sg_glints(vec2 uv, float scale, float rate, float density, float seed) {\n" +
-        "    vec2 p = uv * scale;\n" +
-        "    vec2 ip = floor(p);\n" +
-        "    vec2 fp = fract(p);\n" +
-        "    float on = step(1.0 - density, sg_hash1(ip, seed));\n" +
-        "    float phase = sg_hash1(ip, seed + 7.0) * 6.2831853;\n" +
-        "    float tw = max(0.0, sin(uTime * rate + phase));\n" +
-        "    float dash = (1.0 - smoothstep(0.04, 0.10, abs(fp.y - 0.5))) *\n" +
-        "                 (1.0 - smoothstep(0.28, 0.46, abs(fp.x - 0.5)));\n" +
-        "    return on * tw * dash;\n" +
-        "}\n" +
+        "float sg_glints(vec2 uv, float scale, float rate, float density, float seed) {\n" ::
+        "    vec2 p = uv * scale;\n" ::
+        "    vec2 ip = floor(p);\n" ::
+        "    vec2 fp = fract(p);\n" ::
+        "    float on = step(1.0 - density, sg_hash1(ip, seed));\n" ::
+        "    float phase = sg_hash1(ip, seed + 7.0) * 6.2831853;\n" ::
+        "    float tw = max(0.0, sin(uTime * rate + phase));\n" ::
+        "    float dash = (1.0 - smoothstep(0.04, 0.10, abs(fp.y - 0.5))) *\n" ::
+        "                 (1.0 - smoothstep(0.28, 0.46, abs(fp.x - 0.5)));\n" ::
+        "    return on * tw * dash;\n" ::
+        "}\n" ::
         // 横に波打つ縞: y にサインのゆらぎ(wob)を足した band を、時間で縦に流す。出力 0..1。
-        "float sg_ripples(vec2 uv, float freq, float amp, float speed, float seed) {\n" +
-        "    float wob = sin(uv.x * 6.2831853 * freq * 0.5 + seed) * amp\n" +
-        "              + sin(uv.x * 6.2831853 * freq * 1.3 + seed * 2.7) * amp * 0.4;\n" +
-        "    float band = uv.y * freq + wob + uTime * speed;\n" +
-        "    return 0.5 + 0.5 * sin(band * 6.2831853);\n" +
-        "}\n" +
+        "float sg_ripples(vec2 uv, float freq, float amp, float speed, float seed) {\n" ::
+        "    float wob = sin(uv.x * 6.2831853 * freq * 0.5 + seed) * amp\n" ::
+        "              + sin(uv.x * 6.2831853 * freq * 1.3 + seed * 2.7) * amp * 0.4;\n" ::
+        "    float band = uv.y * freq + wob + uTime * speed;\n" ::
+        "    return 0.5 + 0.5 * sin(band * 6.2831853);\n" ::
+        "}\n" ::
         // 点滅の回 cyc ごとに「光るセル(on)」と「セル内の位置(pos)」を選び直すので
         // 同じ場所で繰り返さず毎回ランダムな所に出る。pow を大きくして一瞬で光り一瞬で消える鋭いパルス。
-        "float sg_sparkle(vec2 uv, float scale, float rate, float density, float seed) {\n" +
-        "    vec2 p = uv * scale;\n" +
-        "    vec2 ip = floor(p);\n" +
-        "    vec2 fp = fract(p);\n" +
-        "    float t = uTime * rate + sg_hash1(ip, seed + 3.0) * 6.2831853;\n" +
-        "    float cyc = floor(t / 6.2831853);\n" +
-        "    float on = step(1.0 - density, sg_hash1(ip + cyc, seed));\n" +
-        "    float tw = pow(max(0.0, sin(t)), 12.0);\n" +
-        "    vec2 pos = 0.15 + 0.7 * sg_hash2(ip + cyc, seed + 11.0);\n" +
-        "    vec2 e = fp - pos;\n" +
-        "    float d = abs(e.x) + abs(e.y);\n" +
-        "    float point = 1.0 - smoothstep(0.04, 0.26, d);\n" +
-        "    return on * tw * point;\n" +
-        "}\n" +
-        "float sg_fbm(vec2 p, int octaves, float seed) {\n" +
-        "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" +
-        "    for (int i = 0; i < octaves; i++) {\n" +
-        "        sum += amp * sg_valueNoise(p * freq, seed + float(i) * 13.0);\n" +
-        "        freq *= 2.0; amp *= 0.5;\n" +
-        "    }\n" +
-        "    return sum;\n" +
-        "}\n" +
+        "float sg_sparkle(vec2 uv, float scale, float rate, float density, float seed) {\n" ::
+        "    vec2 p = uv * scale;\n" ::
+        "    vec2 ip = floor(p);\n" ::
+        "    vec2 fp = fract(p);\n" ::
+        "    float t = uTime * rate + sg_hash1(ip, seed + 3.0) * 6.2831853;\n" ::
+        "    float cyc = floor(t / 6.2831853);\n" ::
+        "    float on = step(1.0 - density, sg_hash1(ip + cyc, seed));\n" ::
+        "    float tw = pow(max(0.0, sin(t)), 12.0);\n" ::
+        "    vec2 pos = 0.15 + 0.7 * sg_hash2(ip + cyc, seed + 11.0);\n" ::
+        "    vec2 e = fp - pos;\n" ::
+        "    float d = abs(e.x) + abs(e.y);\n" ::
+        "    float point = 1.0 - smoothstep(0.04, 0.26, d);\n" ::
+        "    return on * tw * point;\n" ::
+        "}\n" ::
+        "float sg_fbm(vec2 p, int octaves, float seed) {\n" ::
+        "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" ::
+        "    for (int i = 0; i < octaves; i++) {\n" ::
+        "        sum += amp * sg_valueNoise(p * freq, seed + float(i) * 13.0);\n" ::
+        "        freq *= 2.0; amp *= 0.5;\n" ::
+        "    }\n" ::
+        "    return sum;\n" ::
+        "}\n" ::
         // 周期つき value noise: 格子点を period で折り返してから hash する（period マスで模様が閉じる）。
-        "float sg_valueNoiseTile(vec2 p, vec2 period, float seed) {\n" +
-        "    vec2 ip = floor(p);\n" +
-        "    vec2 fp = fract(p);\n" +
-        "    vec2 w = fp * fp * (3.0 - 2.0 * fp);\n" +
-        "    float a = sg_hash1(mod(ip + vec2(0.0, 0.0), period), seed);\n" +
-        "    float b = sg_hash1(mod(ip + vec2(1.0, 0.0), period), seed);\n" +
-        "    float c = sg_hash1(mod(ip + vec2(0.0, 1.0), period), seed);\n" +
-        "    float d = sg_hash1(mod(ip + vec2(1.0, 1.0), period), seed);\n" +
-        "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" +
-        "}\n" +
+        "float sg_valueNoiseTile(vec2 p, vec2 period, float seed) {\n" ::
+        "    vec2 ip = floor(p);\n" ::
+        "    vec2 fp = fract(p);\n" ::
+        "    vec2 w = fp * fp * (3.0 - 2.0 * fp);\n" ::
+        "    float a = sg_hash1(mod(ip + vec2(0.0, 0.0), period), seed);\n" ::
+        "    float b = sg_hash1(mod(ip + vec2(1.0, 0.0), period), seed);\n" ::
+        "    float c = sg_hash1(mod(ip + vec2(0.0, 1.0), period), seed);\n" ::
+        "    float d = sg_hash1(mod(ip + vec2(1.0, 1.0), period), seed);\n" ::
+        "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" ::
+        "}\n" ::
         // 周期つき fbm。オクターブごとに period も freq 倍する（各層とも同じ位置で折り返す）。
-        "float sg_fbmTile(vec2 p, vec2 period, int octaves, float seed) {\n" +
-        "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" +
-        "    for (int i = 0; i < octaves; i++) {\n" +
-        "        sum += amp * sg_valueNoiseTile(p * freq, period * freq, seed + float(i) * 13.0);\n" +
-        "        freq *= 2.0; amp *= 0.5;\n" +
-        "    }\n" +
-        "    return sum;\n" +
-        "}\n" +
+        "float sg_fbmTile(vec2 p, vec2 period, int octaves, float seed) {\n" ::
+        "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" ::
+        "    for (int i = 0; i < octaves; i++) {\n" ::
+        "        sum += amp * sg_valueNoiseTile(p * freq, period * freq, seed + float(i) * 13.0);\n" ::
+        "        freq *= 2.0; amp *= 0.5;\n" ::
+        "    }\n" ::
+        "    return sum;\n" ::
+        "}\n" ::
         // 中心 (cx,cy) のまわりに座標を回す（中心ほど速い差動回転＋rate*uTime の全体回転）。
-        "vec2 sg_swirl(vec2 uv, float cx, float cy, float strength, float rate) {\n" +
-        "    vec2 c = vec2(cx, cy);\n" +
-        "    vec2 p = uv - c;\n" +
-        "    float r = length(p);\n" +
-        "    float a = strength / (r + 0.08) + rate * uTime;\n" +
-        "    float s = sin(a); float co = cos(a);\n" +
-        "    return c + mat2(co, -s, s, co) * p;\n" +
-        "}\n" +
+        "vec2 sg_swirl(vec2 uv, float cx, float cy, float strength, float rate) {\n" ::
+        "    vec2 c = vec2(cx, cy);\n" ::
+        "    vec2 p = uv - c;\n" ::
+        "    float r = length(p);\n" ::
+        "    float a = strength / (r + 0.08) + rate * uTime;\n" ::
+        "    float s = sin(a); float co = cos(a);\n" ::
+        "    return c + mat2(co, -s, s, co) * p;\n" ::
+        "}\n" ::
         // コサインパレット col = a + b*cos(2π(c*t + d))（Inigo Quilez 方式）。
-        "vec3 sg_cospal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {\n" +
-        "    return clamp(a + b * cos(6.2831853 * (c * t + d)), 0.0, 1.0);\n" +
-        "}\n" +
+        "vec3 sg_cospal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {\n" ::
+        "    return clamp(a + b * cos(6.2831853 * (c * t + d)), 0.0, 1.0);\n" ::
+        "}\n" ::
         // 中心 (cx,cy) まわりに座標を均一に回す（turns + rate*uTime 周）。
-        "vec2 sg_rotate(vec2 uv, float cx, float cy, float turns, float rate) {\n" +
-        "    vec2 c = vec2(cx, cy);\n" +
-        "    vec2 p = uv - c;\n" +
-        "    float a = 6.2831853 * (turns + rate * uTime);\n" +
-        "    float s = sin(a); float co = cos(a);\n" +
-        "    return c + mat2(co, -s, s, co) * p;\n" +
-        "}\n"
+        "vec2 sg_rotate(vec2 uv, float cx, float cy, float turns, float rate) {\n" ::
+        "    vec2 c = vec2(cx, cy);\n" ::
+        "    vec2 p = uv - c;\n" ::
+        "    float a = 6.2831853 * (turns + rate * uTime);\n" ::
+        "    float s = sin(a); float co = cos(a);\n" ::
+        "    return c + mat2(co, -s, s, co) * p;\n" ::
+        "}\n" :: Nil)
+
+    /// 断片を 1 回で 1 本にする。`+` で継ぎ足すと 1 個ごとに全体を作り直すので、
+    /// 断片の数が増えるほどコピーが二乗に膨らむ。
+    def joinParts(parts: List[String]): String =
+        region rc {
+            let sb = StringBuilder.empty(rc);
+            List.forEach(s -> StringBuilder.append(s, sb), parts);
+            StringBuilder.toString(sb)
+        }
 
     /// Spec → fragment シェーダー全体（prelude + main）。uTime uniform を前提に持つ。
     /// Tex を使う Spec だけ sampler uniform（uTexN / uTexFlipN）が増える — 使わない Spec の
@@ -167,16 +176,17 @@ mod ShaderGen {
         // texNames は木を全走査するので、宣言と番号表で使い回す（毎回呼ぶと走査が重複する）。
         let names = ShaderDoc.texNames(spec);
         let tex = texIndexFrom(names);
-        "#version 330 core\n" +
-        "in vec2 vUv;\n" +
-        "out vec4 outColor;\n" +
-        "uniform float uTime;\n" +
-        texUniformDecls(names) +
-        preludeSource() +
-        "void main() {\n" +
-        bindingPrelude(spec#bindings, tex) +
-        "    " + outStmt(spec#cycleRate, spec#out, envOf(spec#bindings), tex) + "\n" +
-        "}\n"
+        joinParts(
+            "#version 330 core\n" ::
+            "in vec2 vUv;\n" ::
+            "out vec4 outColor;\n" ::
+            "uniform float uTime;\n" ::
+            texUniformDecls(names) ::
+            preludeSource() ::
+            "void main() {\n" ::
+            bindingPrelude(spec#bindings, tex) ::
+            "    " :: outStmt(spec#cycleRate, spec#out, envOf(spec#bindings), tex) :: "\n" ::
+            "}\n" :: Nil)
 
     /// texNames の並び（正典順）に uniform 宣言を吐く。空なら空文字（1 文字も足さない）。
     def texUniformDecls(names: List[String]): String =
@@ -203,13 +213,13 @@ mod ShaderGen {
     def bindingPrelude(bindings: List[(String, ShaderDoc.Field)], tex: Map[String, Int32]): String =
         if (List.isEmpty(bindings)) ""
         else {
-            let (text, _) = List.foldLeft((acc, nf) -> {
+            let (rev, _) = List.foldLeft((acc, nf) -> {
                 let (out, env) = acc;
                 let (name, field) = nf;
                 let line = "    float sg_b_" + name + " = " + fieldExpr(field, "vUv", env, tex) + ";\n";
-                (out + line, Map.insert(name, "sg_b_" + name, env))
-            }, ("", Map.empty()), bindings);
-            text
+                (line :: out, Map.insert(name, "sg_b_" + name, env))
+            }, (Nil, Map.empty()), bindings);
+            joinParts(List.reverse(rev))
         }
 
     /// bindings 名 → GLSL 変数名（sg_b_<name>）の env。out 式（shade/alpha）が Ref を解くのに使う。
@@ -273,13 +283,16 @@ mod ShaderGen {
         match stops {
             case Nil => "vec3(0.0, 0.0, 0.0)"
             case (_, c0) :: rest =>
-                let (expr, _) = List.foldLeft((acc, sc) -> {
-                    let (curExpr, prevPos) = acc;
+                // 1 段ごとに「それまでの式全体」を包み直す形なので、文字列を足しながら組むと
+                // 区切りの数の二乗ぶんコピーする。開き括弧をまとめて先に置き、閉じる側だけ積む。
+                let (tails, _) = List.foldLeft((acc, sc) -> {
+                    let (out, prevPos) = acc;
                     let (pos, col) = sc;
                     let w = "smoothstep(" + f(prevPos) + ", " + f(pos) + ", " + factor + ")";
-                    ("mix(" + curExpr + ", " + vec3Lit(col) + ", " + w + ")", pos)
-                }, (vec3Lit(c0), gradientFirstPos(stops)), rest);
-                expr
+                    ((", " + vec3Lit(col) + ", " + w + ")") :: out, pos)
+                }, (Nil, gradientFirstPos(stops)), rest);
+                joinParts(List.append(List.map(_ -> "mix(", rest),
+                                      vec3Lit(c0) :: List.reverse(tails)))
         }
 
     def gradientFirstPos(stops: List[(Float64, Color)]): Float64 =
@@ -465,8 +478,12 @@ mod ShaderGen {
     def powProduct(base: String, n: Float64): String =
         let k = Int32.max(0, Float64.tryToInt32(n) |> Option.getWithDefault(0));
         if (k == 0) "1.0"
-        else List.foldLeft((acc, _) -> "(" + acc + " * " + base + ")",
-                           base, List.range(1, k))
+        else {
+            // 積も 1 段ごとに全体を包み直す形。開き括弧を先にまとめて置き、閉じる側だけ積む。
+            let reps = List.range(1, k);
+            joinParts(List.append(List.map(_ -> "(", reps),
+                                  base :: List.map(_ -> " * " + base + ")", reps)))
+        }
 
     def vec3Lit(c: Color): String =
         "vec3(" + f(c#r) + ", " + f(c#g) + ", " + f(c#b) + ")"
