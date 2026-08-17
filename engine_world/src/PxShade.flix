@@ -47,9 +47,12 @@ mod PxShade {
                 or Map.exists((_, tones) -> fst(tones) == ch or snd(tones) == ch, ramp);
             // 行の長さは元のまま保つ（そろえて詰めるとコマの形が変わる）。
             List.range(0, height) |> List.map(y ->
-                List.range(0, widthAt(y))
-                    |> List.map(x -> pixel(spec, ramp, src, solid, x, y))
-                    |> List.foldLeft((acc, ch) -> acc + Char.toString(ch), ""))
+                region rc {
+                    let sb = StringBuilder.empty(rc);
+                    List.range(0, widthAt(y))
+                        |> List.forEach(x -> StringBuilder.append(pixel(spec, ramp, src, solid, x, y), sb));
+                    StringBuilder.toString(sb)
+                })
         }
 
     /// 全コマ・全スプライトに同じ仕上げを掛けた Doc を返す（読み込み直後に 1 度だけ呼ぶ）。

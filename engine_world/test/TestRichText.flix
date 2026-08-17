@@ -74,6 +74,15 @@ mod TestRichText {
              RichText.wrapLinesBy(unitWidth, 9.0, RichText.plain("") :: Nil) |> List.map(RichText.plainText),
              RichText.wrapLinesBy(unitWidth, 9.0, RichText.plain("a\n") :: Nil) |> List.map(RichText.plainText)))
 
+    // BMP の外の字（サロゲートペア）は上位・下位が別々の Char として幅を測られるので、
+    // ペアの真ん中で行が折れる。1 字が 2 行に割れる現在の壊れ方を具体値で固定する
+    // （幅 2+2=4 が maxWidth 3 に収まらず、2 文字目にあたる下位サロゲートで折れる）。
+    @Test
+    def testWrapSplitsSurrogatePair(): Unit \ Assert =
+        let lines = RichText.wrapLinesBy(unitWidth, 3.0, RichText.plain("𝄞") :: Nil);
+        let lens = lines |> List.map(line -> String.length(RichText.plainText(line)));
+        Assert.assertEq(expected = (2, 1 :: 1 :: Nil), (List.length(lines), lens))
+
     // ========================================================================
     // place: 1 字ずつの描画アイテム（返る順序・位置の積み上がり・色）
     // ========================================================================

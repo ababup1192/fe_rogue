@@ -10,10 +10,11 @@ mod Painter {
     pub def zOrdered(distOf: a -> Float64, zBase: Int32, zStride: Int32,
                      items: List[a]): List[(Int32, a)] =
         items
-            |> List.sortBy(it -> -distOf(it))
+            |> List.map(it -> (-distOf(it), it))
+            |> List.sortBy(fst)
             |> List.zipWithIndex
             |> List.map(entry -> {
-                let (idx, it) = entry;
-                (zBase + idx * zStride, it)
+                let (idx, keyed) = entry;
+                (zBase + idx * zStride, snd(keyed))
             })
 }

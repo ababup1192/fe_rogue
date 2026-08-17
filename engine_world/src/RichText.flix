@@ -16,7 +16,19 @@ mod RichText {
 
     /// 見た目を除いた素の文章（文字送りの長さ勘定・テストの pin に使う）。
     pub def plainText(spans: List[Span]): String =
-        spans |> List.map(span -> span#text) |> List.foldLeft(String.concat, "")
+        region rc {
+            let sb = StringBuilder.empty(rc);
+            List.forEach(span -> StringBuilder.append(span#text, sb), spans);
+            StringBuilder.toString(sb)
+        }
+
+    /// 字の列を 1 本の String へ組む。
+    def charsToString(chars: List[Char]): String =
+        region rc {
+            let sb = StringBuilder.empty(rc);
+            List.forEach(ch -> StringBuilder.append(ch, sb), chars);
+            StringBuilder.toString(sb)
+        }
 
     /// 全スパンの合計文字数。
     pub def length(spans: List[Span]): Int32 =
@@ -33,8 +45,7 @@ mod RichText {
                 else if (n >= len)
                     span :: take(n - len, rest)
                 else {
-                    let cut = String.toList(span#text) |> List.take(n)
-                        |> List.map(Char.toString) |> List.foldLeft(String.concat, "");
+                    let cut = String.toList(span#text) |> List.take(n) |> charsToString;
                     { text = cut | span } :: Nil
                 }
             }
@@ -61,30 +72,33 @@ mod RichText {
     /// 末尾に空行を残す — 行数を高さの予約に使う呼び側が空文字で 0 行にならないため。
     pub def wrapLinesBy(charWidth: Char -> Float64, maxWidth: Float64, spans: List[Span]): List[List[Span]] =
         // 行の組み立て中は lines(確定行・逆順)/ line(組み立て中の行のスパン・逆順)/
-        // chunk(いま処理中のスパンから今の行に積んだ文字)/ x(行の使用幅)を持ち回る。
+        // chunk(いま処理中のスパンから今の行に積んだ文字・逆順)/ x(行の使用幅)を持ち回る。
         let final = spans |> List.foldLeft((acc, span) -> {
             let s = String.toList(span#text) |> List.foldLeft((st, ch) -> {
                 if (ch == '\n')
-                    { lines = closeLine(st#chunk, span, st#line) :: st#lines, line = Nil, chunk = "", x = 0.0 }
+                    { lines = closeLine(st#chunk, span, st#line) :: st#lines, line = Nil,
+                      chunk = (Nil: List[Char]), x = 0.0 }
                 else {
                     let w = charWidth(ch);
                     // 行頭(x = 0)では折らない — maxWidth より広い字でも 1 字は必ず置く(無限ループを作らない)。
                     let st1 = if (st#x + w > maxWidth and st#x > 0.0)
-                        { lines = closeLine(st#chunk, span, st#line) :: st#lines, line = Nil, chunk = "", x = 0.0 }
+                        { lines = closeLine(st#chunk, span, st#line) :: st#lines, line = Nil,
+                          chunk = (Nil: List[Char]), x = 0.0 }
                         else st;
-                    { chunk = "${st1#chunk}${ch}", x = st1#x + w | st1 }
+                    { chunk = ch :: st1#chunk, x = st1#x + w | st1 }
                 }
-            }, { lines = acc#lines, line = acc#line, chunk = "", x = acc#x });
+            }, { lines = acc#lines, line = acc#line, chunk = (Nil: List[Char]), x = acc#x });
             { lines = s#lines, line = pushChunk(s#chunk, span, s#line), x = s#x }
         }, { lines = (Nil: List[List[Span]]), line = (Nil: List[Span]), x = 0.0 });
         List.reverse(List.reverse(final#line) :: final#lines)
 
-    /// 組み立て中のスパン片を行へ積む(空なら何も足さない)。属性は元スパンから引き継ぐ。
-    def pushChunk(chunk: String, span: Span, line: List[Span]): List[Span] =
-        if (chunk == "") line else ({ text = chunk | span }) :: line
+    /// 組み立て中のスパン片(逆順の字)を行へ積む(空なら何も足さない)。属性は元スパンから引き継ぐ。
+    def pushChunk(chunk: List[Char], span: Span, line: List[Span]): List[Span] =
+        if (List.isEmpty(chunk)) line
+        else ({ text = charsToString(List.reverse(chunk)) | span }) :: line
 
     /// 組み立て中の行を確定する(逆順を戻す)。
-    def closeLine(chunk: String, span: Span, line: List[Span]): List[Span] =
+    def closeLine(chunk: List[Char], span: Span, line: List[Span]): List[Span] =
         List.reverse(pushChunk(chunk, span, line))
 
     /// スパン列を左上 pos から 1 文字ずつ置いていく。行割りは wrapLinesBy(atlas の実測幅)で、

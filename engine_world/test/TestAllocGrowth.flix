@@ -1,7 +1,8 @@
 // TestAllocGrowth — 割り当てバイト数の増え方が N に比例したままかを見る。
 // 畳み込みの中の List.append は要素 1 つごとに acc を作り直すので、割り当てが N の二乗に
 // 膨らむ。時間ではなくバイト数で見るので、熱・JIT・GC・マシンの速さに動かされない。
-// 絶対バイト数は JDK やエスケープ解析で動くので pin せず、N を 8 倍にしたときの比だけを見る。
+// 絶対バイト数は JDK やエスケープ解析で動くので pin せず、N を 8 倍にしたとき割り当てが
+// 何倍に増えるかだけを見る。比例なら 8 倍前後・二乗なら 64 倍前後で、線はその間に引く。
 mod TestAllocGrowth {
 
     /// 'A' だけを送り 10 で持つ atlas（size 16 で等倍）。
@@ -27,6 +28,11 @@ mod TestAllocGrowth {
                    z = 40, pos = ({x = 0.0, y = 0.0}: Vec2.Vec2),
                    maxWidth = 1.0e9, lineGap = 3.0 }: RichText.Placement);
         RichText.place(p, RichText.plain(String.repeat(n, "A")) :: Nil) |> List.length
+
+    /// n + 1 文字のスパンから先頭 n 文字を切り出す（スパンの途中で切れる形にして、
+    /// 文字送りが毎フレーム通る切り出しの経路を必ず踏ませる）。
+    def takeChars(n: Int32): Int32 =
+        RichText.take(n, RichText.plain(String.repeat(n + 1, "A")) :: Nil) |> RichText.length
 
     def sustainNames(n: Int32): Int32 =
         let next = List.range(0, n) |> List.map(i -> ({ name = "s${i}", volume = 0.5, pitch = 1.0 }: App.Sustain));
@@ -55,15 +61,27 @@ mod TestAllocGrowth {
     def testThreadAllocatedMemoryIsEnabled(): Unit \ Assert =
         Assert.assertTrue(AllocMeter.isThreadAllocatedMemoryEnabled())
 
-    /// RichText.place の割り当ては 1 行の文字数に比例する（8 倍で 16 倍を超えない）
+    /// RichText.place の割り当ては 1 行の文字数に比例する。
+    /// 文字数を 8 倍にしても、割り当ては 11.5 倍までしか増えない（実測は 8.0 前後）。
+    /// 1 字あたりの PlacedItem・Char.toString・TextDraw.width が線形の床で、これ以下には落ちない。
     @Test
     def testPlaceAllocatesLinearlyInLineLength(): Unit \ Assert =
         let small = AllocMeter.measureBytes(3, _ -> placeChars(100));
         let large = AllocMeter.measureBytes(3, _ -> placeChars(800));
         let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
+        Assert.assertTrue(ratio < 11.5)
+
+    /// RichText.take の割り当ては文字送りの文字数に比例する。
+    /// 文字数を 8 倍にしても、割り当ては 16 倍までしか増えない。
+    @Test
+    def testTakeAllocatesLinearlyInCharCount(): Unit \ Assert =
+        let small = AllocMeter.measureBytes(3, _ -> takeChars(100));
+        let large = AllocMeter.measureBytes(3, _ -> takeChars(800));
+        let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
         Assert.assertTrue(ratio < 16.0)
 
-    /// App.sustainOps の割り当ては宣言の本数に比例する（8 倍で 16 倍を超えない）
+    /// App.sustainOps の割り当ては宣言の本数に比例する。
+    /// 本数を 8 倍にしても、割り当ては 16 倍までしか増えない。
     @Test
     def testSustainOpsAllocatesLinearlyInDeclarationCount(): Unit \ Assert =
         let small = AllocMeter.measureBytes(3, _ -> sustainNames(100));
@@ -71,7 +89,8 @@ mod TestAllocGrowth {
         let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
         Assert.assertTrue(ratio < 16.0)
 
-    /// UiLayout.computeLayout の割り当ては UI ツリーの要素数に比例する（8 倍で 16 倍を超えない）
+    /// UiLayout.computeLayout の割り当ては UI ツリーの要素数に比例する。
+    /// 要素数を 8 倍にしても、割り当ては 16 倍までしか増えない。
     @Test
     def testComputeLayoutAllocatesLinearlyInTreeSize(): Unit \ Assert =
         let small = AllocMeter.measureBytes(3, _ -> layoutTree(100));
@@ -79,7 +98,8 @@ mod TestAllocGrowth {
         let ratio = Int64.toFloat64(large) / Int64.toFloat64(small);
         Assert.assertTrue(ratio < 16.0)
 
-    /// GridSearch.reachable の割り当ては到達できるマス数に比例する（8 倍で 16 倍を超えない）
+    /// GridSearch.reachable の割り当ては到達できるマス数に比例する。
+    /// マス数を 8 倍にしても、割り当ては 16 倍までしか増えない。
     @Test
     def testReachableAllocatesLinearlyInCellCount(): Unit \ Assert =
         let small = AllocMeter.measureBytes(3, _ -> reachableCells(100));

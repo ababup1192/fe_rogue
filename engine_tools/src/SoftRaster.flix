@@ -322,6 +322,7 @@ mod SoftRaster {
         else {
             let n = w * h;
             let buf: Array[Int32, rc] = Array.empty(rc, n);
+            let maskPolys = List.map(List.toVector, s#mask);
             discard image.getRGB(x0, y0, w, h, buf, 0i32, w);
             Array.forEachWithIndex((i, dst) -> {
                 let px = Int32.remainder(i, w) + x0;
@@ -329,7 +330,7 @@ mod SoftRaster {
                 // 出力ピクセル中心 → design px → rect 内 uv（0..1）。
                 let dx = (Int32.toFloat64(px) + 0.5) / sf;
                 let dy = (Int32.toFloat64(py) + 0.5) / sf;
-                if (not insideMask(s#mask, { x = dx, y = dy })) ()
+                if (not insideMask(maskPolys, { x = dx, y = dy })) ()
                 else {
                     let uv = { x = (dx - s#rect#position#x) / s#rect#size#x,
                                y = (dy - s#rect#position#y) / s#rect#size#y };
@@ -353,27 +354,27 @@ mod SoftRaster {
     }
 
     /// mask が空なら常に真。非空なら「どれかの多角形の内側」（偶奇の交差数判定）。
-    def insideMask(mask: List[List[Vec2.Vec2]], p: Vec2.Vec2): Bool =
+    def insideMask(mask: List[Vector[Vec2.Vec2]], p: Vec2.Vec2): Bool =
         match mask {
             case Nil => true
-            case _   => List.exists(poly -> pointInPoly(poly, p), mask)
+            case _   => List.exists(vs -> pointInPoly(vs, p), mask)
         }
 
     /// 偶奇規則の point-in-polygon（水平レイキャスト）。
-    def pointInPoly(poly: List[Vec2.Vec2], p: Vec2.Vec2): Bool =
-        match poly {
-            case Nil => false
-            case _   =>
-                let vs = List.toVector(poly);
-                let n = Vector.length(vs);
-                let hits = List.foldLeft((acc, i) -> {
-                    let a = Vector.get(i, vs);
-                    let b = Vector.get(Int32.modulo(i + 1, n), vs);
-                    let crosses = ((a#y > p#y) != (b#y > p#y))
-                        and (p#x < (b#x - a#x) * (p#y - a#y) / (b#y - a#y) + a#x);
-                    if (crosses) acc + 1 else acc
-                }, 0, List.range(0, n));
-                Int32.modulo(hits, 2) == 1
+    def pointInPoly(vs: Vector[Vec2.Vec2], p: Vec2.Vec2): Bool =
+        let n = Vector.length(vs);
+        if (n == 0) false
+        else Int32.modulo(countCrossings(vs, n, p, 0, 0), 2) == 1
+
+    /// 辺 i→i+1 が p から右へ伸びる水平線を跨ぐ回数を、添字 i から末尾まで数え上げる。
+    def countCrossings(vs: Vector[Vec2.Vec2], n: Int32, p: Vec2.Vec2, i: Int32, hits: Int32): Int32 =
+        if (i >= n) hits
+        else {
+            let a = Vector.get(i, vs);
+            let b = Vector.get(Int32.modulo(i + 1, n), vs);
+            let crosses = ((a#y > p#y) != (b#y > p#y))
+                and (p#x < (b#x - a#x) * (p#y - a#y) / (b#y - a#y) + a#x);
+            countCrossings(vs, n, p, i + 1, if (crosses) hits + 1 else hits)
         }
 
     /// Color(0..1) + alpha(0..1) を ARGB int へ。

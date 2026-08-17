@@ -81,15 +81,29 @@ How と What をコメントに書かない。実装の由来・旧実装・移�
 ## 二乗を書かない
 
 N はゲームが決める。エンジンは N を知らない（今のテンプレが 9 要素だから軽い、は
-エンジンの性質ではない）。次の 3 つは、実害が見えなくても書かない。
+エンジンの性質ではない）。次の 5 つは、実害が見えなくても書かない。
 
 - **`List.foldLeft` の中で蓄積を `List.append` の第 1 引数に置かない。**
   `::` で先頭へ積んで、最後に `List.reverse`（手本は `Text.groupRows`）。
   名前が `acc` でなくても、タプルを分解した別名でも同じ
+- **文字列も同じ。1 文字ずつ足して伸ばさない。** `foldLeft(String.concat, "")` も
+  `"${acc}${ch}"` も、1 回ごとに全体を作り直すので文字数の二乗になる。
+  `List[Char]` を `::` で積んで、最後に region + `StringBuilder` で 1 回だけ組む:
+  ```flix
+  region rc {
+      let sb = StringBuilder.empty(rc);
+      List.forEach(ch -> StringBuilder.append(ch, sb), chars);
+      StringBuilder.toString(sb)
+  }
+  ```
 - **ループの中で `List.exists` / `List.memberOf` を呼ばない。** 会員判定は `Set` / `Map`。
   順序も要るなら「順序つきの蓄積 + 判定用の `Set`」の二本立て
 - **`List.range` を回して `List.nth` で引かない。** 1 巡で済ませる
   （`List.zip` は短い方で打ち切るので、余った側の後始末が要るなら先に長さをそろえる）
+- **`List.sortBy` のキーに重い関数を渡さない。** `sortBy` は
+  `sortWith(Order.compare `on` f)` なので、**1 回の比較でキー関数を 2 回呼ぶ**。
+  先に `(キー, 要素)` を作って `sortBy(fst)` で並べ、最後に戻す。
+  キー列が同じなら並びはビット同一になるので、この置き換えで絵は変わらない
 
 機械で裁く lint は無い。基準・測り方・残っている二乗の一覧は engine リポの
 `docs/performance.md`。

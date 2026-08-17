@@ -56,8 +56,9 @@ mod UiExtract {
                 let (id, z, off, item) = entry;
                 Map.get(id, rects) |> Option.map(rect -> (id, z, Vec2.add(rect#position, off), item))
             })
-            |> List.sortBy(entry -> {let (id, z, _pos, _item) = entry; (z, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
-            |> List.map(entry -> {let (_id, _z, pos, item) = entry; { at = pos, item = item }})
+            |> List.map(entry -> {let (id, z, _pos, _item) = entry; (sortKeyOf(id, z, ui), entry)})
+            |> List.sortBy(fst)
+            |> List.map(pair -> {let (_id, _z, pos, item) = snd(pair); { at = pos, item = item }})
 
     /// hovered 名前パスに対応する entity（未設定・パス消滅は None）。
     def hoveredIdOf(ui: UiStore.UiWorld): Option[EntityId] =
@@ -125,7 +126,9 @@ mod UiExtract {
                 Map.get(id, rects) |> Option.map(rect ->
                     (id, rect#position, offsetPoly(hoverPoly(hoverFor(ui, hoveredId, id), poly), rect#position)))
             })
-            |> List.sortBy(entry -> {let (id, _pos, poly) = entry; (poly#zIndex, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
+            |> List.map(entry -> {let (id, _pos, poly) = entry; (sortKeyOf(id, poly#zIndex, ui), entry)})
+            |> List.sortBy(fst)
+            |> List.map(snd)
 
     /// shape entity を PlacedItem 列へ射影する。可視かつ rect 確定のみ。
     /// 並びは extract と同じ (zIndex, 階層深さ, order, id)。幾何は UiShape.placedItems に委譲する
@@ -140,8 +143,9 @@ mod UiExtract {
                 let (id, s) = entry;
                 Map.get(id, rects) |> Option.map(rect -> (id, s, rect))
             })
-            |> List.sortBy(entry -> {let (id, s, _rect) = entry; (s#zIndex, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
-            |> List.flatMap(entry -> {let (id, s, rect) = entry; UiShape.placedItems(hoverShape(hoverFor(ui, hoveredId, id), s), rect)})
+            |> List.map(entry -> {let (id, s, _rect) = entry; (sortKeyOf(id, s#zIndex, ui), entry)})
+            |> List.sortBy(fst)
+            |> List.flatMap(pair -> {let (id, s, rect) = snd(pair); UiShape.placedItems(hoverShape(hoverFor(ui, hoveredId, id), s), rect)})
 
     /// PolyComp の全サブポリの各頂点にレイアウト矩形左上 origin を足し、ローカル座標を design 空間の
     /// 絶対座標へ移す。
@@ -310,6 +314,11 @@ mod UiExtract {
         let row = frame / hframes;
         {position = {x = Int32.toFloat64(col) * cellWidth, y = Int32.toFloat64(row) * cellHeight},
          size = {x = cellWidth, y = cellHeight}}
+
+    /// 描画の並びのキー（背面から前面へ: zIndex, 階層深さ, order, id）。
+    /// 末尾の id は entity ごとに一意なので、同じキーになる 2 つは存在しない。
+    def sortKeyOf(id: EntityId, z: Int32, ui: UiStore.UiWorld): (Int32, Int32, Int32, EntityId) =
+        (z, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)
 
     /// entity の兄弟内並び順（未登録は 0）。
     def orderOf(id: EntityId, ui: UiStore.UiWorld): Int32 =

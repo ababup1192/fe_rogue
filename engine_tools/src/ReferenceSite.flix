@@ -93,17 +93,23 @@ mod ReferenceSite {
 
     /// エントリ列に現れるシナリオを初出順（重複なし）で返す。
     def scenariosOf(items: List[Item]): List[String] =
-        List.foldLeft((acc, item) ->
-            if (List.memberOf(item#scenario, acc)) acc else List.append(acc, item#scenario :: Nil),
-            (Nil: List[String]), items)
+        let (ordered, _) = List.foldLeft((acc, item) -> {
+            let (out, seen) = acc;
+            if (Set.memberOf(item#scenario, seen)) acc
+            else (item#scenario :: out, Set.insert(item#scenario, seen))
+        }, ((Nil, Set.empty()): (List[String], Set[String])), items);
+        List.reverse(ordered)
 
     /// エントリ列に現れるタグを初出順（重複なし）で返す（シナリオをまたいで集約）。
     def tagsOf(items: List[Item]): List[String] =
-        List.foldLeft((acc, item) ->
-            List.foldLeft((acc2, tag) ->
-                if (List.memberOf(tag, acc2)) acc2 else List.append(acc2, tag :: Nil),
-                acc, item#tags),
-            (Nil: List[String]), items)
+        let (ordered, _) = List.foldLeft((acc, item) ->
+            List.foldLeft((acc2, tag) -> {
+                let (out, seen) = acc2;
+                if (Set.memberOf(tag, seen)) acc2
+                else (tag :: out, Set.insert(tag, seen))
+            }, acc, item#tags),
+            ((Nil, Set.empty()): (List[String], Set[String])), items);
+        List.reverse(ordered)
 
     /// あるシナリオに属する項目を宣言順で返す。
     def itemsOf(scenario: String, items: List[Item]): List[Item] =
