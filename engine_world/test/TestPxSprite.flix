@@ -1,5 +1,5 @@
 // PxSprite / PxSpriteDoc のテスト。テストするのは「パースの fail-open」
-// 「未定義文字 = 透明」「anchor / flipX の座標規約」「横結合が面積を保つ」だけ —
+// 「未定義文字 = 透明」「anchor の座標規約」「反転で枠が動かない」「横結合が面積を保つ」だけ —
 // 絵そのもの(色の見た目)はテストしない。
 
 mod TestPxSprite {
@@ -67,27 +67,35 @@ mod TestPxSprite {
             { x = -1.0, y = -1.0, w = 0.0, h = 0.0, key = "" });
         Assert.assertEq(expected = (10.0, 16.0, 4.0, 2.0), (head#x, head#y, head#w, head#h))
 
-    /// flipX 規約: anchor を軸に左右が入れ替わる。ax=1 の絵で "b?b." (row2) の
-    /// col0 は at の右へ、col2 は at の左へ写る。
+    /// flipX 規約: 4 列のコマの中で左右が入れ替わる（ax=1）。"b?b." (row2) の
+    /// col0 は col3 の場所へ、col2 は col1 の場所へ写る。
     @Test
-    def testFlipXMirrorsColumnsAroundAnchor(): Unit \ Assert =
+    def testFlipXMirrorsColumnsInsideTheFrame(): Unit \ Assert =
         let rs = PxSprite.runs(doc(), "guy", "f0", { x = 0.0, y = 0.0 }, true, 1)
             |> List.filter(r -> r#key == "hair")
             |> List.map(r -> r#x);
-        Assert.assertEq(expected = 1.0 :: -1.0 :: Nil, rs)
+        Assert.assertEq(expected = 2.0 :: 0.0 :: Nil, rs)
 
-    /// 反転しても anchor（握るところ）は at のまま。
-    /// 格子の真ん中 + anchorOffsetOf が at に戻ることで確かめる（両者が食い違うと、
-    /// 反転した絵だけが横へ飛んで影・足元が置き去りになる）。
+    /// 反転しても覆う矩形は 1px も動かない（絵の中で鏡になるだけ）。
+    /// ここが崩れると、左を向いた瞬間だけキャラが横へ飛ぶ。
     @Test
-    def testAnchorOffsetAgreesWithRunsUnderFlip(): Unit \ Assert =
-        let centerX = flip -> {
-            let rs = PxSprite.runs(doc(), "guy", "f0", { x = 0.0, y = 0.0 }, flip, 1);
+    def testFlipKeepsTheCoveredBox(): Unit \ Assert =
+        let span = flip -> {
+            let rs = PxSprite.runs(doc(), "guy", "f0", { x = 10.0, y = 20.0 }, flip, 2);
             let lo = rs |> List.foldLeft((acc, r) -> Float64.min(acc, r#x), 999.0);
             let hi = rs |> List.foldLeft((acc, r) -> Float64.max(acc, r#x + r#w), -999.0);
-            (lo + hi) / 2.0 + PxSprite.anchorOffsetOf(doc(), "guy", "f0", flip, 1)#x
+            (lo, hi)
         };
-        Assert.assertEq(expected = (0.0, 0.0), (centerX(false), centerX(true)))
+        Assert.assertEq(expected = span(false), span(true))
+
+    /// 絵の真ん中 + anchorOffsetOf が at に戻る（置き場所を中心で指す呼び手の入口）。
+    @Test
+    def testAnchorOffsetAgreesWithRuns(): Unit \ Assert =
+        let rs = PxSprite.runs(doc(), "guy", "f0", { x = 0.0, y = 0.0 }, false, 1);
+        let lo = rs |> List.foldLeft((acc, r) -> Float64.min(acc, r#x), 999.0);
+        let hi = rs |> List.foldLeft((acc, r) -> Float64.max(acc, r#x + r#w), -999.0);
+        Assert.assertEq(expected = 0.0,
+            (lo + hi) / 2.0 + PxSprite.anchorOffsetOf(doc(), "guy", "f0", 1)#x)
 
     /// scale 0 以下と、無いスプライト・無いコマは何も描かない(fail-open)。
     @Test

@@ -97,16 +97,11 @@ mod View {
                 let top = bottom - stripH;
                 let i0 = Num.floorInt(x0 / stepW);
                 let i1 = Num.floorInt(x1 / stepW);
-                // 反転コマは drawQuad が at から「左へ」伸びる規約なので、同じ枠に
-                // 収まるよう幅ぶん右へずらす。忘れると 1 枚おきに前の枠へ重なって
-                // 間が空き、遠景が宙に浮いた板に見える。
                 let quads = List.range(i0, i1 + 1) |> List.flatMap(i -> {
                     let flip = Int32.modulo(i, 2) == 1;
                     let x = Int32.toFloat64(i) * stepW - dx;
                     PxSprite.drawQuad(w#pxDoc, w#atlas, World.atlasName(),
-                        sprite, "strip",
-                        { x = if (flip) x + stepW - s else x, y = top },
-                        flip, scale(), z)
+                        sprite, "strip", { x = x, y = top }, flip, scale(), z)
                 });
                 let fillH = ctx#visible#position#y + ctx#visible#size#y - bottom;
                 let under = match fillKey {

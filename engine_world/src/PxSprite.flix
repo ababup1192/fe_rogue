@@ -5,10 +5,10 @@
 // 規約:
 //   - legend に無い文字は透明(fail-open)。スプライト名・コマ名が無ければ何も描かない。
 //   - anchor: 格子内の基準セル。draw の at がこのセルの左上に来る。
-//   - flipX: anchor を軸に列を左右反転する。anchor が指す絵の場所は反転しても at のまま
-//     （握るところが動かない）。格子の枠の方が anchor の左右へ入れ替わる — 枠を動かさない
-//     規約にすると、握るところが絵の真ん中に無い絵は反転で手から離れる。
-//     枠を据え置きたい呼び手は at を anchorOffsetOf で引き直す。
+//   - flipX: コマの枠の中で列を左右入れ替える。枠は動かないので、覆う矩形は反転の有無で同じ。
+//     anchor を軸に鏡にすると、anchor が端にある絵（既定の (0,0) がそれ）は反転で幅ぶん
+//     横へ飛び、呼び手全員が幅を足し戻す羽目になる。握るところを追いたい呼び手は
+//     anchorOffsetOf と、反転後の anchor 列（cols-1-anchor#x）から自分で組む。
 //   - scale は整数のみ(NEAREST 前提)。0 以下は何も描かない。
 //   - 色は resolver(意味色キー → 実色)が解決する。テーマ替え・個体差(体色)は
 //     resolver の差し替えで行い、格子は共有する。
@@ -45,11 +45,9 @@ mod PxSprite {
                 let ax = sp#anchor#x;
                 let ay = sp#anchor#y;
                 // 置き場所の規約は draw(box 列)と同一: 「anchor セルの左上 = at」。
-                // flipX は Item.Sprite の flipH(scale 符号)で行うので、描画は pos から
-                // 左へ w×s 伸びる — 右端が at + (ax+1)×s に来るよう pos を置く。
-                let pos: Vec2.Vec2 =
-                    if (flipX) { x = at#x + (ax + 1.0) * s, y = at#y - ay * s }
-                    else       { x = at#x - ax * s,         y = at#y - ay * s };
+                // flipX は Item.Sprite の flipH(scale 符号)で行うが、レンダラは覆う矩形を
+                // pos から正の向きへ伸ばすので、反転してもここは同じ式でよい。
+                let pos: Vec2.Vec2 = { x = at#x - ax * s, y = at#y - ay * s };
                 { at = pos,
                   item = Render.Item.Sprite({
                       texture = texture,
@@ -78,13 +76,16 @@ mod PxSprite {
                     let s = Int32.toFloat64(scale);
                     let ax = sp#anchor#x;
                     let ay = sp#anchor#y;
+                    // 鏡の軸はコマの枠（一番長い行の幅）。行ごとの長さで測ると、右が空いた
+                    // 短い行だけ別の量だけ動いて絵が割れる。
+                    let cols = Int32.toFloat64(Grid.dimsOfRows(rows)#cols);
                     rows |> List.zipWithIndex |> List.flatMap(entry -> {
                         let (r, row) = entry;
                         let y = at#y + (Int32.toFloat64(r) - ay) * s;
                         rowRuns(doc#legend, row) |> List.map(rn -> {
                             let (c0, n, key) = rn;
                             let x = if (flipX)
-                                    at#x + (ax - Int32.toFloat64(c0 + n) + 1.0) * s
+                                    at#x + (cols - Int32.toFloat64(c0 + n) - ax) * s
                                 else at#x + (Int32.toFloat64(c0) - ax) * s;
                             ({ x = x, y = y, w = Int32.toFloat64(n) * s, h = s, key = key }: Run)
                         })
@@ -105,10 +106,11 @@ mod PxSprite {
                 ({ x = Int32.toFloat64(g#cols) * s, y = Int32.toFloat64(g#rows) * s }: Vec2.Vec2)
             })
 
-    /// 置き方の規約（anchor セルの左上 = at・flipX で左右の逆側へ写る）はここが唯一の持ち主 —
-    /// 呼び側で同じ計算を書き直すと、規約を直したときに気付かないまま食い違う。
+    /// 置き方の規約（anchor セルの左上 = at）はここが唯一の持ち主 — 呼び側で同じ計算を
+    /// 書き直すと、規約を直したときに気付かないまま食い違う。
+    /// 反転しても枠は動かないので、この値は flipX に依らない。
     pub def anchorOffsetOf(doc: PxSpriteDoc.Doc, sprite: String, frame: String,
-                           flipX: Bool, scale: Int32): Vec2.Vec2 =
+                           scale: Int32): Vec2.Vec2 =
         match Map.get(sprite, doc#sprites) {
             case None     => Vec2.zero()
             case Some(sp) => {
@@ -117,8 +119,7 @@ mod PxSprite {
                 let dims = Grid.dimsOfRows(rows);
                 let cols = Int32.toFloat64(dims#cols);
                 let height = Int32.toFloat64(dims#rows);
-                let ax = sp#anchor#x;
-                { x = if (flipX) cols * s / 2.0 - (ax + 1.0) * s else ax * s - cols * s / 2.0,
+                { x = sp#anchor#x * s - cols * s / 2.0,
                   y = sp#anchor#y * s - height * s / 2.0 }
             }
         }
@@ -137,7 +138,7 @@ mod PxSprite {
                                   at, spec#flipX, spec#scale, spec#z);
         if (Float64.abs(spec#turn) < 0.0001) quad(spec#at)
         else {
-            let a = anchorOffsetOf(spec#doc, spec#sprite, spec#frame, spec#flipX, spec#scale);
+            let a = anchorOffsetOf(spec#doc, spec#sprite, spec#frame, spec#scale);
             let spun = Render.rotated(spec#turn, a :: Nil) |> List.head |> Option.getWithDefault(a);
             quad(Vec2.add(spec#at, Vec2.sub(a, spun)))
                 |> List.map(p -> { item = Render.turned(spec#turn, p#item) | p })

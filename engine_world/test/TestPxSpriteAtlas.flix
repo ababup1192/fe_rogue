@@ -100,8 +100,8 @@ mod TestPxSpriteAtlas {
 
     // ── drawQuad(置き場所規約が box 列と一致)──
 
-    /// クアッドの被覆範囲 = box 列(runs)の外接矩形と同じ式:
-    /// 非反転は [at - ax·s, at + (w-ax)·s)、flipX は [at - (w-1-ax)·s, at + (ax+1)·s)。
+    /// クアッドの被覆範囲 = box 列(runs)の外接矩形と同じ式 [at - ax·s, at + (w-ax)·s)。
+    /// flipX でも同じ — 反転は枠の中で鏡にするだけで、枠は動かない。
     @Test
     def testDrawQuadCoversSameRectAsRuns(): Unit \ Assert =
         let d = doc();
@@ -111,21 +111,17 @@ mod TestPxSpriteAtlas {
         let quadRect = flip -> match PxSprite.drawQuad(d, baked, "px", "guy", "f0", at, flip, s, 7) {
             case placed :: Nil => match placed#item {
                 case Render.Item.Sprite(sp) =>
-                    // 表示寸法 = side × scale(Drawable 規約)。flipH は左へ伸びる。
+                    // 表示寸法 = side × scale(Drawable 規約)。flipH でも at から右へ伸びる。
                     let wPx = sp#scale#x * Int32.toFloat64(baked#side);
                     let hPx = sp#scale#y * Int32.toFloat64(baked#side);
-                    if (sp#flipH)
-                        Some((placed#at#x - wPx, placed#at#y, wPx, hPx))
-                    else
-                        Some((placed#at#x, placed#at#y, wPx, hPx))
+                    Some((placed#at#x, placed#at#y, wPx, hPx))
                 case _ => None
             }
             case _ => None
         };
-        // anchor = (1,2)・格子 4×3・s=3: 非反転左上 = (100-3, 50-6)、
-        // flipX 左上 = (100 - (4-1-1)*3, 50-6) = (94, 44)。幅 12・高 9。
+        // anchor = (1,2)・格子 4×3・s=3: 左上 = (100-3, 50-6) = (97, 44)。幅 12・高 9。
         Assert.assertEq(expected =
-            (Some((97.0, 44.0, 12.0, 9.0)), Some((94.0, 44.0, 12.0, 9.0))),
+            (Some((97.0, 44.0, 12.0, 9.0)), Some((97.0, 44.0, 12.0, 9.0))),
             (quadRect(false), quadRect(true)))
 
     /// 無いスプライト・無いコマ・scale 0 は何も描かない(fail-open)。

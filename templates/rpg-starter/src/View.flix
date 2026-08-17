@@ -358,9 +358,7 @@ mod View {
             |> Option.getWithDefault({ x = side, y = side });
         let topLeft = { x = spec#center#x - box#x / 2.0, y = spec#center#y - box#y / 2.0 };
         // 置き場所は anchor（握るところ）で指すので、中心から anchor へのずれを足して渡す。
-        // 左右反転でこのずれは向きを変える — topLeft をそのまま渡すと反転した絵だけが横へ飛ぶ。
-        let off = PxSprite.anchorOffsetOf(w#sprites, spec#name, spec#frame,
-            spec#flipX, spec#scale);
+        let off = PxSprite.anchorOffsetOf(w#sprites, spec#name, spec#frame, spec#scale);
         let at = { x = spec#center#x + off#x, y = spec#center#y + off#y };
         // 焼いたアトラスから 1 コマ = 1 クアッドで貼る（街タイルと同じ経路。PxSprite.draw は
         // 1 コマを画素ぶんの四角に開くので、人と物が増えるほど組む数が伸びる）。

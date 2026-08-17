@@ -32,7 +32,7 @@ mod ViewCar {
     /// 置いた数ぶんだけ同じ読み取りが積み上がる。
     pub def pxGridOf(doc: PxSpriteDoc.Doc, sprite: String, flipX: Bool): PxGrid =
         { rects = PxSprite.runs(doc, sprite, "base", { x = 0.0, y = 0.0 }, flipX, 1),
-          anchor = PxSprite.anchorOffsetOf(doc, sprite, "base", flipX, 1) }
+          anchor = PxSprite.anchorOffsetOf(doc, sprite, "base", 1) }
 
     /// ほどき済みの格子を実数倍率 f で置く。
     pub def pxGridAt(resolver: String -> Color, grid: PxGrid,
@@ -66,8 +66,8 @@ mod ViewCar {
     // 実数倍率版はエンジンへ入れず race 側に置く（2 本目の使い手が現れたら昇格を相談する）。
 
     /// pxQuadScaled の引数一式。置き場所の規約は PxSprite.drawQuad と同一
-    /// （anchor セルの左上 = at・flipX は Item.Sprite の flipH で行い、右端が
-    /// at + (ax+1)×scale に来る）。turn は絵の中心を軸に傾ける（pxScaled の群回転と同じ軸）。
+    /// （anchor セルの左上 = at・flipX は絵の中で鏡にするだけで枠は動かない）。
+    /// turn は絵の中心を軸に傾ける（pxScaled の群回転と同じ軸）。
     /// tint はアトラス生成時に入れた色へ掛ける（白 = そのまま。遠景の霞の近似に使う）。
     pub type alias PxQuad = { doc = PxSpriteDoc.Doc, baked = PxSpriteAtlas.Baked,
                               texture = String, sprite = String, frame = String,
@@ -86,9 +86,7 @@ mod ViewCar {
                 let sideF = Int32.toFloat64(spec#baked#side);
                 let ax = sp#anchor#x;
                 let ay = sp#anchor#y;
-                let pos: Vec2.Vec2 =
-                    if (spec#flipX) { x = spec#at#x + (ax + 1.0) * s, y = spec#at#y - ay * s }
-                    else            { x = spec#at#x - ax * s,         y = spec#at#y - ay * s };
+                let pos: Vec2.Vec2 = { x = spec#at#x - ax * s, y = spec#at#y - ay * s };
                 let quad = Render.Item.Sprite({
                     texture = spec#texture,
                     tint = spec#tint,
@@ -109,7 +107,7 @@ mod ViewCar {
 
     /// 絵の真ん中を at に置く版（pxScaled と同じ置き方の関数 — 乗せ換え元と座標系を合わせる）。
     pub def pxQuadScaledCentered(spec: PxQuad): List[Render.PlacedItem] =
-        let a = PxSprite.anchorOffsetOf(spec#doc, spec#sprite, spec#frame, spec#flipX, 1);
+        let a = PxSprite.anchorOffsetOf(spec#doc, spec#sprite, spec#frame, 1);
         pxQuadScaled({ at = { x = spec#at#x + a#x * spec#scale,
                               y = spec#at#y + a#y * spec#scale } | spec })
 

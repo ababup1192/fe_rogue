@@ -552,6 +552,14 @@ mod RenderFrame {
                            y = 0.0 - drawable#uvScale#y } | drawable }
         else drawable
 
+    /// 表示矩形の起点（1 軸ぶん）。flipH / flipV は scale の符号で行うので display が負になるが、
+    /// 反転で絵が幅ぶん横へ飛ばないよう、覆う範囲は必ず position から正の向きへ伸ばす。
+    /// 符号は頂点の展開でそのまま鏡像を作るため、display は負のまま渡す。
+    def originAxis(centered: Bool, position: Float64, display: Float64): Float64 =
+        if (centered) position - display / 2.0
+        else if (display < 0.0) position - display
+        else position
+
     /// スプライト 1 体を run へ積む（テクスチャ解決と centered の平行移動込み）。
     def emitSprite(st: Array[Int32, Static], instData: FloatBuffer,
                    scaleX: Float64, scaleY: Float64,
@@ -568,10 +576,8 @@ mod RenderFrame {
                 case Some(texInfo) =>
                     let displayW = texInfo#width * drawable#scale#x;
                     let displayH = texInfo#height * drawable#scale#y;
-                    let posX = if (drawable#centered) drawable#position#x - displayW / 2.0
-                               else drawable#position#x;
-                    let posY = if (drawable#centered) drawable#position#y - displayH / 2.0
-                               else drawable#position#y;
+                    let posX = originAxis(drawable#centered, drawable#position#x, displayW);
+                    let posY = originAxis(drawable#centered, drawable#position#y, displayH);
                     // フォントアトラス (font_*) は SDF テキストとして描く。
                     let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                     let d = targetUvFlipped(targetNames, drawable);
@@ -603,10 +609,8 @@ mod RenderFrame {
                 case Some(texInfo) =>
                     let displayW = texInfo#width * drawable#scale#x;
                     let displayH = texInfo#height * drawable#scale#y;
-                    let posX = if (drawable#centered) drawable#position#x - displayW / 2.0
-                               else drawable#position#x;
-                    let posY = if (drawable#centered) drawable#position#y - displayH / 2.0
-                               else drawable#position#y;
+                    let posX = originAxis(drawable#centered, drawable#position#x, displayW);
+                    let posY = originAxis(drawable#centered, drawable#position#y, displayH);
                     let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                     // uv 反転は emitSprite と同じ（mask は形の変換なので uv には触らない）。
                     let d = targetUvFlipped(targetNames, drawable);

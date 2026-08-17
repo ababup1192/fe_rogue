@@ -634,18 +634,18 @@ mod SoftRaster {
                     case Some(img) =>
                         let size = { x = Int32.toFloat64(img.getWidth()) * d#scale#x,
                                      y = Int32.toFloat64(img.getHeight()) * d#scale#y };
-                        let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0))
-                                      else d#position;
-                        withMask(g, sf, topLeft, size, d#mask, () -> drawTextured(g, sf, img, d))
+                        let origin = { x = originAxis(d#centered, d#position#x, size#x),
+                                       y = originAxis(d#centered, d#position#y, size#y) };
+                        withMask(g, sf, origin, size, d#mask, () -> drawTextured(g, sf, img, d))
                 })
 
-    /// mask（表示クアッドのローカル design px・原点 = 左上・回転前）を Path2D に組み、
+    /// mask（表示クアッドのローカル design px・原点 = 反転していない側の角・回転前）を Path2D に組み、
     /// g.clip（交差）してから draw する。withRotation の内側で呼ぶのが肝 — Java2D の clip は
     /// 現在の変換で形が写るので、クアッドの回転がそのまま mask にも掛かる。
     /// 頂点を size の符号で掛け直すのは、反転（負の scale）をクアッドと同じ向きに掛けるため。
     /// 縁は AA なしの硬い縁（GL のステンシルと同じ近似 — docs/backend-parity.md）。
     /// クアッドが退化（辺長ほぼ 0）なら mask を張らずに描く（どのみち絵は出ない）。
-    def withMask(g: Graphics2D, sf: Float64, topLeft: Vec2.Vec2, size: Vec2.Vec2,
+    def withMask(g: Graphics2D, sf: Float64, origin: Vec2.Vec2, size: Vec2.Vec2,
                  mask: List[List[Vec2.Vec2]], draw: Unit -> Unit \ ef): Unit \ IO + ef =
         let aw = Float64.abs(size#x);
         let ah = Float64.abs(size#y);
@@ -655,8 +655,8 @@ mod SoftRaster {
             let path = new Path2D();
             List.forEach(poly -> match poly {
                 case first :: rest =>
-                    let pt = (v: Vec2.Vec2) -> ({ x = (topLeft#x + v#x / aw * size#x) * sf,
-                                                  y = (topLeft#y + v#y / ah * size#y) * sf }: Vec2.Vec2);
+                    let pt = (v: Vec2.Vec2) -> ({ x = (origin#x + v#x / aw * size#x) * sf,
+                                                  y = (origin#y + v#y / ah * size#y) * sf }: Vec2.Vec2);
                     let p0 = pt(first);
                     path.moveTo(p0#x, p0#y);
                     List.forEach(v -> { let p = pt(v); path.lineTo(p#x, p#y) }, rest);
@@ -687,7 +687,12 @@ mod SoftRaster {
     def quadCenter(textures: Map[String, BufferedImage], fctx: FontTable,
                    d: GameEngine.Drawable): Vec2.Vec2 \ IO =
         let size = displaySize(textures, fctx, d);
-        if (d#centered) d#position else Vec2.add(d#position, Vec2.div(size, 2.0))
+        if (d#centered) d#position
+        else {
+            let origin = { x = originAxis(false, d#position#x, size#x),
+                           y = originAxis(false, d#position#y, size#y) };
+            Vec2.add(origin, Vec2.div(size, 2.0))
+        }
 
     /// Drawable の表示サイズ（design px・反転の符号は残す）。box は scale がそのまま px、
     /// font_ はアトラス辺長との積、その他はテクスチャ実寸との積。
@@ -864,6 +869,14 @@ mod SoftRaster {
     def floorI(x: Float64): Int32 =
         Num.floorInt(x)
 
+    /// 表示矩形の起点（1 軸ぶん）。規約は GL の Frame.originAxis と同一 — flipH / flipV で
+    /// display が負になっても、覆う範囲は position から正の向きへ伸ばす。
+    /// dx1 > dx2 の向きが Java2D の drawImage に鏡像を描かせるので、display は負のまま使う。
+    def originAxis(centered: Bool, position: Float64, display: Float64): Float64 =
+        if (centered) position - display / 2.0
+        else if (display < 0.0) position - display
+        else position
+
     /// 画像 Drawable。元テクスチャの uv 部分矩形を切り出し、color で tint・alpha を乗算して
     /// design px の表示矩形へ拡大転写する。font_ アトラス（白グリフ）もこの経路で色が付く。
     def drawTextured(g: Graphics2D, sf: Float64, img: BufferedImage, d: GameEngine.Drawable): Unit \ IO =
@@ -871,8 +884,8 @@ mod SoftRaster {
         let texH = Int32.toFloat64(img.getHeight());
         let displayW = texW * d#scale#x;
         let displayH = texH * d#scale#y;
-        let posX = if (d#centered) d#position#x - displayW / 2.0 else d#position#x;
-        let posY = if (d#centered) d#position#y - displayH / 2.0 else d#position#y;
+        let posX = originAxis(d#centered, d#position#x, displayW);
+        let posY = originAxis(d#centered, d#position#y, displayH);
         // 元テクスチャ内の部分矩形（uv → px）。画像範囲へクランプする。
         let sx = clampI(ri(d#uvOffset#x * texW), 0i32, img.getWidth());
         let sy = clampI(ri(d#uvOffset#y * texH), 0i32, img.getHeight());

@@ -1,4 +1,4 @@
-<!-- engine v0.26.0 / 生成: 2026-08-16 -->
+<!-- engine v0.26.0 / 生成: 2026-08-17 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -1107,8 +1107,8 @@
   `pub def runs(doc: PxSpriteDoc.Doc, sprite: String, frame: String, at: Vec2.Vec2, flipX: Bool, scale: Int32): List[Run]`
 - 絵の真ん中から anchor（握るところ）へ向かうベクトル（px）。
   `pub def sizeOf(doc: PxSpriteDoc.Doc, sprite: String, frame: String, scale: Int32): Option[Vec2.Vec2]`
-- 置き方の規約（anchor セルの左上 = at・flipX で左右の逆側へ写る）はここが唯一の持ち主 —
-  `pub def anchorOffsetOf(doc: PxSpriteDoc.Doc, sprite: String, frame: String, flipX: Bool, scale: Int32): Vec2.Vec2`
+- 置き方の規約（anchor セルの左上 = at）はここが唯一の持ち主 — 呼び側で同じ計算を
+  `pub def anchorOffsetOf(doc: PxSpriteDoc.Doc, sprite: String, frame: String, scale: Int32): Vec2.Vec2`
 - anchor（握るところ）を軸に turn（1 周 = 1.0）だけ回して、アトラスの 1 クアッドで描く。
   `pub def drawQuadTurned(spec: { doc = PxSpriteDoc.Doc, baked = PxSpriteAtlas.Baked, texture = String, sprite = String, frame = String, at = Vec2.Vec2, flipX = Bool, scale = Int32, turn = Float64, z = Int32 }): List[Render.PlacedItem]`
 - 文字格子の左上を at に置いて、アトラスの 1 クアッドで描く。
