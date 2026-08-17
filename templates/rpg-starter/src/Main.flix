@@ -31,7 +31,7 @@ def main(): Unit \ IO =
                 // 街タイル: World が焼いたアトラスを GPU へ上げ（同じ key の間は何も起きない）、
                 // タイル層として敷く。タイル層の zIndex は動的な絵と同じ z 空間で解釈される
                 // （z=0 の床は DualGrid 地形の下に隠れる — 見比べのため既存の絵は残してある）。
-                // 人と物（rpg.sprite.json）も同じ経路で 2 枚目のアトラスとして上げる。
+                // 人と物（rpg_*.sprite.json）も同じ経路で 2 枚目のアトラスとして上げる。
                 |> App.withSpriteAtlases(w ->
                     { texture = TownMap.textureName(), key = w#townAtlasKey,
                       baked = w#townAtlas } ::

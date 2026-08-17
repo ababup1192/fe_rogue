@@ -1,5 +1,5 @@
 // TownMapDoc — town.map.json（街のタイル盤: rows と legend）の宣言ドキュメント層。
-// タイルは名前（town.sprite.json のスプライト名）で引く — アトラス内のピクセル座標を
+// タイルは名前（town_*.sprite.json のスプライト名）で引く — アトラス内のピクセル座標を
 // Doc に書かないのは、sprite Doc の変更でアトラスが再パックされたとき Doc が黙って
 // 壊れるため。位置の解決は読み込んだ後に regionOf がやる。
 // fail-open — 読めない・壊れているときは defaults() へ落とし、絵は必ず出る。

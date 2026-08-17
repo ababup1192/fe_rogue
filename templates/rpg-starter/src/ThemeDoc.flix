@@ -113,7 +113,7 @@ mod ThemeDoc {
             case "foeLight"    => Color.cool(lighten(doc#field, 0.50), 0.10)
             case "wall"        => doc#wall
             case "field"       => doc#field
-            // 街タイル・建物（town.sprite.json）。素材ごとに「明・中・影・締め」の4階調を
+            // 街タイル・建物（town_*.sprite.json）。素材ごとに「明・中・影・締め」の4階調を
             // 基準色から導く（色票に足すのは導けない色だけ、の原則を崩さない）。
             // 明は warm・影は cool へ寄せ、同じ色の明暗だけの階調にしない。純黒は使わない。
             // 芝（明るい黄緑 〜 深緑）

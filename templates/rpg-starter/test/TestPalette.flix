@@ -9,8 +9,8 @@ mod TestPalette {
         // 食い違ったら `make palette`（`make render-all` でも作り直される）。
         // 写しは 1 枚で、rpg と town 両方の sprite Doc の legend を束ねる。
         let (rpg, town, theme) = run {
-            (PxSpriteDoc.load(World.spritePath()),
-             PxSpriteDoc.load(World.townSpritePath()),
+            (World.loadCharSprites(),
+             World.loadTownSprites(),
              ThemeDoc.load(ThemeDoc.path()))
         } with Fs.FileRead.runWithIO;
         let fresh = Palette.toJson(Palette.entriesOfAll(rpg :: town :: Nil, theme));
@@ -24,7 +24,7 @@ mod TestPalette {
         // legend に出てくる名前が全部そろっていること。抜けた名前は Studio が解けず、
         // その色だけ仮色で描かれる（＝ここが痩せると編集画面が嘘をつく）。
         let (rpg, town) = run {
-            (PxSpriteDoc.load(World.spritePath()), PxSpriteDoc.load(World.townSpritePath()))
+            (World.loadCharSprites(), World.loadTownSprites())
         } with Fs.FileRead.runWithIO;
         let names = List.append(rpg#legend |> Map.valuesOf, town#legend |> Map.valuesOf)
             |> List.distinct;

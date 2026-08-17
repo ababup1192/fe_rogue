@@ -49,8 +49,8 @@ mod Palette {
     /// 写しを書き出す。読むのは Studio だけなので、走らせるのは開発の手元だけでよい。
     pub def write(): Unit \ IO =
         let (rpg, town, theme) = run {
-            (PxSpriteDoc.load(World.spritePath()),
-             PxSpriteDoc.load(World.townSpritePath()),
+            (World.loadCharSprites(),
+             World.loadTownSprites(),
              ThemeDoc.load(ThemeDoc.path()))
         } with Fs.FileRead.runWithIO;
         let text = toJson(entriesOfAll(rpg :: town :: Nil, theme));

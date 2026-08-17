@@ -55,7 +55,9 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 街並み側:
 
 - `assets/town.map.json` … 街のタイル盤（40×30 の rows と legend: g/p/w/#）。縁・角・橋の選定はコード（TownMap）。
-- `assets/town.sprite.json` … 街のドット絵（タイル家族・建物・門・柵・街灯・旗）。16×16 等倍。
+- `assets/town_*.sprite.json` … 街のドット絵。同じときに描き直す物ごとに分けてある
+  （`town_ground` 地面 / `town_water` 水路と橋 / `town_prop` 小物 / `town_house`・`town_shop`・`town_church` は 1 棟ずつ）。
+  読むときは `World.loadTownSprites()` が束ねて 1 枚のアトラスに焼く。
 - `assets/town.shader.json` … 水面のシェーダー（流れる網目）。
 - `assets/town.fx.json` … 窯の煙のパーティクル。
 
@@ -64,7 +66,9 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 - `assets/rpg.map.json` … 間取り・住人と 1 行・扉と約束・薬草・goal・表紙の文言。
 - `assets/rpg.kind.json` … 手触りの数値（歩く速さ・文字送り）。
 - `assets/rpg.theme.json` … 色票。画風は「晴れた昼の城下町」（AGENTS.local.md）。
-- `assets/rpg.sprite.json` … 主人公・住人・薬草・魔物のドット絵。
+- `assets/rpg_*.sprite.json` … 人と物のドット絵。増える方向ごとに分けてある
+  （`rpg_people` 主人公と住人 / `rpg_item` 持ち物 / `rpg_foe` 魔物）。
+  読むときは `World.loadCharSprites()` が束ねて 1 枚のアトラスに焼く。
 - `assets/rpg.battle.json` … 1 対 1 のコマンド戦闘の数（乱数なし）。
 - `assets/rpg.palette.json` … Studio 用の色の写し（`make palette` の生成物。手で直さない）。
 

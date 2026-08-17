@@ -44,8 +44,8 @@ mod Controls {
           kind = KindDoc.load(KindDoc.path()),
           theme = ThemeDoc.load(ThemeDoc.path()),
           battle = BattleDoc.load(BattleDoc.path()),
-          sprites = PxSpriteDoc.load(World.spritePath()),
-          townSprites = PxSpriteDoc.load(World.townSpritePath()),
+          sprites = World.loadCharSprites(),
+          townSprites = World.loadTownSprites(),
           townMap = TownMapDoc.load(TownMapDoc.path()),
           waterShader = loadWaterShader(),
           smokeFx = loadSmokeFx() }
@@ -78,11 +78,13 @@ mod Controls {
     pub def reloadBattle(w: World.World): World.World \ Fs.FileRead =
         World.withBattleDoc(BattleDoc.load(BattleDoc.path()), w)
 
+    /// 人と物の絵もファイルが分かれている。どれを保存しても束ね直して 1 枚にする。
     pub def reloadSprites(w: World.World): World.World \ Fs.FileRead =
-        World.withSprites(PxSpriteDoc.load(World.spritePath()), w)
+        World.withSprites(World.loadCharSprites(), w)
 
+    /// 街の絵はファイルが分かれているが、どれを保存しても束ね直して 1 枚にする。
     pub def reloadTownSprites(w: World.World): World.World \ Fs.FileRead =
-        World.withTownSprites(PxSpriteDoc.load(World.townSpritePath()), w)
+        World.withTownSprites(World.loadTownSprites(), w)
 
     pub def reloadTownMap(w: World.World): World.World \ Fs.FileRead =
         World.withTownMap(TownMapDoc.load(TownMapDoc.path()), w)
@@ -110,12 +112,16 @@ mod Controls {
             :: DocTable.row("theme", ThemeDoc.path(), reloadTheme)
             :: (DocTable.row("battle", BattleDoc.path(), reloadBattle)
                 |> DocTable.withActiveWhen(w -> w#phase == World.Phase.Battle))
-            :: DocTable.row("sprite", World.spritePath(), reloadSprites)
-            :: DocTable.unnamedRow(World.townSpritePath(), reloadTownSprites)
+            // 名乗るのは 1 本だけ(Studio の「表示中」は Doc の種類で出る)
+            :: DocTable.row("sprite", "assets/rpg_people.sprite.json", reloadSprites)
+            :: DocTable.unnamedRow("assets/rpg_item.sprite.json", reloadSprites)
+            :: DocTable.unnamedRow("assets/rpg_foe.sprite.json", reloadSprites)
             :: DocTable.unnamedRow(TownMapDoc.path(), reloadTownMap)
             :: DocTable.unnamedRow(waterShaderPath(), reloadWaterShader)
             :: DocTable.unnamedRow(smokeFxPath(), reloadSmokeFx)
-            :: Nil
+            // 街の絵は 6 ファイル。どれを保存しても束ね直す(行は 1 本ずつ要る —
+            // 保存即反映は「どのファイルが変わったか」で引くため)
+            :: (World.townSpritePaths() |> List.map(path -> DocTable.unnamedRow(path, reloadTownSprites)))
 
     /// App.game の reloads(保存即反映の watchFile)へ渡す形。
     pub def reloads(): List[(String, World.World -> World.World \ Fs.FileRead)] =

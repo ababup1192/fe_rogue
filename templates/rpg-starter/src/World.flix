@@ -135,10 +135,42 @@ mod World {
             case _            => Grid.cellCenterOf(tileSize(), w#hero)
         }
 
-    pub def spritePath(): String = "assets/rpg.sprite.json"
+    /// 人と物の絵の Doc。街の絵と同じく、増える方向ごとに分けてある
+    /// （人が増える / 持ち物が増える / 魔物が増える）。アトラスは 1 枚のまま。
+    pub def charSpritePaths(): List[String] =
+        "assets/rpg_people.sprite.json"
+            :: "assets/rpg_item.sprite.json"
+            :: "assets/rpg_foe.sprite.json"
+            :: Nil
 
-    /// 街タイル（芝・石畳・水路・漆喰壁）のドット絵 Doc。
-    pub def townSpritePath(): String = "assets/town.sprite.json"
+    /// 人と物の絵を全部読んで 1 枚の Doc にする。
+    pub def loadCharSprites(): PxSpriteDoc.Doc \ Fs.FileRead =
+        charSpritePaths()
+            |> List.map(PxSpriteDoc.load)
+            |> List.foldLeft(joinSpriteDocs, PxSpriteDoc.empty())
+
+    /// 街の絵の Doc。1 ファイル = 同じときに描き直す物だけ（地面 / 水路と橋 / 小物 /
+    /// 建物は 1 棟ずつ）。分けるのは編集のためで、GPU へ上げるアトラスは 1 枚のまま
+    /// — 読んだ後にここで 1 つの Doc へ束ねる。
+    pub def townSpritePaths(): List[String] =
+        "assets/town_ground.sprite.json"
+            :: "assets/town_water.sprite.json"
+            :: "assets/town_prop.sprite.json"
+            :: "assets/town_house.sprite.json"
+            :: "assets/town_shop.sprite.json"
+            :: "assets/town_church.sprite.json"
+            :: Nil
+
+    /// 街の絵を全部読んで 1 枚の Doc にする。
+    pub def loadTownSprites(): PxSpriteDoc.Doc \ Fs.FileRead =
+        townSpritePaths()
+            |> List.map(PxSpriteDoc.load)
+            |> List.foldLeft(joinSpriteDocs, PxSpriteDoc.empty())
+
+    /// 絵の名前はファイルをまたいで重ならない（重ねたら後から読んだ方が勝つ）。
+    def joinSpriteDocs(acc: PxSpriteDoc.Doc, doc: PxSpriteDoc.Doc): PxSpriteDoc.Doc =
+        { legend = Map.union(doc#legend, acc#legend),
+          sprites = Map.union(doc#sprites, acc#sprites) | acc }
 
     /// 街タイルのアトラスを焼き、GPU キャッシュ用の key と対にして返す。
     /// key に画素のハッシュを織り込むのは、Doc や色票の保存即反映で絵が変わったとき、
@@ -147,7 +179,7 @@ mod World {
     pub def bakeTownAtlas(doc: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): (PxSpriteAtlas.Baked, String) =
         bakedOf("town-tiles-v1", doc, theme)
 
-    /// 人と物（rpg.sprite.json）のアトラス。街タイルとは別の 1 枚に焼く
+    /// 人と物（rpg_*.sprite.json）のアトラス。街タイルとは別の 1 枚に焼く
     /// （絵の出どころが違う Doc なので、片方を保存し直したときにもう片方まで焼き直さない）。
     pub def bakeCharAtlas(doc: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): (PxSpriteAtlas.Baked, String) =
         bakedOf(charAtlasName(), doc, theme)

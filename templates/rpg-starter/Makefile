@@ -17,7 +17,7 @@ ENGINE ?= ../..
 # render のたびに無条件で走らせると、絵を描くのと同じだけのコンパイル時間を二重に払う。
 # 入力の洗い出しに漏れがあったときは `make palette` で無条件に作り直す。
 PALETTE      := assets/rpg.palette.json
-PALETTE_DEPS := assets/rpg.theme.json assets/rpg.sprite.json assets/town.sprite.json \
+PALETTE_DEPS := assets/rpg.theme.json $(wildcard assets/rpg_*.sprite.json) $(wildcard assets/town_*.sprite.json) \
                 src/Palette.flix src/ThemeDoc.flix
 # 描き出せる場面の名前（source of truth は SceneRender.shotNames。ここは使い方に出す写し）。
 SHOTS := title walk talk door battle clear terrain_grain

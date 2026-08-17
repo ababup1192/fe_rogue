@@ -466,7 +466,7 @@ mod SceneRender {
         discard (new File("debug")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let (sprites, theme, townMap) = run {
-            (PxSpriteDoc.load(World.townSpritePath()), ThemeDoc.load(ThemeDoc.path()),
+            (World.loadTownSprites(), ThemeDoc.load(ThemeDoc.path()),
              TownMapDoc.load(TownMapDoc.path()))
         } with Fs.FileRead.runWithIO;
         let (baked, _atlasKey) = World.bakeTownAtlas(sprites, theme);
