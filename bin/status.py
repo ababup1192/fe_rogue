@@ -303,22 +303,29 @@ def section_engine_drift(out):
                    % (pinned, cur, cur))
 
 
-# build/class 直下がこの数を超えたプロジェクトを「溜まっている」と数える。全部数えると
-# 50 万ファイルを歩くことになり 8 秒かかるので、打ち切りつきの浅い列挙で足りる。
-BUILD_WARN_ENTRIES = 2000
+# build/ 配下がこの数を超えたプロジェクトを「溜まっている」と数える。作り直した直後の
+# engine_world が 2 万ファイルなので、その 3 倍を線にする（溜まると 49 万まで育つ）。
+# WhyNot: class/ 直下だけの浅い数え上げでは足りない。パッケージによって階層の切り方が
+# 違い、直下 1,611 でも実体 28,864 ということが起きる（一番育っていた物を取りこぼした）。
+BUILD_WARN_ENTRIES = 60000
 
 
 def count_capped(path, cap):
-    """path 直下の項目数。cap に達したら数えるのをやめる（起動の固定費を抑える）。"""
+    """path 配下のファイル数。cap に達したら歩くのをやめる（起動の固定費を抑える）。"""
     n = 0
-    try:
-        with os.scandir(path) as it:
-            for _ in it:
-                n += 1
-                if n >= cap:
-                    return n
-    except OSError:
-        return 0
+    stack = [path]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    if e.is_dir(follow_symlinks=False):
+                        stack.append(e.path)
+                    else:
+                        n += 1
+                        if n >= cap:
+                            return n
+        except OSError:
+            continue
     return n
 
 
@@ -329,8 +336,10 @@ def section_builds(out):
     放っておくと IDE の glob・find・テンプレの複製が桁で遅くなる（消しても再生成される）。
     自動では消さない — インクリメンタルコンパイルの実体なので、毎回消すとテストが遅くなる。
     """
-    heavy = [d for d in sorted(glob.glob("templates/*/build") + glob.glob("bench/*/build"))
-             if count_capped(os.path.join(d, "class"), BUILD_WARN_ENTRIES) >= BUILD_WARN_ENTRIES]
+    cands = (glob.glob("templates/*/build") + glob.glob("bench/*/build")
+             + [p + "/build" for p in ("engine", "render_gl", "engine_world", "engine_tools")])
+    heavy = [d for d in sorted(cands)
+             if count_capped(d, BUILD_WARN_ENTRIES) >= BUILD_WARN_ENTRIES]
     if not heavy:
         return
     out.append("build     %d プロジェクトにコンパイル成果物が溜まっている "

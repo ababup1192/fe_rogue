@@ -147,9 +147,13 @@ checkd-stop:
 # build/class 配下の数十万コンパイル成果物を stat してしまい、プロジェクト読み込みに
 # 数十秒〜数分かかる。IDE 起動前に各プロジェクトの build/ を消して回避する。
 # もう一度 flix run すれば build/ は再生成される (incremental compile は失われる)。
+# engine 自身のパッケージも消す。build/ は呼ぶたび足されるだけで減らないので、
+# 消さずにいると engine_world が 2.1GB / 49 万ファイルまで育つ (実測)。
+# テストの速さへの効きは 2 割ほどで、主な理由はディスクと IDE の glob。
+PKG_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR)
 clean-game-builds:
 	@removed=0; \
-	for d in templates/*/build bench/*/build; do \
+	for d in templates/*/build bench/*/build $(addsuffix /build,$(PKG_DIRS)); do \
 		if [ -d "$$d" ]; then \
 			rm -rf "$$d"; \
 			echo "[clean-game-builds] removed $$d"; \
