@@ -303,6 +303,41 @@ def section_engine_drift(out):
                    % (pinned, cur, cur))
 
 
+# build/class 直下がこの数を超えたプロジェクトを「溜まっている」と数える。全部数えると
+# 50 万ファイルを歩くことになり 8 秒かかるので、打ち切りつきの浅い列挙で足りる。
+BUILD_WARN_ENTRIES = 2000
+
+
+def count_capped(path, cap):
+    """path 直下の項目数。cap に達したら数えるのをやめる（起動の固定費を抑える）。"""
+    n = 0
+    try:
+        with os.scandir(path) as it:
+            for _ in it:
+                n += 1
+                if n >= cap:
+                    return n
+    except OSError:
+        return 0
+    return n
+
+
+def section_builds(out):
+    """Flix のコンパイル成果物が溜まっていたら知らせる。
+
+    build/ は append-only で、消えるのは make clean-game-builds を打ったときだけ。
+    放っておくと IDE の glob・find・テンプレの複製が桁で遅くなる（消しても再生成される）。
+    自動では消さない — インクリメンタルコンパイルの実体なので、毎回消すとテストが遅くなる。
+    """
+    heavy = [d for d in sorted(glob.glob("templates/*/build") + glob.glob("bench/*/build"))
+             if count_capped(os.path.join(d, "class"), BUILD_WARN_ENTRIES) >= BUILD_WARN_ENTRIES]
+    if not heavy:
+        return
+    out.append("build     %d プロジェクトにコンパイル成果物が溜まっている "
+               "(複製と glob が遅くなる。消しても再生成される) → make clean-game-builds"
+               % len(heavy))
+
+
 def section_notes(out):
     if not os.path.isfile("NOTES.md"):
         out.append("引き継ぎ NOTES.md なし (セッションの終わりに「次やること」を 3 行残すと次が安い)")
@@ -325,7 +360,8 @@ def main():
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
     for section in (section_git, section_tests, section_reference, section_budget,
                     section_tickets,
-                    section_style, section_pack, section_engine_drift, section_notes):
+                    section_style, section_pack, section_engine_drift, section_builds,
+                    section_notes):
         try:
             section(out)
         except Exception as e:
