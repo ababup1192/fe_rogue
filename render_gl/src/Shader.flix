@@ -394,6 +394,11 @@ mod RenderShader {
             }
         }
 
+    /// プログラムを GPU から捨てる。キャッシュから追い出したら必ずこれで捨てる —
+    /// 捨て忘れると、シェーダーの数値を触って作り直すたびに GPU のメモリが増え続ける。
+    pub def deleteProgram(program: Int32): Unit \ IO =
+        GL20.glDeleteProgram(program)
+
     /// 宣言シェーダー面の代表色ベタ塗りフォールバック用フラグメントシェーダー。
     /// codegen が壊れた GLSL を吐いた面をこれで塗る（黒画面でなく色は出る）。
     pub def fallbackFragmentSource(): String =

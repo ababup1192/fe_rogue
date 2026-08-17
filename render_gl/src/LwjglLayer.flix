@@ -477,7 +477,14 @@ mod LwjglLayer {
         RenderShader.setProjectionMatrix(fallbackShader, screenW, screenH);
         // GLSL ソース文字列 → コンパイル済みプログラム（+ uniform location）のキャッシュ。
         // buildProgram は毎フレーム呼ばれ得るので、同じ Spec の再コンパイルをここで防ぐ。
-        let shaderProgramCache: Ref[Map[String, (Int32, Int32, Int32, Int32)], Static] = Ref.fresh(Static, Map.empty());
+        let shaderProgramCache: Ref[Map[String, RenderShaderCache.ProgramEntry], Static] = Ref.fresh(Static, Map.empty());
+        // 描いたフレームの通し番号。ShaderGen.compile は Doc の数値を GLSL に焼き込むので、
+        // shader.json を保存し直すたびに別の鍵になる — LRU で古い方を追い出すために、
+        // 「どの program をいつ使ったか」を数えるものさしが要る。
+        let frameGenHolder = Array#{0i64} @ Static;
+        // program 番号 → 最後に使った世代。鍵ではなく program 番号で持つのは、
+        // コンパイルに失敗した Spec が全部同じ fallbackShader を値にして入るため。
+        let programUsedAtRef: Ref[Map[Int32, Int64], Static] = Ref.fresh(Static, Map.empty());
         // このフレームに溜まったシェーダー面の描画依頼（drawSurface が積み、renderFrame が描いて空にする）。
         let pendingShaderHolder = Array#{(Nil: List[ShaderEffect.ShaderRenderCmd])} @ Static;
         // program ハンドル → (uRectPos, uRectSize, uTime, texLocs) の逆引き（drawSurface が
@@ -529,6 +536,13 @@ mod LwjglLayer {
         //（glUniform の location -1 も無視される）。
         let drawSurface = (cmd: ShaderEffect.ShaderRenderCmd) -> {
             let program = GpuHandle.shaderProgramInt(cmd#program);
+            // buildProgram だけで使用を刻むと足りない — ShaderEffect の doc は
+            // 「起動時/リロード時に 1 回 compile」と約束していて、その通りに 1 回だけ
+            // compile してハンドルを持ち回るゲームの program が「未使用」に見えて
+            // 追い出される。追い出された program は下の uniform 逆引きが
+            // (-1,-1,-1,Nil) で握り潰すので、エラーも例外も出ず絵だけ違う形で壊れる。
+            Ref.put(Map.insert(program, Array.get(0, frameGenHolder), Ref.get(programUsedAtRef)),
+                    programUsedAtRef);
             let (uRectPos, uRectSize, uTime, texLocs) =
                 Map.get(program, Ref.get(shaderUniformCache))
                 |> Option.getWithDefault((-1, -1, -1, (Nil: List[(Int32, Int32)])));
@@ -570,6 +584,67 @@ mod LwjglLayer {
                                                cmd#rect, cmd#time, cmd#blend,
                                                polyBatchShader, polyBatchVao, polyBatchVbo,
                                                polyBatchUniforms, cmd#mask)
+        };
+        // 使わなくなったシェーダープログラムを LRU で追い出す。
+        let evictShaderPrograms = () -> {
+            let gen = Array.get(0, frameGenHolder);
+            let usedAt = Ref.get(programUsedAtRef);
+            let cache0 = Ref.get(shaderProgramCache);
+            // 現世代が刻まれている program は必ず守る。Render.drawShaders は 1 フレームの
+            // 全ての面の buildProgram を先に全部呼ぶので、pin しないと面の数が上限を
+            // 超えたときに、いまから描く面の program を自分で捨ててしまう。
+            let liveNow = Map.toList(usedAt)
+                |> List.filterMap(pa -> { let (prog, at) = pa; if (at == gen) Some(prog) else None })
+                |> List.toSet;
+            // 上限は「生きている面の数」から決める。固定の数にすると、面を多く出すゲームで
+            // 毎フレーム作っては捨てるだけになる（面の数はゲームが決めるのでエンジンは知らない）。
+            let cap = Int32.max(16, Set.size(liveNow) * 2);
+            let (_, _, _, _, lastSurfaces) = Array.get(0, renderStateHolder);
+            let pinned = lastSurfaces
+                |> List.foldLeft((acc, cmd: ShaderEffect.ShaderRenderCmd) ->
+                    Set.insert(GpuHandle.shaderProgramInt(cmd#program), acc), liveNow)
+                |> Set.insert(fallbackShader);
+            let entries = Map.toList(cache0) |> List.map(ke -> {
+                let (key, e) = ke;
+                (key, e#program, Map.get(e#program, usedAt) |> Option.getWithDefault(0i64))
+            });
+            let victims = RenderShaderCache.computeEvictions(
+                { entries = entries, pinned = pinned, cap = cap });
+            if (List.isEmpty(victims)) ()
+            else {
+                // 鍵ごとの「その番号を指す鍵がまだ何本あるか」。コンパイルに失敗した Spec は
+                // 全部同じ fallback program を値にして入るので、鍵を抜いても番号が
+                // 生きていることがある。数えずに毎回探し直すと鍵の数の二乗になる。
+                let counts0 = Map.valuesOf(cache0) |> List.foldLeft((acc, e) ->
+                    Map.insert(e#program, 1 + Option.getWithDefault(0, Map.get(e#program, acc)), acc),
+                    Map.empty());
+                let (_, deleted) = List.foldLeft((acc, key) -> {
+                    let (counts, n) = acc;
+                    match Map.get(key, cache0) {
+                        case None    => (counts, n)
+                        case Some(e) =>
+                            let prog = e#program;
+                            Ref.put(Map.remove(key, Ref.get(shaderProgramCache)), shaderProgramCache);
+                            let left = Option.getWithDefault(0, Map.get(prog, counts)) - 1;
+                            let counts1 = Map.insert(prog, left, counts);
+                            // uniform を先に消してはいけない。番号がまだ別の鍵で生きていると、
+                            // その面が drawSurface で (-1,-1,-1,Nil) に落ちて、エラーも出ないまま
+                            // uniform の差さらない絵になる。
+                            if (left > 0) (counts1, n)
+                            else {
+                                RenderShader.deleteProgram(prog);
+                                Ref.put(Map.remove(prog, Ref.get(shaderUniformCache)), shaderUniformCache);
+                                Ref.put(Map.remove(prog, Ref.get(programUsedAtRef)), programUsedAtRef);
+                                (counts1, n + 1)
+                            }
+                    }
+                }, (counts0, 0), victims);
+                // 捨てた番号が bind されたままだと次の描画が未定義になる。毎フレームの経路では
+                // ないので、実際に捨てたときだけ 1 回外す。
+                if (deleted > 0) GL20.glUseProgram(0) else ();
+                Log.warn("shader: プログラムキャッシュから ${List.length(victims)} 個追い出した"
+                    + "（GPU から捨てた program ${deleted} 個・残り ${Map.size(Ref.get(shaderProgramCache))} 個 / 上限 ${cap}）")
+            }
         };
         // renderFrameMixed への FrameArgs は固定値（シェーダ・VAO・buf・uniforms 等）が
         // 大半なので、共通ベースを 1 つ組み、呼び出し側は変わる所だけ上書きする。
@@ -976,6 +1051,10 @@ mod LwjglLayer {
                         let surfaces = List.reverse(Array.get(0, pendingShaderHolder));
                         Array.put(Nil, 0, pendingShaderHolder);
                         Array.put((sprites, tileMaps, polygons, staticLayer, surfaces), 0, renderStateHolder);
+                        // 進めるのはここ 1 箇所だけ。上のレンダーターゲットへの分岐でも進めると、
+                        // Pass を N 枚焼くゲームでは絵 1 枚あたり N+1 回進み、「現世代 = いま描いて
+                        // いる面」という数え方が壊れる。
+                        Array.put(Array.get(0, frameGenHolder) + 1i64, 0, frameGenHolder);
                         let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
                         renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer, surfaces);
                         frameShot(fbW, fbH, frameShotTaken);
@@ -1252,8 +1331,10 @@ mod LwjglLayer {
                 // コンパイル/リンク失敗時は単色フォールバックプログラムに落ちる（黒画面でなく色は出る）。
                 let source = ShaderGen.compile(spec);
                 let cache0 = Ref.get(shaderProgramCache);
-                let (program, uPos, uSize, uTime) = match Map.get(source, cache0) {
-                    case Some(entry) => entry
+                let gen = Array.get(0, frameGenHolder);
+                let hit = Map.get(source, cache0);
+                let entry = match hit {
+                    case Some(found) => found
                     case None =>
                         let prog = match RenderShader.tryCreateProgram(
                                 ShaderGen.vertexSource(), source, "surface:${spec#name}") {
@@ -1280,13 +1361,17 @@ mod LwjglLayer {
                                 GL20.glUniform1i(samplerLoc, i)
                             }, texLocs)
                         };
-                        let entry = (prog, up, us, ut);
-                        Ref.put(Map.insert(source, entry, cache0), shaderProgramCache);
+                        let fresh: RenderShaderCache.ProgramEntry =
+                            { program = prog, uRectPos = up, uRectSize = us, uTime = ut };
+                        Ref.put(Map.insert(source, fresh, cache0), shaderProgramCache);
                         Ref.put(Map.insert(prog, (up, us, ut, texLocs), Ref.get(shaderUniformCache)), shaderUniformCache);
-                        entry
+                        fresh
                 };
-                let _ = (uPos, uSize, uTime);
-                k(GpuHandle.wrapShaderProgram(program))
+                Ref.put(Map.insert(entry#program, gen, Ref.get(programUsedAtRef)), programUsedAtRef);
+                // 追い出しは新しく作ったときだけ。キャッシュに当たったフレームでは鍵が増えて
+                // いないので、走らせても捨てる物が出ない。
+                if (Option.isEmpty(hit)) evictShaderPrograms() else ();
+                k(GpuHandle.wrapShaderProgram(entry#program))
             }
             def drawSurface(cmd, k) = {
                 // 実描画はこのフレームの clear 直後（renderFrameMixed 内）で行う。ここでは溜めるだけ。
