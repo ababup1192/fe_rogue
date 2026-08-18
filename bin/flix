@@ -97,4 +97,8 @@ if ! "$JAVA_CMD" -version >/dev/null 2>&1; then
     echo "java が見つかりません。devbox shell に入るか、PATH に JDK を通してください。" >&2
     exit 127
 fi
-exec "$JAVA_CMD" $FLAGS -jar "$FLIX_JAR" "$@"
+# WhyNot: JVM の既定のスタックに任せないのは、Flix の型検査が式の深さぶんだけ
+# 再帰するため。既定は OS で違い、Linux は macOS より小さいので、手元で通るソースが
+# CI でだけ StackOverflowError になる。-Xss は仮想アドレスを予約するだけで、
+# 実メモリは使った分しか要らない。
+exec "$JAVA_CMD" -Xss32m $FLAGS -jar "$FLIX_JAR" "$@"
