@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 var imageExts = []string{".png", ".gif", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -40,6 +42,9 @@ func trackedImages(root string) ([]string, error) {
 	}
 	var paths []string
 	for _, p := range strings.Split(string(out), "\x00") {
+		if pxlib.InTestdata(p) {
+			continue
+		}
 		low := strings.ToLower(p)
 		for _, ext := range imageExts {
 			if strings.HasSuffix(low, ext) {

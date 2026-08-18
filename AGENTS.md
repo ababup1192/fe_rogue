@@ -14,7 +14,7 @@
 
 **独自の比喩で名付けない。** このリポジトリでしか通じない言い回しは、人が読めない
 だけでなく grep で辿れなくなる（同じ物が別の字で書かれ、1 つの字が 4 つの意味を持つ）。
-コミット時に `bin/lint-jargon.py` が**新しく書いた行だけ**を検査して止める。
+コミット時に `bin/fge jargon` が**新しく書いた行だけ**を検査して止める。
 言い換え先（と英語）はその WORDS を見る。手動で全量なら `make lint-jargon`。
 
 ## 名前の付け方（モジュール・関数・変数）
@@ -110,7 +110,7 @@ lint 群（矩形だけの View・色票・画像の量・画素の並び・コ�
 生成した `gallery/` と `reference/*.png` は git 管理外。人に見せる絵は
 [docs/gallery/](docs/gallery/README.md) へ選んでコピー、退行検知は
 `templates/*/reference/SHA256SUMS.txt`（例外は Studio が読む `reference/title.png` のみ）。
-違反はコミット時に pre-commit ゲートが止める（配線 `make hooks`、理屈ごと `bin/precommit.py`）。
+違反はコミット時に pre-commit ゲートが止める（配線 `make hooks`、理屈ごと `bin/fge precommit`）。
 
 ## 検証
 

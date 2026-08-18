@@ -1,0 +1,4 @@
+  testdata/lint/jargon/anmaku-fires/Sample.flix:2: 「暗幕」→ 暗くするオーバーレイ (darkness overlay)
+      // 暗幕で覆って隠す
+[lint-jargon] 独自語 1 件。上の言い換えへ直すか、本当に必要なら行末に jargon-ok: 理由 を書いてください
+[exit=1]

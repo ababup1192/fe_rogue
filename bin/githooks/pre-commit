@@ -1,7 +1,18 @@
 #!/bin/sh
-# 中身は bin/precommit.py に 1 本化してあり、呼ぶのは bin/fge 経由 (Windows の Git Bash でも
-# 動くよう薄い入口だけ)。
+# 中身は bin/fge precommit に 1 本化してあり、ここは薄い入口だけ
+# (Windows の Git Bash でも動くよう sh で書く)。
 # 配線: make hooks (git config core.hooksPath bin/githooks)
-# python3 が無い環境 (素の Windows 等) では関所の都合でコミットを壊さない (fail-open)
-command -v python3 >/dev/null 2>&1 || { echo "[pre-commit] python3 が見つからないので関所は素通りします"; exit 0; }
-exec python3 "$(git rev-parse --show-toplevel)/bin/fge" precommit
+# 道具が無い環境では関所の都合でコミットを壊さない (fail-open)
+root=$(git rev-parse --show-toplevel) || exit 0
+[ -x "$root/bin/fge" ] || { echo "[pre-commit] bin/fge が見つからないので関所は素通りします"; exit 0; }
+if [ ! -x "$root/bin/fge-go" ]; then
+  # engine のリポジトリ (go/ がある) では止める。焼き忘れでゲートが消えるのが一番危ない。
+  # ゲームのリポジトリでは素通りする: 配り直しが済むまで人のコミットを止めない。
+  if [ -d "$root/go" ]; then
+    echo "[pre-commit] bin/fge-go がありません。make go-build してからコミットしてください" >&2
+    exit 1
+  fi
+  echo "[pre-commit] bin/fge-go が無いので関所は素通りします (engine 側で make sync-agents GAME=$root)"
+  exit 0
+fi
+exec "$root/bin/fge" precommit

@@ -1,0 +1,5 @@
+[lint-fallback] OK (bug! 0 件を検査 / 除外 17 件)
+[lint-jargon] OK (33 語で検査)
+[pre-commit] bin/lint-view.py が無いのでその検査は飛ばします (engine の make sync-agents GAME=... で配り直せます)
+[pre-commit] make check-docs-sync が無いので配線検査は飛ばします
+[exit=0]

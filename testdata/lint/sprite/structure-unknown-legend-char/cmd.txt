@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/structure-unknown-legend-char/input.sprite.json

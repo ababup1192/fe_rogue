@@ -1,0 +1,1 @@
+bin/fge anim testdata/lint/anim/area-drift/input.sprite.json

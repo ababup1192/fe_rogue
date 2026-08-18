@@ -82,14 +82,14 @@ SUBPATH_DEPTH := 5
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
 # 実行や変更は一切せず、残っている記録 (.test-logs/ スナップショット チケット git) を集めるだけ。
 status:
-	@python3 bin/fge status
+	@bin/fge status
 
 # コミット時のゲート (描き出した絵の混入・規約の配線ずれ・矩形だけの View を止める)。
 # .git/hooks は git 管理外なので、clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 .PHONY: hooks
 hooks:
 	@git config core.hooksPath bin/githooks
-	@echo "[hooks] 配線しました: pre-commit = bin/githooks/pre-commit (中身は bin/precommit.py)"
+	@echo "[hooks] 配線しました: pre-commit = bin/githooks/pre-commit (中身は bin/fge precommit)"
 
 help:
 	@echo "Targets:"
@@ -105,11 +105,11 @@ help:
 	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
 	@echo "  make lint-audio           音名が SfxRender の名・project.json・コードの 3 か所でそろっているか検査"
-	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
+	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-rules/jargon.json の words)"
 	@echo "  make lint-fallback        読み込みの途中で bug! していないか検査 (許すのは *OrBug の中だけ)"
 	@echo "  make lint-f32             engine の pub 面に Float32 が出ていないか検査 (Float32 は GL / OpenAL / STB の内側だけ)"
-	@echo "  python3 bin/fge digest A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
-	@echo "  make go-build             go/ を bin/fge-go と bin/dist/ の 4 OS 分にビルド"
+	@echo "  bin/fge digest A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
+	@echo "  make go-build             go/ を bin/fge-go と、配る先ごとの 5 種にビルド"
 	@echo "  make go-test              go/ のテスト (CIEDE2000 の参照 34 組・外部依存ゼロの検査を含む)"
 	@echo "  make go-compare           Python 版と Go 版の出力をバイト比較"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
@@ -332,33 +332,42 @@ test-%:
 # legend の名前が Studio から実色に解けるかを検査する (解けないと編集画面が仮色で塗り、
 # 実機と配色が食い違う)。テンプレを足す・sprite Doc を触ったら通す。
 lint-palette:
-	@python3 bin/fge palette
+	@bin/fge palette
 
 # ── ゲート: 音の名前 ────────────────────────────────────────
 # SfxRender の名・project.json の sounds・コード内リテラルの 3 か所で音名がそろっているか検査する
 # (ずれてもエラーは出ず、音だけ鳴らない・別の音が鳴る)。音を足した・改名したら通す。
 lint-audio:
-	@python3 bin/fge audio
+	@bin/fge audio
 
 .PHONY: lint-jargon
 lint-jargon:
-	@python3 bin/fge jargon --all
+	@bin/fge jargon --all
 
 # ── Go 版の検査 (画素・波形を扱う層) ────────────────────────
 # 置き場は go/。標準ライブラリだけで書いてあり、go.sum は空のままが正しい。
 # CGO_ENABLED=0 を固定するのは、CGO が有効だとクロスコンパイルに相手側の
-# ツールチェーンが要るようになり、Mac 1 台で 4 OS 分を出す前提が崩れるため。
-GO_OSARCH := darwin/arm64 darwin/amd64 linux/amd64 windows/amd64
+# ツールチェーンが要るようになり、Mac 1 台で全部を出す前提が崩れるため。
+GO_OSARCH := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
+
+# 記号情報を落として 6.1M → 4.2M。デバッガ用の情報だけが消え、panic の出方は変わらない
+# (落ちた場所の関数名は実行時のメタデータから出るので読める)。
+GO_LDFLAGS := -s -w
+
+# 配る先ごとのバイナリの置き場。変数にしてあるのは、この先が実在するパスでないため
+# (fge-go-<os>-<arch> は組み立ててから初めて決まる)。check-refs は $( で始まる字を
+# 「組み立てる物」と見て実在を問わない — 直に書くと毎回「実在しません」で赤くなる。
+GO_DIST := bin/dist
 
 .PHONY: go-build
 go-build:
-	@cd go && CGO_ENABLED=0 go build -o ../bin/fge-go .
+	@cd go && CGO_ENABLED=0 go build -ldflags="$(GO_LDFLAGS)" -o ../bin/fge-go .
 	@for pair in $(GO_OSARCH); do \
 		os=$${pair%%/*}; arch=$${pair##*/}; \
 		ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
 		(cd go && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
-			go build -o ../bin/dist/fge-go-$$os-$$arch$$ext .) || exit 1; \
-		echo "  bin/dist/fge-go-$$os-$$arch$$ext"; \
+			go build -ldflags="$(GO_LDFLAGS)" -o ../$(GO_DIST)/fge-go-$$os-$$arch$$ext .) || exit 1; \
+		echo "  $(GO_DIST)/fge-go-$$os-$$arch$$ext"; \
 	done
 
 .PHONY: go-test
@@ -373,20 +382,20 @@ go-compare: go-build
 # ── ゲート: bug! を置く場所 ──────────────────────────────────
 # 読み込みの途中で bug! すると、既定値で続けてよいかを呼ぶ側が選べない
 # (docs/error-handling.md の決まり 2)。*OrBug という名前の関数の中だけを許す。
-# 残すと決めた bug! は bin/lint-fallback.py の EXEMPT に理由付きで載っている。
+# 残すと決めた bug! は bin/lint-rules/fallback.json の exempt に理由付きで載っている。
 .PHONY: lint-fallback
 lint-fallback:
-	@python3 bin/fge fallback --self-test >/dev/null
-	@python3 bin/fge fallback --all
+	@bin/fge fallback --self-test >/dev/null
+	@bin/fge fallback --all
 
 # ── ゲート: pub 面に Float32 を出さない ───────────────────────
 # ゲームを書く側は Float64 と Int32 だけで済むのが決まり。Float32 は
 # GL / OpenAL / STB の境界の内側だけ (plans/f32-boundary.md)。
-# 残すと決めた Float32 は bin/lint-f32.py の EXEMPT に理由付きで載っている。
+# 残すと決めた Float32 は bin/lint-rules/f32.json の exempt に理由付きで載っている。
 .PHONY: lint-f32
 lint-f32:
-	@python3 bin/fge f32 --self-test >/dev/null
-	@python3 bin/fge f32
+	@bin/fge f32 --self-test >/dev/null
+	@bin/fge f32
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
@@ -596,26 +605,44 @@ sync-engine-tools:
 	done
 
 # agents-pack をゲームに配る。配布物一覧の source of truth は agents-pack/manifest.json で、
-# Makefile はその解釈器 bin/sync-agents.py を呼ぶだけ (Studio の配布も同じ manifest を
+# Makefile はその解釈器 bin/fge sync-agents を呼ぶだけ (Studio の配布も同じ manifest を
 # 読むので、リストの二重管理で片方だけ腐ることが無い)。冪等。
 # バージョンはルート flix.toml でなく $(VERSION) (bump が進める実体) を刻む。ゲーム側の
-# bin/status.py がこの刻印と engine Makefile の VERSION を照らし、陳腐化を知らせる。
+# bin/fge status がこの刻印と engine Makefile の VERSION を照らし、陳腐化を知らせる。
 .PHONY: sync-agents
 sync-agents:
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make sync-agents GAME=/path/to/game)"; exit 1; fi
-	@python3 bin/sync-agents.py --game "$(GAME)" --version "$(VERSION)"
+	@bin/fge sync-agents --game "$(GAME)" --version "$(VERSION)"
+	@$(MAKE) --no-print-directory sync-fge-go GAME="$(GAME)"
+
+# 検査の中身は bin/fge-go (Go のバイナリ)。配る先の OS/CPU に合う 1 つだけを置く。
+# WhyNot: manifest.json の copy に並べないのは、あそこが「どの OS でも同じ物を配る」表で、
+# 配る先ごとに 1 つ選ぶ仕組みが無いため (全部配ると 4 つ × 4.2M が各リポに積まれる)。
+.PHONY: sync-fge-go
+sync-fge-go:
+	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください"; exit 1; fi
+	@os=$$(uname -s | tr 'A-Z' 'a-z'); arch=$$(uname -m); ext=""; \
+	case "$$os" in darwin) ;; linux) ;; mingw*|msys*|cygwin*) os=windows; ext=".exe" ;; \
+	  *) echo "[sync-fge-go] 知らない OS ($$os)。bin/dist/ から手で選んで $(GAME)/bin/ へ置いてください"; exit 0 ;; esac; \
+	case "$$arch" in arm64|aarch64) arch=arm64 ;; x86_64|amd64) arch=amd64 ;; \
+	  *) echo "[sync-fge-go] 知らない CPU ($$arch)。bin/dist/ から手で選んでください"; exit 0 ;; esac; \
+	src=$(GO_DIST)/fge-go-$$os-$$arch$$ext; \
+	if [ ! -f "$$src" ]; then echo "[sync-fge-go] $$src がありません (make go-build)"; exit 1; fi; \
+	cp "$$src" "$(GAME)/bin/fge-go$$ext"; \
+	chmod +x "$(GAME)/bin/fge-go$$ext"; \
+	echo "[sync-fge-go] $$src → $(GAME)/bin/fge-go$$ext"
 
 # 規約の本文は docs/ に 1 つだけ置く。CLAUDE.md は AGENTS.md を import するだけ、
-# .claude/rules/ は bin/gen-rules.py の生成物。手で 2 か所に書かないので、ずれない。
+# .claude/rules/ は bin/fge gen-rules の生成物。手で 2 か所に書かないので、ずれない。
 .PHONY: rules
 rules: api-digest
-	@python3 bin/gen-rules.py
+	@bin/fge gen-rules
 
 # engine/engine_world/engine_tools の pub API を 1 枚のダイジェストに畳む。
 # AI エージェントが型・引数を調べる時、ソースを grep する前にまずここを読めば済む。
 .PHONY: api-digest
 api-digest:
-	@python3 bin/gen-api-digest.py
+	@bin/fge api-digest
 
 # ダイジェストの引き方の近道。例: make api Q=gradPolygon
 # ソースを開かずに pub 宣言 (型・引数・エフェクト・doc 1 行) だけ拾う。
@@ -623,7 +650,7 @@ api-digest:
 # digest は作業ツリーの src/ から作るので、まだリリースしていない宣言も載る。
 # ゲームは flix.toml で版を固定して fpkg を引くため、digest を信じて書くと
 # コンパイルで落ちる (2026-08-14: Depth.bands / PxSpriteDoc.Loop で 2 本が落ちた)。
-# だから引くたびに「その名前は未リリースか」を後ろに出す (bin/check-api-released.py)。
+# だから引くたびに「その名前は未リリースか」を後ろに出す (bin/fge check-api-released)。
 .PHONY: api
 api:
 	@test -n "$(Q)" || { echo "usage: make api Q=<関数名やモジュール名>"; exit 1; }
@@ -632,42 +659,42 @@ api:
 	 else echo "[api] '$(Q)' はダイジェストに無い。docs/module-index.md で別名を探す"; fi
 	@# 2>/dev/null を付けない。この検査の存在理由は「digest の嘘を見えるようにする」ことなので、
 	@# 検査自体が黙って死ぬ形は自己矛盾になる (|| true は助言だから止めない、の意味で残す)。
-	@python3 bin/check-api-released.py "$(Q)" || true
+	@bin/fge check-api-released "$(Q)" || true
 
 # 絵の下限（矩形と円だけになっていないか）。どの OS・どのエージェントからも同じ検査。
 .PHONY: lint-view
 lint-view:
-	@python3 bin/fge view
+	@bin/fge view
 
 # git に入れる絵が増えすぎていないか（描き出した絵が紛れ込んでいないか）の検査。
 .PHONY: lint-images
 lint-images:
-	@python3 bin/fge images
+	@bin/fge images
 
 # ドット絵の画素の並びの検査。自己テストが壊れた lint には門番をさせない。
 .PHONY: lint-sprite
 lint-sprite:
-	@python3 bin/fge sprite --self-test >/dev/null
-	@python3 bin/fge sprite
+	@bin/fge sprite --self-test >/dev/null
+	@bin/fge sprite
 
 .PHONY: lint-anim
 lint-anim:
-	@python3 bin/fge anim --self-test >/dev/null
-	@python3 bin/fge anim
+	@bin/fge anim --self-test >/dev/null
+	@bin/fge anim
 
 # ui.json の text の折り返し宣言漏れ (固定幅の枠 + wrap/fit なし) の検査。
 # 実寸は測らない構造検査。コード直組みの Text と instance 参照ノードは見えない。
 .PHONY: lint-ui
 lint-ui:
-	@python3 bin/fge ui-overflow --self-test >/dev/null
-	@python3 bin/fge ui-overflow
+	@bin/fge ui-overflow --self-test >/dev/null
+	@bin/fge ui-overflow
 
 # ループ GIF の継ぎ目（最終コマ→0 コマ）が浮かないかの検査。描き出し済みのコマが前提なので
 # 保存時フックや pre-commit には乗せない（手動で回す）。
 .PHONY: lint-loop
 lint-loop:
-	@python3 bin/fge loop --self-test >/dev/null
-	@python3 bin/fge loop
+	@bin/fge loop --self-test >/dev/null
+	@bin/fge loop
 
 # 規約まわりの配線が崩れていないかの検査（生成はしない）。
 .PHONY: check-docs-sync
@@ -681,7 +708,7 @@ check-docs-sync:
 	  echo "[check-docs-sync] NG: CLAUDE.md は @AGENTS.md の 1 行にしてください（本文の二重管理を避ける）"; ok=0; \
 	fi; \
 	echo "[check-docs-sync] .claude/rules が docs/ と一致しているか"; \
-	python3 bin/gen-rules.py --check || ok=0; \
+	bin/fge gen-rules --check || ok=0; \
 	echo "[check-docs-sync] AGENTS.md のスキル表が実在する skill を指しているか"; \
 	for s in $$(grep -o '`/[a-z][a-z-]*`' AGENTS.md | tr -d '`/' | sort -u); do \
 	  if [ ! -f ".claude/skills/$$s/SKILL.md" ]; then \
@@ -725,13 +752,13 @@ check-docs-sync:
 	  echo "[check-docs-sync] NG: 上のファイルに図形プリミティブの旧名（Render.box 等）が残っています。RawDraw.* へ書き換えてください"; ok=0; \
 	fi; \
 	echo "[check-docs-sync] agents-pack/manifest.json が正しい JSON で src が全実在するか"; \
-	python3 bin/sync-agents.py --check-manifest || ok=0; \
+	bin/fge sync-agents --check-manifest || ok=0; \
 	echo "[check-docs-sync] Makefile / templates / agents-pack の参照先が実在するか"; \
-	python3 bin/check-refs.py || ok=0; \
+	bin/fge check-refs || ok=0; \
 	echo "[check-docs-sync] pub def を持つモジュールが API 索引に載っているか"; \
-	python3 bin/check-api-index.py || ok=0; \
+	bin/fge check-api-index || ok=0; \
 	echo "[check-docs-sync] docs/api-digest.md が作り直しても差分ゼロか"; \
-	python3 bin/gen-api-digest.py --check || ok=0; \
+	bin/fge api-digest --check || ok=0; \
 	echo "[check-docs-sync] AGENTS.md から docs/ への導線があるか"; \
 	for kw in \
 	  "docs/audio.md" \
@@ -863,7 +890,7 @@ new-game: engine-full-fresh
 
 # ── ゲームの engine バージョン追随 ────────────────────────────────
 # ゲームの flix.toml が指す flix_game_engine のバージョンをこの engine の $(VERSION) へ上げ、
-# lib/ に対応する fpkg + toml を置き、agents-pack も配り直す。status.py の
+# lib/ に対応する fpkg + toml を置き、agents-pack も配り直す。bin/fge status の
 # 「engine バージョンズレ」を見た人が 1 手で追随する入口 (テンプレの make engine-upgrade が
 # ここへ委譲する)。自動では走らせない — バージョン上げは挙動・リファレンス画像まで変わりうる
 # 「人が選ぶ側」の変更。終わったら check だけ回して生存確認する。

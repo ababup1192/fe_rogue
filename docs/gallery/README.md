@@ -20,7 +20,7 @@
 - 名前は「どのゲームの何か」がわかる形にする（例 `rpg_town.png`）
 - ロゴ・バナーなど、絵でなくブランド素材は `docs/brand/` へ
 
-守れているかは `python3 bin/fge images` で確かめます。
+守れているかは `bin/fge images` で確かめます。
 
 ## いまある絵
 

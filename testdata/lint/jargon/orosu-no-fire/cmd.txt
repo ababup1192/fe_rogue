@@ -1,0 +1,1 @@
+bin/fge jargon testdata/lint/jargon/orosu-no-fire/Sample.flix

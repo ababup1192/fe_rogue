@@ -1,0 +1,6 @@
+
+testdata/lint/anim/view-back-iou-low/input.sprite.json
+  注意: walker: 前と後のシルエットの重なりが 0.75 (下限 0.9) — 背面は正面の外形を流用し、顔と髪だけ描き替える
+
+1 ファイル / 注意 1 件
+[exit=0]

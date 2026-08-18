@@ -1,0 +1,9 @@
+# 見に行く先の差し替え: --bundle DIR で渡せる（引数の口あり）。
+# このモードは --root を一切見ないので、本物のリポを根にしたまま走らせてよい。
+# 出力にバンドルのパスがそのまま出るため、$WORK へ cd して「相対パス」で渡す。
+# cwd: $WORK / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/check-refs/_base/build.sh" "$WORK/bundle"
+[ -d overlay ] && cp -R overlay/. "$WORK"/
+:
+cd "$WORK"
+"$ENGINE/bin/fge" check-refs --root "$ENGINE" --bundle bundle 

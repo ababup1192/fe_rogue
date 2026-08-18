@@ -1,0 +1,4 @@
+  testdata/lint/jargon/daichou-fires/Sample.flix:2: 「台帳」→ レジストリ / 一覧表 (registry)
+      // 台帳を見ればわかる
+[lint-jargon] 独自語 1 件。上の言い換えへ直すか、本当に必要なら行末に jargon-ok: 理由 を書いてください
+[exit=1]

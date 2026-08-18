@@ -1,0 +1,4 @@
+除外: Ghost.longGoneFn — テスト用: 実在しない除外エントリ
+  Ghost.longGoneFn は EXEMPT に載っていますが、そこに Float32 はもうありません
+[lint-f32] 古い除外 1 件。宿題の一覧として読めなくなるので EXEMPT から消してください
+[exit=1]

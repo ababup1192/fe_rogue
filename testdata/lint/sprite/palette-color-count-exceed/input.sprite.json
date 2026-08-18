@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "legend": {
+    "a": "ca", "b": "cb", "c": "cc", "d": "cd", "e": "ce",
+    "f": "cf", "g": "cg", "h": "ch", "i": "ci", "j": "cj",
+    "k": "ck", "l": "cl", "m": "cm"
+  },
+  "sprites": {
+    "hero": {
+      "frames": {
+        "idle": ["abcdefghijklm"]
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+bin/fge ui-overflow --strict testdata/lint/ui-overflow/wrap-missing-fires-strict/panel.ui.json

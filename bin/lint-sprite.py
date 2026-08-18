@@ -44,7 +44,8 @@ for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
-EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
+EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules",
+                 "testdata"}  # testdata/ は検査の見本 (わざと違反を書いたファイル)
 GAME_ROOTS = ("templates",)
 
 # legend に無い文字のうち、透明として認める物。それ以外は typo と見なす

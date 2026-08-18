@@ -1,0 +1,31 @@
+{
+  "note": "status（セッション開始の現状 1 画面）の規約データ。source of truth は bin/status.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go status）はこれを読んで動くので、規約を変えるときは bin/status.py とこの 2 つを同時に直す。ずれると go/internal/status の TestRulesMatchPython が落ちる。",
+  "maxLines": 40,
+  "buildWarnEntries": 60000,
+  "sections": [
+    "section_git",
+    "section_tests",
+    "section_reference",
+    "section_budget",
+    "section_tickets",
+    "section_style",
+    "section_pack",
+    "section_engine_drift",
+    "section_builds",
+    "section_notes"
+  ],
+  "ageJustNowSeconds": 90,
+  "ageMinuteSeconds": 3600,
+  "ageHourSeconds": 86400,
+  "gitLogCount": 3,
+  "greensShown": 8,
+  "referenceBadShown": 4,
+  "budgetDetailLines": 3,
+  "ticketsShown": 3,
+  "ticketSummaryWidth": 60,
+  "notesShown": 6,
+  "notesWidth": 80,
+  "testLogsDir": ".test-logs",
+  "buildGlobs": ["templates/*/build", "bench/*/build"],
+  "buildDirs": ["engine", "render_gl", "engine_world", "engine_tools"]
+}

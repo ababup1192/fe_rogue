@@ -1,0 +1,3 @@
+bin/fge view testdata/lint/view/rect-boundary-no-fire/View.flix
+# 矩形 4 / 全体 5 = ちょうど 80%。RECT_PCT の判定は rect*100 > total*RECT_PCT の
+# 厳密不等号なので、ここでは 400 > 400 が偽になり境界で鳴らない。

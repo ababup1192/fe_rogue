@@ -1,0 +1,3 @@
+警告: testdata/lint/view/hud-smell-fires — 文字（Render.text / TextDraw）を world 側の絵に直書きしていますが withHudView がありません。スコアや案内文は App.withHudView に繋ぐと、world 側の z がどれだけ大きくても必ず手前に出ます（警告のみ・失敗にはしません）
+OK: 矩形だけの View はありません（除外 0 件）
+[exit=0]

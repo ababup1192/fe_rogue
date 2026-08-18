@@ -1,0 +1,3 @@
+# 見に行く先の差し替え: 裁く相手は第 1 引数
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ)
+"$ENGINE/bin/fge" check-render-budget --root "$ENGINE" repo --brief

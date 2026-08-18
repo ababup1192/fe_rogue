@@ -1,0 +1,3 @@
+testdata/lint/sprite/structure-size-mismatch/input.sprite.json: hero: コマの大きさが不揃い (idle=2x2, walk=3x2)
+NG: 1 件 (sprite Doc 1 件・スプライト 1 個を検査)
+[exit=1]

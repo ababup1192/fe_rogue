@@ -2,7 +2,6 @@
 #   make        … ゲームを起動する（ウィンドウが開く）
 #   make help   … 共通の口の一覧（run / test / check / 描き出し / status …）
 #   make palette … Studio 用の色の写し(assets/px.palette.json)を無条件に作り直す
-#   make stages … 面の罠ゼロ(BFS)と流れを機械検査する
 #   make loc    … src/ + test/ の .flix 合計行数（上限 3,000 行）
 #   make playtest … bot に通しで遊ばせて「走れるか・詰まらないか」を測る
 #   make probe  … 面の読み込み・1 tick・タイル層の組み立てにかかる時間を測る
@@ -41,15 +40,8 @@ endif
 space := $(subst ,, )
 include $(subst $(space),\$(space),$(ENGINE))/mk/game.mk
 
-.PHONY: stages checkpoints playtest probe
+.PHONY: playtest probe
 
-stages:
-	$(PYTHON) tools/check_stages.py
-# 中間ポイントを等間隔に置き直す（assets/stages.stage.json を書き換える）。
-# 置き直したら必ず静的検査へ — 戻り先が変われば面の流れも変わるため。
-checkpoints:
-	$(PYTHON) tools/space_checkpoints.py
-	$(PYTHON) tools/check_stages.py
 playtest:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Playtest.all
 probe:

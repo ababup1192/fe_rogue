@@ -1,0 +1,18 @@
+{
+  "note": "sync-agents（agents-pack をゲームのリポへ配る道具）の規約データ。source of truth は bin/sync-agents.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go sync-agents）はこれを読んで動くので、規約を変えるときは bin/sync-agents.py とこの 2 つを同時に直す。ずれると go/internal/syncagents の TestRulesMatchPython が落ちる。配る物の一覧そのものは agents-pack/manifest.json にあり、この JSON は持たない（二重に持つと片方が古くなる）。",
+  "manifestPath": "agents-pack/manifest.json",
+  "manifestKeys": ["copy", "copyIfAbsent", "copyDirs"],
+  "skillsDir": "agents-pack/skills",
+  "rulesDir": "agents-pack/rules",
+  "coreDoc": "agents-pack/AGENTS.core.md",
+  "localDoc": "AGENTS.local.md",
+  "agentsMd": "AGENTS.md",
+  "claudeMd": "CLAUDE.md",
+  "claudeMdBody": "@AGENTS.md\n",
+  "skillFile": "SKILL.md",
+  "skillLinkPattern": "\\.claude/skills/([A-Za-z0-9_-]+)/",
+  "skillLinkRoots": ["agents-pack/skills", "agents-pack/rules", "docs"],
+  "lintPrefix": "lint-",
+  "sentenceSep": "。",
+  "triggerSuffix": "使う"
+}

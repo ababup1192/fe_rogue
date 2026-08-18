@@ -1,0 +1,2 @@
+studio/server/src/Genesis.flix: templates/tetris-starter がどのジャンルの starter にもなっていません (Studio から選べないテンプレです)
+[exit=1]

@@ -1,0 +1,15 @@
+# 見に行く先の差し替え: --root で偽リポを渡す。
+# この検査は根の git リポに `git grep <タグ>` を叩くので、偽リポは git init された
+# 本物の git リポでなければならない。規約データ (bin/lint-rules) も偽リポの bin/ へ写す。
+# 本物のリポでは commit しない（$WORK の使い捨てリポで add / commit / tag する）。
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/check-api-released/_base/build.sh" "$WORK" "v0.1.0"
+cat > "$WORK/engine/src/Depth.flix" <<EOF
+mod Depth {
+    pub def world(): Int32 = 0
+    pub def ui(): Int32 = 1
+    pub def bands(): Int32 = 2
+}
+EOF
+cp -R "$ENGINE/bin/lint-rules" "$WORK/bin/"
+"$ENGINE/bin/fge" check-api-released --root "$WORK" bands

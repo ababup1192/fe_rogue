@@ -1,0 +1,6 @@
+
+testdata/lint/anim/view-top-mismatch/input.sprite.json
+  注意: walker: 方向で頭の高さが違う {'front': 2, 'side': 4} (許容 1px) — 別人に見える
+
+1 ファイル / 注意 1 件
+[exit=0]

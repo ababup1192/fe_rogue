@@ -26,9 +26,9 @@ mkdir -p reference
 # 上限を超えた値は基準にできない（初回の実装が遅くても、基準化で素通りしない）。
 # 意図した増加は make reference-update BUDGET=accept で明示する
 # （GNU make はコマンドラインで渡した変数を recipe の環境へ渡すので、ここに届く）。
-budget="$(dirname "$0")/check-render-budget.py"
-if [ -f "$budget" ] && [ "${BUDGET:-}" != "accept" ]; then
-	python3 "$budget" . --gate reference/ITEMS.tsv
+fge="$(dirname "$0")/fge"
+if [ -x "$fge" ] && [ "${BUDGET:-}" != "accept" ]; then
+	"$fge" check-render-budget . --gate reference/ITEMS.tsv
 fi
 
 cp gallery/*.png reference/

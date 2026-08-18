@@ -1,0 +1,5 @@
+# float32-pub-fires と同じ Sample.flix を、除外一覧に載せた状態で見る（鳴らない側）。
+# 除外一覧には出るが違反にはならない。
+# cwd: このリポの根 / 環境変数: CASE(このケース)
+bin/fge f32 --root "$CASE" \
+  --exempt-json '{"Demo.setScale": "テスト用: 除外による無効化の見本"}' "$CASE/Sample.flix"

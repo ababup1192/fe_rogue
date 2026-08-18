@@ -8,6 +8,7 @@ package main
 //	fge-go images  [ルート]
 //	fge-go audio   [ルート]
 //	fge-go palette [ルート]
+//	fge-go view    [*.flix ...]
 //
 // どのサブコマンドにも --json を付けると機械可読の出力になる。
 // 出力の元データ (source of truth) は Python 版 (bin/*.py)。go/compare.sh が全件を突き合わせる。
@@ -17,8 +18,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
+	"github.com/ababup1192/flix_game_engine/go/internal/status"
 )
 
 // Version はこのバイナリの版。CI の smoke test が最初に見る。
@@ -50,7 +55,7 @@ func repoRoot() string {
 	if err == nil {
 		// bin/fge-go から見た親の親。
 		root := filepath.Dir(filepath.Dir(exe))
-		if hasDir(filepath.Join(root, "bin")) {
+		if pxlib.HasDir(filepath.Join(root, "bin")) {
 			return root
 		}
 	}
@@ -67,6 +72,19 @@ func hasFlag(args []string, name string) bool {
 	return false
 }
 
+// dropJSONFlag は --json だけを取り除く。
+// WhyNot: dropFlags で -- 付きを全部落とさないのは、Python 版が --strict などを
+// ただのパスとして扱うため。落とすと引数の解釈がずれる。
+func dropJSONFlag(args []string) []string {
+	var out []string
+	for _, a := range args {
+		if a != "--json" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func dropFlags(args []string) []string {
 	var out []string
 	for _, a := range args {
@@ -77,9 +95,78 @@ func dropFlags(args []string) []string {
 	return out
 }
 
+// Handler は 1 つのサブコマンドの入口。out が stdout・errOut が stderr。
+type Handler func(out, errOut *strings.Builder, rest []string, asJSON bool) int
+
+// registry は init() で自分を名乗ったサブコマンド。note は一覧に出す 1 行説明。
+//
+// WhyNot: switch に直に並べないのは、サブコマンドを別々の人が同時に足すとき、
+// 1 つのファイルへ全員が書き込んで衝突するため。名乗りは各 cmd_*.go に閉じる。
+var registry = map[string]Handler{}
+var registryNote = map[string]string{}
+
+func register(name, note string, fn Handler) {
+	if _, dup := registry[name]; dup {
+		panic("fge-go: サブコマンド名が重複している: " + name)
+	}
+	registry[name] = fn
+	registryNote[name] = note
+}
+
+func commandNames() []string {
+	names := make([]string, 0, len(registry))
+	for name := range registry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// printVersion は engine のバージョンを出す。
+// WhyNot: このバイナリ自身の版 (Version) を出さないのは、呼ぶ側が知りたいのが
+// 「どの engine で組んだゲームか」であって道具の版ではないため。
+func printVersion() int {
+	// engine リポジトリ自身なら足元の Makefile。ゲームリポジトリなら ENGINE の指す先。
+	root := repoRoot()
+	version := status.ReadEngineVersion(root)
+	if version == "" {
+		if engine := status.ReadEngineDir(root); engine != "" {
+			version = status.ReadEngineVersion(engine)
+		}
+	}
+	if version == "" {
+		fmt.Fprintln(os.Stderr,
+			"fge (engine のバージョンが読めません: Makefile の VERSION が見当たらない)")
+		return 1
+	}
+	fmt.Printf("fge (engine v%s)\n", version)
+	return 0
+}
+
 func usage() {
-	fmt.Println("使い方: fge-go <digest|loop|sil|images|audio|palette> [引数...]")
-	fmt.Println("        fge-go --version")
+	fmt.Println("使い方: fge <サブコマンド> [引数...]")
+	fmt.Println("        fge --version      engine のバージョン")
+	fmt.Println("        fge --list         サブコマンド名だけを 1 行ずつ")
+	fmt.Println()
+	width := 0
+	for _, name := range commandNames() {
+		if len(name) > width {
+			width = len(name)
+		}
+	}
+	for _, name := range commandNames() {
+		fmt.Printf("  %-*s  %s\n", width, name, registryNote[name])
+	}
+}
+
+// orAbort は検査そのものが動かなかったとき（規約ファイルが無い等）に理由を出して 2 で終わる。
+// WhyNot: エラーを握って既定値で続けないのは、検査が死んだことを緑と見分けられなくなるため。
+func orAbort(errOut *strings.Builder, code int, err error) int {
+	if err == nil {
+		return code
+	}
+	fmt.Fprintf(errOut, "fge-go: %v\n", err)
+	return 2
 }
 
 func main() {
@@ -88,32 +175,31 @@ func main() {
 		usage()
 		os.Exit(1)
 	}
-	if args[0] == "--version" || args[0] == "version" {
-		fmt.Println("fge-go " + Version)
+	if args[0] == "--version" || args[0] == "-V" || args[0] == "version" {
+		os.Exit(printVersion())
+	}
+	// --list は bin/fge が「Go 版が持っているのはどれか」を知るための口。
+	// WhyNot: 呼ぶ側に一覧を写して持たせないのは、サブコマンドを足すたびに
+	// 2 か所直すことになり、片方だけ古いまま黙って Python へ落ちるため。
+	if args[0] == "--list" {
+		for _, name := range commandNames() {
+			fmt.Println(name)
+		}
 		return
 	}
 	cmd, rest := args[0], args[1:]
 	asJSON := hasFlag(rest, "--json")
 
-	var out strings.Builder
-	var code int
-	switch cmd {
-	case "digest":
-		code = cmdDigest(&out, rest, asJSON)
-	case "loop":
-		code = cmdLoop(&out, rest, asJSON)
-	case "sil":
-		code = cmdSil(&out, rest, asJSON)
-	case "images":
-		code = runImages(&out, rootArg(rest), asJSON)
-	case "audio":
-		code = runAudio(&out, rootArg(rest), asJSON)
-	case "palette":
-		code = runPalette(&out, rootArg(rest), asJSON)
-	default:
+	handler, known := registry[cmd]
+	if !known {
 		usage()
 		os.Exit(1)
 	}
+	var out, errOut strings.Builder
+	code := handler(&out, &errOut, rest, asJSON)
+	// WhyNot: stderr を先に書くのは、Python 側が stderr を素通し・stdout をまとめ書きに
+	// するため。2>&1 でまとめて受けたときの行順をそろえる。
+	os.Stderr.WriteString(errOut.String())
 	os.Stdout.WriteString(out.String())
 	os.Exit(code)
 }
@@ -173,7 +259,7 @@ func digestBody(out *strings.Builder, rest []string) int {
 			return 1
 		}
 		for _, p := range argv {
-			if !hasFile(p) {
+			if !pxlib.HasFile(p) {
 				fmt.Fprintf(out, "見つからない: %s\n", p)
 				return 1
 			}
@@ -196,10 +282,10 @@ func digestBody(out *strings.Builder, rest []string) int {
 			return 1
 		}
 	}
-	if hasDir(oldPath) && hasDir(newPath) {
+	if pxlib.HasDir(oldPath) && pxlib.HasDir(newPath) {
 		return compareDirs(out, oldPath, newPath, names)
 	}
-	if hasFile(oldPath) && hasFile(newPath) {
+	if pxlib.HasFile(oldPath) && pxlib.HasFile(newPath) {
 		if len(names) > 0 {
 			fmt.Fprintln(out, "名前絞り込みはフォルダ比較のときだけ使えます")
 			return 1

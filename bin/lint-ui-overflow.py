@@ -235,7 +235,8 @@ def _self_test():
 
 
 GAME_ROOTS = ("templates",)
-EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "gallery", "reference", "target"}
+EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "gallery", "reference", "target",
+                 "testdata"}  # testdata/ は検査の見本 (わざと違反を書いたファイル)
 
 
 def discover(root):

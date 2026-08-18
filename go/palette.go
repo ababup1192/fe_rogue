@@ -8,16 +8,18 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 func paletteNamesOf(gameDir string, doc map[string]any) map[string]bool {
 	names := map[string]bool{}
 	if ref, ok := doc["paletteFile"].(string); ok {
-		for n := range colorNamesOf(readJSON(filepath.Join(gameDir, ref))) {
+		for n := range pxlib.ColorNamesOf(pxlib.ReadJSON(filepath.Join(gameDir, ref))) {
 			names[n] = true
 		}
 	}
-	for n := range colorNamesOf(doc["palette"]) {
+	for n := range pxlib.ColorNamesOf(doc["palette"]) {
 		names[n] = true
 	}
 	return names
@@ -29,7 +31,7 @@ type legendMiss struct {
 }
 
 func unresolvedOf(doc map[string]any, names map[string]bool) []legendMiss {
-	legend, ok := asObject(doc["legend"])
+	legend, ok := pxlib.AsObject(doc["legend"])
 	if !ok {
 		return nil
 	}
@@ -44,7 +46,7 @@ func unresolvedOf(doc map[string]any, names map[string]bool) []legendMiss {
 		if !ok {
 			continue
 		}
-		if isHexColor(value) {
+		if pxlib.IsHexColor(value) {
 			continue
 		}
 		name := strings.TrimPrefix(value, "@")
@@ -67,9 +69,9 @@ func runPalette(out *strings.Builder, root string, asJSON bool) int {
 	var problems []string
 	docCount, keyCount := 0, 0
 
-	for _, game := range gameDirsOf(root, func() bool { return hasDir(filepath.Join(root, "assets")) }) {
+	for _, game := range pxlib.GameDirsOf(root, func() bool { return pxlib.HasDir(filepath.Join(root, "assets")) }) {
 		gameDir := filepath.Join(root, game)
-		jsonPaths := walkJSON(gameDir, paletteExcludedDirs)
+		jsonPaths := pxlib.WalkJSON(gameDir, pxlib.PaletteExcludedDirs)
 		var spritePaths []string
 		for _, p := range jsonPaths {
 			if strings.HasSuffix(p, ".sprite.json") {
@@ -82,19 +84,19 @@ func runPalette(out *strings.Builder, root string, asJSON bool) int {
 		themes := map[string]bool{}
 		for _, rel := range jsonPaths {
 			if strings.HasSuffix(rel, ".theme.json") {
-				for n := range colorNamesOf(readJSON(filepath.Join(gameDir, rel))) {
+				for n := range pxlib.ColorNamesOf(pxlib.ReadJSON(filepath.Join(gameDir, rel))) {
 					themes[n] = true
 				}
 			}
 		}
 		for _, rel := range spritePaths {
-			doc, ok := asObject(readJSON(filepath.Join(gameDir, rel)))
+			doc, ok := pxlib.AsObject(pxlib.ReadJSON(filepath.Join(gameDir, rel)))
 			if !ok {
 				problems = append(problems, fmt.Sprintf("%s/%s: JSON として読めない", game, rel))
 				continue
 			}
 			docCount++
-			if legend, ok := asObject(doc["legend"]); ok {
+			if legend, ok := pxlib.AsObject(doc["legend"]); ok {
 				keyCount += len(legend)
 			}
 			names := map[string]bool{}

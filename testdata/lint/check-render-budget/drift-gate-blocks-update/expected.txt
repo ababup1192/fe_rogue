@@ -1,0 +1,5 @@
+reference-update 中止: 絵の値段
+  town: 動的 1000 個 — 基準 100 個から300 個を超えて増えたので基準として焼けません
+  意図した増加なら make reference-update BUDGET=accept で明示してください。
+  上限そのものを場面ごとに上げるなら reference/ITEMS.caps.tsv にcap と note を書いてください。
+[exit=1]

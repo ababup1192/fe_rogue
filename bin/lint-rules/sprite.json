@@ -1,0 +1,19 @@
+{
+  "note": "lint-sprite（ドット絵 *.sprite.json の画素の並び）の規約データ。source of truthは bin/lint-sprite.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go sprite）はこれを読んで動くので、規約を変えるときは bin/lint-sprite.py とこの 2 つを同時に直す。ずれると go/internal/sprite の TestRulesMatchPython が落ちる。メッセージの文面は規約データではないので Go 側（go/internal/sprite/sprite.go）にある。",
+  "rules": ["structure", "orphan", "connect", "palette", "jaggy", "banding", "corner", "silhouette"],
+  "transparentChars": [".", " "],
+  "excludedDirs": ["build", "lib", ".git", "gallery", ".devbox", "node_modules", "testdata"],
+  "maxColors": 12,
+  "maxColorsBig": 16,
+  "bigSide": 32,
+  "textureFill": 0.90,
+  "minOrphanCells": 4,
+  "minConnectCells": 4,
+  "connectShown": 4,
+  "jaggyMinCount": 3,
+  "bandingMinRun": 8,
+  "silhouetteMinOcc": 0.20,
+  "deltaEMin": 5.0,
+  "exemptPattern": "対象外\\s*(?:\\(([^)]*)\\))?",
+  "exemptParenPattern": "^\\s*\\([^)]*\\)"
+}

@@ -1,0 +1,6 @@
+# lint-f32 は engine / engine_world / engine_tools をまるごと見るので、--root で
+# 見に行く先をこのケースへ寄せ、Sample.flix 1 本だけを渡す。
+# --exempt-json は除外一覧そのものの差し替え口。ここは空にして、本物のリポの
+# 除外 (RenderUtil.f32) が紛れ込まないよう分ける。
+# cwd: このリポの根 / 環境変数: CASE(このケース)
+bin/fge f32 --root "$CASE" --exempt-json '{}' "$CASE/Sample.flix"

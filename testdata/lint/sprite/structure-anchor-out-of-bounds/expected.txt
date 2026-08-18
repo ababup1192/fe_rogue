@@ -1,0 +1,3 @@
+testdata/lint/sprite/structure-anchor-out-of-bounds/input.sprite.json: hero: anchor (5,0) が格子 2x2 の外
+NG: 1 件 (sprite Doc 1 件・スプライト 1 個を検査)
+[exit=1]

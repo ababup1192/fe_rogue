@@ -30,7 +30,7 @@ allowed-tools: Read, Grep, Glob, Bash
 4. 基準を持たない絵は、生成し直した `gallery/` を自分で目視する
    （`.claude/skills/critique-render` の手順）
 
-`python3 bin/fge images` も併せて通す（生成した絵が git に紛れ込んでいないか）。
+`bin/fge images` も併せて通す（生成した絵が git に紛れ込んでいないか）。
 
 ## リリース手順
 
@@ -51,13 +51,13 @@ tag は現在の HEAD SHA に固定される。
 
 コミットや `make release` で止まる原因は毎回だいたい同じ。打つ前にここを潰す:
 
-- **precommit ゲート**: コミットの瞬間に `bin/precommit.py` が走る。何で止まるかは
-  `python3 bin/fge precommit --files <ステージ予定のファイル…>` で**コミット前に素振りできる**。
+- **precommit ゲート**: コミットの瞬間に `bin/fge precommit` が走る。何で止まるかは
+  `bin/fge precommit --files <ステージ予定のファイル…>` で**コミット前に素振りできる**。
   よく引っかかるのは ①pub 宣言・doc コメントを触ったのに `docs/api-digest.md` が古い
   （`make api-digest` で作り直してから一緒にステージ）②docs / skills を触った時の
   `make check-docs-sync`（AGENTS.md と agents-pack の sync 印ずれ・切れたリンク）
-  ③`bin/lint-jargon.py` の独自語
-- **jargon は `python3 bin/fge jargon <触ったパス…>` で素振りする**（コミットコマンドを
+  ③`bin/fge jargon` の独自語
+- **jargon は `bin/fge jargon <触ったパス…>` で素振りする**（コミットコマンドを
   人へ渡す前に自分で通す）。precommit 経由は `git diff --cached` を読むので、`git add` の
   後に直しても同じ指摘が出続ける
 - **sync の出し忘れ**: engine / engine_world / engine_tools のソースを触ったら対応する

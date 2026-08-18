@@ -1,0 +1,4 @@
+  testdata/lint/jargon/uchikake-fires-kana/Sample.flix:2: 「打ちかけ」→ 下書き (draft)
+      // 打ち掛けの状態のままにしない
+[lint-jargon] 独自語 1 件。上の言い換えへ直すか、本当に必要なら行末に jargon-ok: 理由 を書いてください
+[exit=1]

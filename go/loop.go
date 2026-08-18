@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 const (
@@ -22,7 +24,7 @@ var loopGameRoots = []string{"templates"}
 
 var loopExcludedDirs = map[string]bool{
 	".git": true, "build": true, "lib": true, ".devbox": true,
-	"target": true, "node_modules": true,
+	"target": true, "node_modules": true, "testdata": true,
 }
 
 var frameNameRe = regexp.MustCompile(`^(\d+)\.png$`)
@@ -33,7 +35,7 @@ type loopFrame struct {
 }
 
 func loadFrame(path string) (*loopFrame, error) {
-	im, err := ReadPNG(path)
+	im, err := pxlib.ReadPNG(path)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +217,10 @@ func runLoopSelfTest(out *strings.Builder) int {
 	}
 	defer os.RemoveAll(tmp)
 
-	write := func(dir string, i int, at func(x, y int) RGBA) {
-		grid := make([][]RGBA, 4)
+	write := func(dir string, i int, at func(x, y int) pxlib.RGBA) {
+		grid := make([][]pxlib.RGBA, 4)
 		for y := 0; y < 4; y++ {
-			grid[y] = make([]RGBA, 4)
+			grid[y] = make([]pxlib.RGBA, 4)
 			for x := 0; x < 4; x++ {
 				grid[y][x] = at(x, y)
 			}
@@ -228,7 +230,7 @@ func runLoopSelfTest(out *strings.Builder) int {
 	loopDir := filepath.Join(tmp, "loop")
 	_ = os.Mkdir(loopDir, 0o755)
 	for i := 0; i < 3; i++ {
-		write(loopDir, i, func(x, y int) RGBA { return RGBA{255, 0, 0, 255} })
+		write(loopDir, i, func(x, y int) pxlib.RGBA { return pxlib.RGBA{255, 0, 0, 255} })
 	}
 	add("同一 3 コマのループは合格", len(checkLoopDir(loopDir)) == 0)
 
@@ -237,11 +239,11 @@ func runLoopSelfTest(out *strings.Builder) int {
 	_ = os.Mkdir(driftDir, 0o755)
 	for i := 0; i < 3; i++ {
 		n := i
-		write(driftDir, i, func(x, y int) RGBA {
+		write(driftDir, i, func(x, y int) pxlib.RGBA {
 			if x < n {
-				return RGBA{0, 0, 255, 255}
+				return pxlib.RGBA{0, 0, 255, 255}
 			}
-			return RGBA{255, 0, 0, 255}
+			return pxlib.RGBA{255, 0, 0, 255}
 		})
 	}
 	add("先頭へ戻らないドリフトは警告", len(checkLoopDir(driftDir)) != 0)

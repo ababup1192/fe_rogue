@@ -1,0 +1,3 @@
+reference-check NG: 絵の値段
+  town: 動的 2400 個 ≥ 上限 2000 個（既定）
+[exit=1]

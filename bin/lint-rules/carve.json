@@ -1,0 +1,70 @@
+{
+  "note": "bin/carve/ の 6 本が使う閾値・大きさの既定・色の決まり。source of truth は bin/carve/*.py で、Go 版 (fge-go carve / adopt) はこの表を読むだけ。値を変えると絵が変わる。",
+  "profile": {
+    "feetShare": 0.18,
+    "headRatio": 0.32,
+    "hipRatio": 0.6,
+    "coreTrimPct": 10,
+    "tubeMargin": 1,
+    "toneStep": 32,
+    "tool": "auto",
+    "reach": 3,
+    "liftAt": 0.7,
+    "crumbLimit": 4
+  },
+  "alpha": 8,
+  "quantizeStep": 24,
+  "backdrop": {
+    "coarse": 2,
+    "lightMin": 224,
+    "lightSpread": 12,
+    "edgeTolerance": 40
+  },
+  "spans": {
+    "step": 4,
+    "least": 40
+  },
+  "boundsStep": 3,
+  "samplePoints": 8,
+  "darkPatch": {
+    "maxLevel": 64,
+    "share": 0.6
+  },
+  "legendChars": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+  "carveDefaults": {
+    "size": "32x48",
+    "colors": 16
+  },
+  "adoptDefaults": {
+    "size": "32x48",
+    "order": "front,right,back",
+    "swing": 2,
+    "colors": 24,
+    "dip": 1
+  },
+  "adopt": {
+    "legFloorShare": 0.62,
+    "legNearShare": 0.28,
+    "shearNearShare": 0.3,
+    "shearLiftAt": 0.7,
+    "bottomGap": 2,
+    "scales": [1, 2, 4],
+    "background": [113, 137, 139, 255]
+  },
+  "render": {
+    "smallSide": 48,
+    "smallScale": 8,
+    "bigScale": 4
+  },
+  "gif": {
+    "delay": 14,
+    "cycles": [
+      { "name": "歩き", "frames": ["walk_0", "walk_1", "walk_2", "walk_3"] },
+      { "name": "振り", "frames": ["idle", "swing_0", "swing_1", "swing_2", "idle"] },
+      { "name": "跳ぶ", "frames": ["idle", "jump_0", "jump_1", "jump_2", "idle"] }
+    ]
+  },
+  "sheet": {
+    "background": [30, 30, 34, 255]
+  }
+}

@@ -1,0 +1,4 @@
+testdata/lint/sprite/orphan-single-pixel/input.sprite.json: hero/idle: (4,1) に浮いた 1 画素 (周り 8 方向すべて透明)
+NG: 1 件 (sprite Doc 1 件・スプライト 1 個を検査)
+注意: testdata/lint/sprite/orphan-single-pixel/input.sprite.json: hero/idle: 絵が 2 個の塊に分かれている ((0,0) から始まる塊 4px・(4,1) から始まる塊 1px) — 意図して離した絵 (火の粉・浮く飾り) なら対象外に書く
+[exit=1]

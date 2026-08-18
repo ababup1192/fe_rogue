@@ -39,11 +39,11 @@ fi
 echo "reference-check OK: $(wc -l < "$tmp/expected" | tr -d ' ') 枚すべてリファレンス画像と一致しました"
 
 # 絵が同じでも値段が変わっていることはある（box 列と 1 コマ 1 クアッドは画素が同一）。
-# WhyNot: `[ -f x ] && python3 … || echo` と書かない — python3 の exit 1 が || に食われて
+# WhyNot: `[ -x x ] && x … || echo` と書かない — 検査の exit 1 が || に食われて
 # 全体が exit 0 になり、この門は一度も閉まらない。
-budget="$(dirname "$0")/check-render-budget.py"
-if [ -f "$budget" ]; then
-	python3 "$budget" .
+fge="$(dirname "$0")/fge"
+if [ -x "$fge" ]; then
+	"$fge" check-render-budget .
 else
-	echo "[budget] check-render-budget.py が無いので予算の判定は飛ばしました"
+	echo "[budget] bin/fge が無いので予算の判定は飛ばしました"
 fi

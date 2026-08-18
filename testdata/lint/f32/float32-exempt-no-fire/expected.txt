@@ -1,0 +1,3 @@
+除外: Demo.setScale — テスト用: 除外による無効化の見本
+[lint-f32] OK (pub 面の Float32 1 件 / 除外 1 件)
+[exit=0]

@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/orphan-single-pixel/input.sprite.json

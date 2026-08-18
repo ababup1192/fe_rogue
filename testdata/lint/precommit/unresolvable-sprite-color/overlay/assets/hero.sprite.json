@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "palette": {"accent": "#c04030"},
+  "legend": {
+    "a": "accent",
+    "b": "hero.skin.tone"
+  }
+}

@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/palette-color-count-exceed/input.sprite.json

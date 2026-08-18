@@ -1,0 +1,1 @@
+bin/fge style --compare testdata/lint/style/compare-fine-smooth-indistinguishable/assets/fine-circle.png testdata/lint/style/compare-fine-smooth-indistinguishable/assets/smooth-circle.png

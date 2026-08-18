@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/silhouette-elongated/input.sprite.json

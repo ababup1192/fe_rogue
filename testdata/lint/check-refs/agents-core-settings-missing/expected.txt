@@ -1,0 +1,5 @@
+agents-pack/AGENTS.core.md: agents-pack/settings.json がありません
+BUNDLE_REQUIRED: agents-pack/settings.json がこのリポにありません (一覧の書き損じ?)
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

@@ -93,7 +93,8 @@ def check_dir(directory):
 
 
 GAME_ROOTS = ("templates",)
-EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "target", "node_modules"}
+EXCLUDED_DIRS = {".git", "build", "lib", ".devbox", "target", "node_modules",
+                 "testdata"}  # testdata/ は検査の見本 (わざと違反を書いたファイル)
 
 
 def discover(root):

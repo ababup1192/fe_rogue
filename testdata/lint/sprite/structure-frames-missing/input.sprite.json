@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "legend": { "i": "ink" },
+  "sprites": {
+    "hero": {
+      "notFrames": {}
+    }
+  }
+}

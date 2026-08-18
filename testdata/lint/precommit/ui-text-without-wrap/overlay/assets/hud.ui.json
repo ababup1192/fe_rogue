@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "root": {
+    "name": "hud",
+    "children": [
+      { "name": "panel", "widget": "box", "width": 160, "height": 40,
+        "dir": "column",
+        "children": [
+          { "name": "money", "widget": "text", "text": "所持金" }
+        ] }
+    ]
+  }
+}

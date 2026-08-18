@@ -8,15 +8,16 @@ exit 2 で stderr が Claude に返る（作業自体は止めない）。
 「書いた直後に、書いたファイルだけ」を見る薄い入口で、同じ検査は
 どの OS・どのエージェントからでも次のコマンドで走らせられる:
 
-    python3 bin/fge view [ファイル...]
-    python3 bin/fge palette
-    python3 bin/fge ui-overflow --strict [ファイル...]
+    bin/fge view [ファイル...]
+    bin/fge palette
+    bin/fge ui-overflow --strict [ファイル...]
 
 Windows で `python3` が無い場合は .claude/settings.json の hook 行を
 `python .claude/hooks/after-art-edit.py` に変える。
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,12 +27,13 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 def run(sub, args=()):
     """bin/fge のサブコマンドを走らせ、失敗したら (True, 出力) を返す。"""
-    path = ROOT / "bin" / "fge"
-    if not path.is_file():
+    # bin/fge は Go のバイナリを呼ぶ起動役 (sh)。python3 で起動しない。
+    path = ROOT / "bin" / ("fge.cmd" if os.name == "nt" else "fge")
+    if not os.access(path, os.X_OK):
         return False, ""
     try:
         proc = subprocess.run(
-            [sys.executable, str(path), sub, *args],
+            [str(path), sub, *args],
             cwd=str(ROOT),
             capture_output=True,
             text=True,

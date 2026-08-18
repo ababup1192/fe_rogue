@@ -19,7 +19,7 @@ sync: 2026-08-18
 3. 出力を読む。all.png・各場面 PNG は Read で目視、音は sounds.png の波形・
    スペクトログラムと music.png のピアノロールで目聴する。ループ GIF（コマ 0 に
    戻る演出）が対象にあれば、目視の前に `make lint-loop`（または
-   `python3 bin/fge loop <framesディレクトリ>`）で継ぎ目を機械検査する。
+   `bin/fge loop <framesディレクトリ>`）で継ぎ目を機械検査する。
    fade・wipe など戻らない演出は対象外。造形が怪しい絵（何の形か読めない・接続や
    接地が変）は、シルエットの描き出し（`HeadlessRender.silhouettePng` — 対象を黒・背景を白）で
    形だけを取り出して確かめる（docs/drawing-floor.md）。

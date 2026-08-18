@@ -1,0 +1,11 @@
+# 見に行く先の差し替え: --root で偽リポを渡す。
+# `--files a b c` はステージを読まずに指定のパスを裁く別の道（git を見ない）。
+# ステージ経路そのものを裁くには偽の git リポが要るので、$WORK に git init して
+# そこを --root に渡す。本物のリポでは commit しない。
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/precommit/_base/build.sh" "$WORK"
+[ -d overlay ] && cp -R overlay/. "$WORK"/
+printf "check-docs-sync:\n\t@echo 配線 OK\n" >> "$WORK/Makefile"
+printf "# 追記\n" > "$WORK/README.md"
+git -C "$WORK" add README.md
+"$ENGINE/bin/fge" precommit --root "$WORK"

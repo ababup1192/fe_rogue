@@ -1,0 +1,1 @@
+bin/fge fallback testdata/lint/fallback/bug-in-orbug-no-fire/Sample.flix

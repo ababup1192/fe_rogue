@@ -1,0 +1,4 @@
+  testdata/lint/jargon/orosu-fires/Sample.flix:2: 「降ろす」→ 取り下げる / やめる / 対象から外す (drop (a proposal))
+      // 看板を降ろす
+[lint-jargon] 独自語 1 件。上の言い換えへ直すか、本当に必要なら行末に jargon-ok: 理由 を書いてください
+[exit=1]

@@ -1,0 +1,3 @@
+testdata/lint/sprite/structure-frames-missing/input.sprite.json: hero: frames が無い (スプライトは {frames, anchor} の形)
+NG: 1 件 (sprite Doc 1 件・スプライト 0 個を検査)
+[exit=1]

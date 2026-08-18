@@ -1,0 +1,3 @@
+testdata/lint/sprite/structure-empty-frame/input.sprite.json: hero/idle: 絵が空 (不透明な画素が 1 つも無い)
+NG: 1 件 (sprite Doc 1 件・スプライト 1 個を検査)
+[exit=1]

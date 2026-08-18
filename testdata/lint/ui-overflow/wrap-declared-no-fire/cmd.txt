@@ -1,0 +1,1 @@
+bin/fge ui-overflow testdata/lint/ui-overflow/wrap-declared-no-fire/panel.ui.json

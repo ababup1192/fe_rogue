@@ -1,0 +1,5 @@
+{
+  "exempt": {
+    "RenderUtil.f32": "Float64 → Float32 の変換そのもの。GL の uniform へ渡す境界の入り口で、ここが Float32 を返さないと境界の内側が書けない"
+  }
+}

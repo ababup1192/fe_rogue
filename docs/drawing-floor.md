@@ -78,10 +78,10 @@ sprite Doc 直下の `palette` のどれかに**実体が無いと Studio が仮
 **これが通っても「絵が良い」ことにはならない。**
 
 ```
-python3 bin/fge view [ファイル...]   # 矩形と円だけになっていないか
-python3 bin/fge palette              # 意味色キーが色票から解けるか
-python3 bin/fge sprite [ファイル...] # ドット絵の画素の並び(浮き・階段・細長さ・色数)
-python3 bin/fge anim [ファイル...]   # コマ間の飛び・体積・接地と 4 方向のそろい
+bin/fge view [ファイル...]   # 矩形と円だけになっていないか
+bin/fge palette              # 意味色キーが色票から解けるか
+bin/fge sprite [ファイル...] # ドット絵の画素の並び(浮き・階段・細長さ・色数)
+bin/fge anim [ファイル...]   # コマ間の飛び・体積・接地と 4 方向のそろい
 ```
 
 `make lint-view` / `make lint-palette` / `make lint-sprite` / `make lint-anim` でも同じ。

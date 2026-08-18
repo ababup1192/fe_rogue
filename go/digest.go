@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 // maxDetail は 1 画面に収める不一致の上限。
@@ -24,7 +26,7 @@ type colorStats struct {
 	l3     [3]float64
 }
 
-func computeColorStats(im *Image) colorStats {
+func computeColorStats(im *pxlib.Image) colorStats {
 	counts := make(map[uint32]int)
 	luma := 0
 	var dark, mid, light int
@@ -61,11 +63,11 @@ func hexColor(c uint32) string {
 
 // digestPair は不一致 2 枚の要約行と差分画素率を返す。
 func digestPair(oldPath, newPath string) ([]string, float64, error) {
-	oldIm, err := ReadPNG(oldPath)
+	oldIm, err := pxlib.ReadPNG(oldPath)
 	if err != nil {
 		return nil, 0, err
 	}
-	newIm, err := ReadPNG(newPath)
+	newIm, err := pxlib.ReadPNG(newPath)
 	if err != nil {
 		return nil, 0, err
 	}

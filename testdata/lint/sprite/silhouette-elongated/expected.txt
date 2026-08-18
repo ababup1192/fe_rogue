@@ -1,0 +1,3 @@
+注意: testdata/lint/sprite/silhouette-elongated/input.sprite.json: hero/idle: シルエットが細長すぎる (8x1)
+OK: sprite Doc 1 件・スプライト 1 個を検査 (注意 1 件・除外 0 件)
+[exit=0]

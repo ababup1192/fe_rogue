@@ -1,0 +1,4 @@
+agents-pack/AGENTS.core.md: docs/gone-missing.md が engine に実在しません
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

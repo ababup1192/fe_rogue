@@ -1,0 +1,2 @@
+studio/server/src/Genesis.flix: starter = "templates/rpg-starter" のテンプレがバンドルにありません (Studio でそのジャンルを選ぶと複製が転びます)
+[exit=1]

@@ -186,7 +186,7 @@
 - **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。語彙は mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ dir.mode: even（粒の番号で射出方向を等分 — 衝撃の輪・花火）/ turn（粒の傾き base・spread と回る速さ spin・spinSpread。単位は回転数で 1 周 = 1.0）/ wobble（位置の正弦揺らぎ amp・freq・vary — 蛍・湯気の有界運動）/ shape: streak + stretch（速度方向に伸びた筋 — 雨・火花・流星）/ カーブ pulse（1 と min の間の正弦明滅）/ parseWith（"@名前" の色キーをパレットで解決）。
 - **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近のストリップ 1 本（ストリップごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。fieldExcept は「ここだけ空ける」帯（主役の立つ帯・道・水面）をセル単位で落とす（落ちるセル以外は field と 1 個も変わらない）。
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
-- **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor+loop）を読む fail-open の Doc 層。loop はコマの回し方の宣言（forward / pingpong / once・省略時 forward）で、frameIndexAt が通し番号をコマ番号へ写す。宣言が無いと往復のコマ列と本物の破綻を数値で見分けられない（bin/lint-anim.py）。
+- **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor+loop）を読む fail-open の Doc 層。loop はコマの回し方の宣言（forward / pingpong / once・省略時 forward）で、frameIndexAt が通し番号をコマ番号へ写す。宣言が無いと往復のコマ列と本物の破綻を数値で見分けられない（bin/fge anim）。
 - **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。drawQuad の scale は整数のみ（box 列とのバイト一致保証のため）。実数倍率のクアッドは templates/race-starter の ViewCar.pxQuadScaled が実戦例（遠景のヤシ・ニトロ残像。2 本目の使い手が現れたら昇格を相談）。
 - **PxShade** — 文字格子のドット絵に「塗りの仕上げ」を 1 度だけ掛ける純粋な filter（ふち光・接地影・ディザ・地肌の粒）。絵は平らに塗り、光の当て方は後から重みで指定する。掛けるのは読み込み直後の 1 回だけなので走行中の負荷は増えない。
 - **PaletteExport** — 導いた意味色キーの実色を色票 Doc（*.palette.json = version / note / colors）として書き出す。Studio のドット絵エディタが legend の名前を解けるようにするためだけの物で、ゲームの絵はここを読まない。fromKeys（意味色キーの列 × resolver → 表）と build（純粋・文字列）と write（Fs.FileWrite）。

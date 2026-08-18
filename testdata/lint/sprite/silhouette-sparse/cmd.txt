@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/silhouette-sparse/input.sprite.json

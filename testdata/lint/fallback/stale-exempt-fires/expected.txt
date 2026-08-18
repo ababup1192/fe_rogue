@@ -1,0 +1,4 @@
+除外: Ghost.flix::ghostFn — テスト用: 実在しない除外エントリ
+  Ghost.flix::ghostFn は EXEMPT に載っていますが、そこに bug! はもうありません
+[lint-fallback] 古い除外 1 件。宿題の一覧として読めなくなるので EXEMPT から消してください
+[exit=1]

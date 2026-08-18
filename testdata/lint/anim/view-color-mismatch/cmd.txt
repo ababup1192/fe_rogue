@@ -1,0 +1,1 @@
+bin/fge anim testdata/lint/anim/view-color-mismatch/input.sprite.json

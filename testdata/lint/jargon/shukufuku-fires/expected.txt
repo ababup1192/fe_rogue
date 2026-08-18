@@ -1,0 +1,4 @@
+  testdata/lint/jargon/shukufuku-fires/Sample.flix:2: 「祝福」→ 期待値の更新 / 正解として登録する (bless (approve as expected))
+      // ここで祝福して確定させる
+[lint-jargon] 独自語 1 件。上の言い換えへ直すか、本当に必要なら行末に jargon-ok: 理由 を書いてください
+[exit=1]

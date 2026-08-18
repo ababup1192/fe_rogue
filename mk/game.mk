@@ -143,7 +143,7 @@ status:
 		echo "[status] agents-pack が未配布です (bin/fge が無い) — $(ENGINE) から配り直します"; \
 		$(MAKE) -C "$(ENGINE)" sync-agents GAME="$(CURDIR)" || { echo "[status] 配布に失敗 — engine リポで make sync-agents GAME=$(CURDIR) を実行してください"; exit 1; }; \
 	fi
-	@$(PYTHON) bin/fge status
+	@bin/fge status
 
 # engine の版に追随する (flix.toml と lib/ の fpkg 差し替え + pack 配り直し + check)。
 # status の「engine 版ズレ」を見たらこれ。実体は engine 側の upgrade-game。
@@ -154,10 +154,10 @@ engine-upgrade:
 # .git/hooks は git 管理外なので clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
 hooks:
 	@git config core.hooksPath bin/githooks
-	@echo "[hooks] 配線しました: pre-commit = bin/githooks/pre-commit (中身は bin/precommit.py)"
+	@echo "[hooks] 配線しました: pre-commit = bin/githooks/pre-commit (中身は bin/fge precommit)"
 
 # 規約の配線ずれの軽い検査 (engine 版のうちゲームで見るべき 3 点だけ)。
-# pre-commit (bin/precommit.py) が .md / .flix を触ったコミットで呼ぶ。生成はしない。
+# pre-commit (bin/fge precommit) が .md / .flix を触ったコミットで呼ぶ。生成はしない。
 check-docs-sync:
 	@ok=1; \
 	if ! grep -q '^@AGENTS.md' CLAUDE.md 2>/dev/null; then \

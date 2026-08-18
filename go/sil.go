@@ -16,13 +16,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 var (
-	silInk  = RGBA{0x1A, 0x1A, 0x1A, 255}
-	silBG   = RGBA{255, 255, 255, 255}
-	bgLight = RGBA{0xE8, 0xE8, 0xE8, 255}
-	bgDark  = RGBA{0x20, 0x20, 0x20, 255}
+	silInk  = pxlib.RGBA{0x1A, 0x1A, 0x1A, 255}
+	silBG   = pxlib.RGBA{255, 255, 255, 255}
+	bgLight = pxlib.RGBA{0xE8, 0xE8, 0xE8, 255}
+	bgDark  = pxlib.RGBA{0x20, 0x20, 0x20, 255}
 )
 
 const (
@@ -37,7 +39,7 @@ func pngChunk(buf *bytes.Buffer, tag string, data []byte) {
 	_ = binary.Write(buf, binary.BigEndian, crc32.ChecksumIEEE(body))
 }
 
-func encodePNG(width, height int, grid [][]RGBA) []byte {
+func encodePNG(width, height int, grid [][]pxlib.RGBA) []byte {
 	raw := make([]byte, 0, height*(1+width*4))
 	for _, row := range grid {
 		raw = append(raw, 0)
@@ -51,7 +53,7 @@ func encodePNG(width, height int, grid [][]RGBA) []byte {
 	_ = w.Close()
 
 	var buf bytes.Buffer
-	buf.Write(pngMagic)
+	buf.Write(pxlib.PNGMagic)
 	ihdr := make([]byte, 13)
 	binary.BigEndian.PutUint32(ihdr[0:], uint32(width))
 	binary.BigEndian.PutUint32(ihdr[4:], uint32(height))
@@ -63,28 +65,28 @@ func encodePNG(width, height int, grid [][]RGBA) []byte {
 }
 
 // legendColorsOf は legend の 文字 → RGBA。解けない文字は塗らない (palette の縄張り)。
-func legendColorsOf(gameDir string, doc map[string]any) map[string]RGBA {
-	names := map[string]RGBA{}
-	for _, rel := range walkJSON(gameDir, spriteExcludedDirs) {
+func legendColorsOf(gameDir string, doc map[string]any) map[string]pxlib.RGBA {
+	names := map[string]pxlib.RGBA{}
+	for _, rel := range pxlib.WalkJSON(gameDir, pxlib.SpriteExcludedDirs) {
 		if strings.HasSuffix(rel, ".theme.json") {
-			for k, v := range colorMapOf(readJSON(filepath.Join(gameDir, rel))) {
+			for k, v := range pxlib.ColorMapOf(pxlib.ReadJSON(filepath.Join(gameDir, rel))) {
 				names[k] = v
 			}
 		}
 	}
 	if ref, ok := doc["paletteFile"].(string); ok {
-		for k, v := range colorMapOf(readJSON(filepath.Join(gameDir, ref))) {
+		for k, v := range pxlib.ColorMapOf(pxlib.ReadJSON(filepath.Join(gameDir, ref))) {
 			names[k] = v
 		}
 	}
-	for k, v := range colorMapOf(doc["palette"]) {
+	for k, v := range pxlib.ColorMapOf(doc["palette"]) {
 		names[k] = v
 	}
 
-	colors := map[string]RGBA{}
-	legend, _ := asObject(doc["legend"])
+	colors := map[string]pxlib.RGBA{}
+	legend, _ := pxlib.AsObject(doc["legend"])
 	for char, value := range legend {
-		if direct, ok := rgbaOfValue(value); ok {
+		if direct, ok := pxlib.RGBAOfValue(value); ok {
 			colors[char] = direct
 			continue
 		}
@@ -98,14 +100,14 @@ func legendColorsOf(gameDir string, doc map[string]any) map[string]RGBA {
 	return colors
 }
 
-func toGray(px RGBA) RGBA {
+func toGray(px pxlib.RGBA) pxlib.RGBA {
 	y := byte(math.RoundToEven(
 		0.299*float64(px[0]) + 0.587*float64(px[1]) + 0.114*float64(px[2])))
-	return RGBA{y, y, y, px[3]}
+	return pxlib.RGBA{y, y, y, px[3]}
 }
 
 // framePixels は rows を RGBA の 2 次元列へ (legend に無い文字 = background)。
-func framePixels(rows []string, legend map[string]RGBA, background RGBA) (int, int, [][]RGBA) {
+func framePixels(rows []string, legend map[string]pxlib.RGBA, background pxlib.RGBA) (int, int, [][]pxlib.RGBA) {
 	width := 0
 	runeRows := make([][]rune, len(rows))
 	for i, r := range rows {
@@ -114,9 +116,9 @@ func framePixels(rows []string, legend map[string]RGBA, background RGBA) (int, i
 			width = len(runeRows[i])
 		}
 	}
-	grid := make([][]RGBA, len(rows))
+	grid := make([][]pxlib.RGBA, len(rows))
 	for y, row := range runeRows {
-		line := make([]RGBA, width)
+		line := make([]pxlib.RGBA, width)
 		for x := 0; x < width; x++ {
 			char := "."
 			if x < len(row) {
@@ -133,7 +135,7 @@ func framePixels(rows []string, legend map[string]RGBA, background RGBA) (int, i
 	return width, len(rows), grid
 }
 
-func scaleUp(width, height int, grid [][]RGBA) (int, int, [][]RGBA) {
+func scaleUp(width, height int, grid [][]pxlib.RGBA) (int, int, [][]pxlib.RGBA) {
 	side := width
 	if height > side {
 		side = height
@@ -142,9 +144,9 @@ func scaleUp(width, height int, grid [][]RGBA) (int, int, [][]RGBA) {
 	if side <= smallSide {
 		scale = 8
 	}
-	var out [][]RGBA
+	var out [][]pxlib.RGBA
 	for _, row := range grid {
-		line := make([]RGBA, 0, len(row)*scale)
+		line := make([]pxlib.RGBA, 0, len(row)*scale)
 		for _, px := range row {
 			for i := 0; i < scale; i++ {
 				line = append(line, px)
@@ -157,29 +159,29 @@ func scaleUp(width, height int, grid [][]RGBA) (int, int, [][]RGBA) {
 	return width * scale, height * scale, out
 }
 
-func buildFrame(mode string, rows []string, legend map[string]RGBA) (int, int, [][]RGBA) {
+func buildFrame(mode string, rows []string, legend map[string]pxlib.RGBA) (int, int, [][]pxlib.RGBA) {
 	switch mode {
 	case "sil":
-		ink := map[string]RGBA{}
+		ink := map[string]pxlib.RGBA{}
 		for char := range legend {
 			ink[char] = silInk
 		}
 		return framePixels(rows, ink, silBG)
 	case "gray":
-		gray := map[string]RGBA{}
+		gray := map[string]pxlib.RGBA{}
 		for char, px := range legend {
 			gray[char] = toGray(px)
 		}
-		return framePixels(rows, gray, RGBA{0, 0, 0, 0})
+		return framePixels(rows, gray, pxlib.RGBA{0, 0, 0, 0})
 	}
 	width, height, light := framePixels(rows, legend, bgLight)
 	_, _, dark := framePixels(rows, legend, bgDark)
-	joined := make([][]RGBA, height)
+	joined := make([][]pxlib.RGBA, height)
 	for y := 0; y < height; y++ {
-		line := make([]RGBA, 0, width*2+bgGap)
+		line := make([]pxlib.RGBA, 0, width*2+bgGap)
 		line = append(line, light[y]...)
 		for i := 0; i < bgGap; i++ {
-			line = append(line, RGBA{0, 0, 0, 0})
+			line = append(line, pxlib.RGBA{0, 0, 0, 0})
 		}
 		line = append(line, dark[y]...)
 		joined[y] = line
@@ -225,9 +227,9 @@ func gatherTargets(argvPaths []string, root string) []silTarget {
 		}
 		return targets
 	}
-	for _, game := range gameDirsOf(root, func() bool { return hasDir(filepath.Join(root, "assets")) }) {
+	for _, game := range pxlib.GameDirsOf(root, func() bool { return pxlib.HasDir(filepath.Join(root, "assets")) }) {
 		gameDir := filepath.Join(root, game)
-		for _, rel := range walkJSON(gameDir, spriteExcludedDirs) {
+		for _, rel := range pxlib.WalkJSON(gameDir, pxlib.SpriteExcludedDirs) {
 			if strings.HasSuffix(rel, ".sprite.json") {
 				targets = append(targets, silTarget{
 					game + "/" + rel, filepath.Join(gameDir, rel), gameDir})
@@ -238,13 +240,13 @@ func gatherTargets(argvPaths []string, root string) []silTarget {
 }
 
 func processSilDoc(root string, t silTarget, mode, outDir string) ([]string, error) {
-	doc, ok := asObject(readJSON(t.path))
+	doc, ok := pxlib.AsObject(pxlib.ReadJSON(t.path))
 	if !ok {
 		return nil, fmt.Errorf("読めない: %s", t.shown)
 	}
 	legend := legendColorsOf(t.gameDir, doc)
 	base := baseNameOf(root, t.shown)
-	sprites, _ := asObject(doc["sprites"])
+	sprites, _ := pxlib.AsObject(doc["sprites"])
 	spriteNames := make([]string, 0, len(sprites))
 	for n := range sprites {
 		spriteNames = append(spriteNames, n)
@@ -253,11 +255,11 @@ func processSilDoc(root string, t silTarget, mode, outDir string) ([]string, err
 
 	var written []string
 	for _, spriteName := range spriteNames {
-		spec, ok := asObject(sprites[spriteName])
+		spec, ok := pxlib.AsObject(sprites[spriteName])
 		if strings.HasPrefix(spriteName, "//") || !ok {
 			continue
 		}
-		frames, _ := asObject(spec["frames"])
+		frames, _ := pxlib.AsObject(spec["frames"])
 		frameNames := make([]string, 0, len(frames))
 		for n := range frames {
 			frameNames = append(frameNames, n)

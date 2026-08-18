@@ -1,0 +1,6 @@
+
+testdata/lint/anim/view-foot-center-mismatch/input.sprite.json
+  注意: walker: 方向で足元の中心がずれている — 向きを変えた瞬間に体が滑る
+
+1 ファイル / 注意 1 件
+[exit=0]

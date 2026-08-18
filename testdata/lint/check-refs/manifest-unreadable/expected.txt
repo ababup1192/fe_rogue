@@ -1,0 +1,4 @@
+agents-pack/manifest.json が読み取れません (配布リストの照合ができない — 形を変えたなら bin/check-refs.py の sync_agents_dist を追随)
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

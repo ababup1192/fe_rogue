@@ -1,0 +1,2 @@
+[lint-jargon] OK (33 語で検査)
+[exit=0]

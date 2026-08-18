@@ -1,0 +1,1 @@
+bin/fge anim testdata/lint/anim/ground-foot-lift/input.sprite.json

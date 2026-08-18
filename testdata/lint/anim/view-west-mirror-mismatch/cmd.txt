@@ -1,0 +1,1 @@
+bin/fge anim testdata/lint/anim/view-west-mirror-mismatch/input.sprite.json

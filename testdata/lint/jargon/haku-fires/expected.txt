@@ -1,0 +1,4 @@
+  注意 testdata/lint/jargon/haku-fires/Sample.flix:2: 「拍」→ ビート / 拍子 (beat)
+      // この曲は8拍で区切る
+[lint-jargon] 注意 1 件 (止めません): 拍×1
+[exit=0]

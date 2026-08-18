@@ -1,0 +1,6 @@
+
+testdata/lint/anim/view-side-ratio-too-wide/input.sprite.json
+  注意: walker: 横向きの幅が正面の 1.00 倍 (目安 0.6〜0.85) — 太すぎて別人
+
+1 ファイル / 注意 1 件
+[exit=0]

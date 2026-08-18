@@ -15,7 +15,7 @@ description: "3 面図 (正面・右向き・背面の立ち絵を横に並べ�
 ## 使い方
 
 ```
-python3 $(ENGINE)/bin/carve/carve.py 三面図.png --id 名前 --size 32x48
+$(ENGINE)/bin/fge carve 三面図.png --id 名前 --size 32x48
 ```
 
 ENGINE はこのゲームの Makefile の `ENGINE ?=` と同じ場所。実行した
@@ -56,7 +56,7 @@ ENGINE はこのゲームの Makefile の `ENGINE ?=` と同じ場所。実行�
 - `接地 46` が全コマ同じ — 歩いても床にめり込まない
 - `塊 [1, 1, 1]` — 千切れが無い
 
-仕上がりは `python3 $(ENGINE)/bin/fge sprite` と `python3 $(ENGINE)/bin/fge anim` にも
+仕上がりは `$(ENGINE)/bin/fge sprite` と `$(ENGINE)/bin/fge anim` にも
 かける (既定 16 色は lint の上限に合わせてある)。
 
 ## できないこと

@@ -1,0 +1,18 @@
+# lint-fallback の「古い除外検出」（本物のリポでは 1 度も鳴らないルール）を鳴らす見本。
+# このリポの EXEMPT は全キーが生きている（bug! がまだ実在する）ので、全量スイープでは
+# 絶対に出ない。使い捨ての偽リポへ規約データを写し、exempt だけを「対応する bug! が
+# もう無いキー」に差し替えて --all を回す。
+# 古い除外は全量スイープのときだけ見るので --all が要る（ファイル指定では判定できない）。
+# cwd: このリポの根 / 環境変数: ENGINE(このリポ) CASE(このケース) WORK(使い捨ての作業先)
+mkdir -p "$WORK/bin/lint-rules" "$WORK/engine/src"
+cp "$CASE/Sample.flix" "$WORK/engine/src/Sample.flix"
+awk '
+  /^  "exempt": \{$/ { print "  \"exempt\": {"
+                       print "    \"Ghost.flix::ghostFn\": \"テスト用: 実在しない除外エントリ\""
+                       skip = 1; next }
+  skip && /^  \},?$/ { print; skip = 0; next }
+  !skip
+' "$ENGINE/bin/lint-rules/fallback.json" > "$WORK/bin/lint-rules/fallback.json"
+git -C "$WORK" init -q
+git -C "$WORK" add -A
+FGE_ROOT="$WORK" bin/fge fallback --all

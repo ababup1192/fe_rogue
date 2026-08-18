@@ -1,0 +1,2 @@
+読めません: docs/module-index.md
+[exit=1]

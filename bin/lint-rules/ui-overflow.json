@@ -1,0 +1,22 @@
+{
+  "note": "lint-ui-overflow（ui.json の text の折り返し宣言漏れ）の規約データ。source of truthは bin/lint-ui-overflow.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go ui-overflow）はこれを読んで動くので、規約を変えるときは bin/lint-ui-overflow.py とこの 2 つを同時に直す。ずれると go/internal/uioverflow の TestRulesMatchPython が落ちる。",
+  "gameRoots": [
+    "templates"
+  ],
+  "excludedDirs": [
+    ".devbox",
+    ".git",
+    "build",
+    "gallery",
+    "lib",
+    "reference",
+    "target",
+    "testdata"
+  ],
+  "suffix": ".ui.json",
+  "exemptKey": "lint-ui",
+  "exemptMarker": "対象外",
+  "textWidget": "text",
+  "wrapAuto": "auto",
+  "growWidth": "grow"
+}

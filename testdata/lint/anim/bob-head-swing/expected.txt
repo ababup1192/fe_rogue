@@ -1,0 +1,6 @@
+
+testdata/lint/anim/bob-head-swing/input.sprite.json
+  注意: walker.walk: 頭の上下動が 3px (上限 2px) — 跳ねて見える
+
+1 ファイル / 注意 1 件
+[exit=0]

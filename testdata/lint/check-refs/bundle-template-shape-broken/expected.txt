@@ -1,0 +1,3 @@
+bundle: templates/game-starter/reference/title.png がありません
+[check-refs] Genesis 対照は飛ばしました (Studio の外のバンドル)
+[exit=1]

@@ -50,12 +50,70 @@ run_gate() { # run_gate <名前> <py 引数...> -- <go 引数...>
   fi
 }
 
+run_gate_split() { # run_gate_split <名前> <py 引数...> -- <go 引数...>
+  # stdout と stderr を混ぜずに 1 本ずつ比べる。
+  # WhyNot: 2>&1 のまとめ比較だけにしないのは、どちらの口に出したかが入れ替わっても
+  # まとめた字面は同じになりうるため。
+  name=$1
+  shift
+  py=""
+  while [ "$1" != "--" ]; do py="$py $1"; shift; done
+  shift
+  # shellcheck disable=SC2086
+  python3 $py >"$WORK/py.$name.out" 2>"$WORK/py.$name.err"
+  pyexit=$?
+  "$GO" "$@" >"$WORK/go.$name.out" 2>"$WORK/go.$name.err"
+  goexit=$?
+  compare_out "$name (stdout)" "$WORK/py.$name.out" "$WORK/go.$name.out"
+  compare_out "$name (stderr)" "$WORK/py.$name.err" "$WORK/go.$name.err"
+  if [ "$pyexit" = "$goexit" ]; then
+    note ok "$name (終了コード)"
+  else
+    note ng "$name (終了コード $pyexit vs $goexit)"
+  fi
+}
+
+# 負の見本 (testdata/lint/<検査名>/<ケース名>/) を Python・Go・expected.txt の 3 者で見る。
+# WhyNot: 本物のリポで一度も鳴らない判定があるため、ゲートだけでは本体が走らない。
+run_fixtures() { # run_fixtures <検査名> <委譲先の .py の名前>
+  check=$1
+  script=$2
+  [ -d "testdata/lint/$check" ] || return 0
+  echo "== 負の見本 $check (Python・Go・expected.txt の 3 者)"
+  for case_dir in "testdata/lint/$check"/*/; do
+    [ -f "$case_dir/cmd.txt" ] || continue
+    name="lint 見本 ${case_dir#testdata/lint/}"
+    { sh "$case_dir/cmd.txt" 2>&1; echo "exit=$?"; } >"$WORK/py.case"
+    sed "s|python3 bin/$(echo "$script" | sed 's/\./\\./g')|\"$GO\" $check|" \
+      "$case_dir/cmd.txt" >"$WORK/go.cmd"
+    sed 's|^\[exit=\([0-9]*\)\]$|exit=\1|' "$case_dir/expected.txt" >"$WORK/exp.case"
+    compare_out "$name (Python と expected.txt)" "$WORK/py.case" "$WORK/exp.case"
+    # 委譲先の .py を呼んでいないケース (harness.py 経由など) は Go へ振り替えられない。
+    # WhyNot: 黙って通さないのは、書き換わらなかった台本が Python 同士の比較になり、
+    # Go を 1 度も走らせないまま「一致」と数えられるため (緑が嘘になる)。
+    if cmp -s "$WORK/go.cmd" "$case_dir/cmd.txt"; then
+      note ng "$name (Go に振り替えられない: $script を直に呼んでいない)"
+      continue
+    fi
+    { sh -c "$(cat "$WORK/go.cmd")" 2>&1; echo "exit=$?"; } >"$WORK/go.case"
+    compare_out "$name (Python と Go)" "$WORK/py.case" "$WORK/go.case"
+  done
+}
+
 run_gate images bin/lint-images.py -- images
 run_gate audio bin/lint-audio.py -- audio
 run_gate palette bin/lint-palette.py -- palette
 run_gate loop bin/lint-loop.py -- loop
 run_gate loop-strict bin/lint-loop.py --strict -- loop --strict
 run_gate loop-selftest bin/lint-loop.py --self-test -- loop --self-test
+
+# 検査ごとの突き合わせは go/compare.d/<検査名>.sh に 1 本ずつ置く。
+# WhyNot: このファイルへ全員が書き足す形にしないのは、サブコマンドを別々の人が
+# 同時に移すとき 1 つのファイルを奪い合うため (go/cmd_*.go と同じ理由)。
+for frag in go/compare.d/*.sh; do
+  [ -f "$frag" ] || continue
+  . "$frag"
+done
 
 report() {
   total=$(cat "$RESULTS"/* 2>/dev/null | wc -l | tr -d ' ')
@@ -121,6 +179,21 @@ for pair in "bench/gl_parity/debug/soft bench/gl_parity/debug/gl" "gallery galle
 done
 
 echo "== sil (書き出した PNG の画素をくらべる)"
+# sil は書き出し先が gallery/ 固定なので、2 本同時に走らせると互いの絵を消し合う。
+# WhyNot: 黙って続けないのは、消えた絵が「画素が違う」と数えられて、Go の間違いに
+#見える偽の不一致が出るため (実測で 6 件出た)。取れなければ理由を出して飛ばす。
+SIL_LOCK=$ROOT/gallery/.compare-sil.lock
+if mkdir "$SIL_LOCK" 2>/dev/null; then
+  # 途中で止まっても gallery/ を元に戻してから作業先を消す (順番が逆だと戻せない)。
+  trap 'for m in sil gray bg; do
+          [ -d "$WORK/py-$m" ] && [ ! -d "gallery/$m" ] && mv "$WORK/py-$m" "gallery/$m"
+        done 2>/dev/null
+        rm -rf "$WORK"; rmdir "$SIL_LOCK" 2>/dev/null' EXIT
+else
+  echo "   (別の compare.sh が gallery/ を使っています。sil は飛ばします)"
+  report
+  exit $?
+fi
 for mode in sil gray bg; do
   rm -rf "gallery/$mode"
   python3 bin/sil-png.py --mode "$mode" >"$WORK/py.sil.$mode" 2>&1

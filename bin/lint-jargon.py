@@ -45,6 +45,18 @@ for stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 # この lint 自身は語で埋まっているので検査しない。
 SKIP_PATHS = {"bin/lint-jargon.py"}
+# 検査そのものの見本置き場。中身はわざと違反を書いたファイルなので数え上げから外す。
+TESTDATA_DIR = "testdata"
+
+
+def in_testdata(path):
+    """testdata という名前のフォルダの中か。
+
+    WhyNot: 前方一致 ("testdata/" で始まるか) にしないのは、ゲームのリポで
+    もっと深い所に置かれても効かせるため。引数でファイルを名指しされた場合は
+    ここを通さない (見本を鳴らす道が塞がる)。"""
+    parts = path.replace("\\", "/").split("/")
+    return TESTDATA_DIR in parts[:-1]
 
 # (語, 見つけ方, 言い換え, English, 段階)
 #
@@ -274,7 +286,7 @@ def staged_hits(rules):
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
             path = line[6:]
-            kind = None if path in SKIP_PATHS else kind_of(path)
+            kind = None if path in SKIP_PATHS or in_testdata(path) else kind_of(path)
             continue
         if line.startswith("@@"):
             m = re.search(r"\+(\d+)", line)
@@ -295,7 +307,8 @@ def staged_hits(rules):
 
 def all_paths():
     out = git("ls-files", "-z")
-    return [p for p in out.split("\0") if p and p not in SKIP_PATHS and kind_of(p)]
+    return [p for p in out.split("\0")
+            if p and p not in SKIP_PATHS and not in_testdata(p) and kind_of(p)]
 
 
 def file_hits(paths, rules):

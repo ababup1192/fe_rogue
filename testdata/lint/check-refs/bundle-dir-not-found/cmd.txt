@@ -1,0 +1,4 @@
+# 見に行く先の差し替え: --bundle DIR（引数の口あり）。
+# cwd: $WORK / 環境変数: ENGINE WORK
+cd "$WORK"
+"$ENGINE/bin/fge" check-refs --root "$ENGINE" --bundle nowhere

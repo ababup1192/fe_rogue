@@ -1,0 +1,6 @@
+# lint-f32 の「古い除外検出」（本物のリポでは 1 度も鳴らないルール）を鳴らす見本。
+# このリポの除外 1 件 (RenderUtil.f32) は生きているので、実運用では絶対に出ない。
+# --exempt-json で「対応する Float32 がもう無いキー」に差し替える。
+# cwd: このリポの根 / 環境変数: CASE(このケース)
+bin/fge f32 --root "$CASE" \
+  --exempt-json '{"Ghost.longGoneFn": "テスト用: 実在しない除外エントリ"}' "$CASE/Sample.flix"

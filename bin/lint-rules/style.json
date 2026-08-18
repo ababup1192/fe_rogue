@@ -1,0 +1,50 @@
+{
+  "note": "lint-style（焼いた PNG を測って画風の軸がズレていないか）の規約データ。source of truthは bin/lint-style.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go style）はこれを読んで動くので、閾値や語を変えるときは bin/lint-style.py とこの 2 つを同時に直す。ずれると go/internal/style の TestRulesMatchPython が落ちる。",
+  "softStep": 12,
+  "stepEdges": [4, 12, 32],
+  "stepLabels": ["1-4", "5-12", "13-32", "33+"],
+  "maxUnit": 8,
+  "gridFound": 0.35,
+  "ellipseIou": 0.85,
+  "regionMin": 0.0015,
+  "regionCap": 60,
+  "regionQuant": 32,
+  "blockNames": [
+    ["左上", "上", "右上"],
+    ["左", "中央", "右"],
+    ["左下", "下", "右下"]
+  ],
+  "hands": {
+    "coarse": {
+      "aaWarn": 12.0, "aaBad": 25.0,
+      "gridWarn": 0.80, "gridBad": 0.50,
+      "coverWarn": 32, "coverBad": 128,
+      "colorsWarn": 96, "colorsBad": 512
+    },
+    "fine": {
+      "aaWarn": 15.0, "aaBad": 25.0,
+      "gridWarn": 0.80, "gridBad": 0.50,
+      "coverWarn": 96, "coverBad": 512,
+      "colorsWarn": 320, "colorsBad": 2048
+    }
+  },
+  "smooth": {
+    "aaMin": 30.0,
+    "gridMax": 0.50,
+    "colorsMin": 512
+  },
+  "ellipseWarn": 5.0,
+  "sameAa": 10.0,
+  "sameColorRatio": 1.6,
+  "handHints": {
+    "coarse": ".claude/skills/retro-pixel（色の予算・タイルと材質）",
+    "fine": ".claude/skills/retro-pixel（色の予算・ディザ）",
+    "smooth": ".claude/skills/smooth-render（グラデ・ぼかし・banding）"
+  },
+  "handGuess": [
+    { "hand": "coarse", "words": ["coarse", "famicom", "nes"] },
+    { "hand": "fine", "words": ["fine", "sfc", "snes"] },
+    { "hand": "smooth", "words": ["smooth", "nopixel", "vector"] }
+  ],
+  "handNames": ["coarse", "fine", "smooth"]
+}

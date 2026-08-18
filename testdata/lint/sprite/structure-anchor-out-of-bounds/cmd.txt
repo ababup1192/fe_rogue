@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/structure-anchor-out-of-bounds/input.sprite.json

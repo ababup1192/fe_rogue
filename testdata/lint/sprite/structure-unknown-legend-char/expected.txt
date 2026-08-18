@@ -1,0 +1,3 @@
+testdata/lint/sprite/structure-unknown-legend-char/input.sprite.json: hero/idle: legend に無い文字 'Z' (typo なら透明として消えている)
+NG: 1 件 (sprite Doc 1 件・スプライト 1 個を検査)
+[exit=1]

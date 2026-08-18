@@ -1,0 +1,4 @@
+mk/game.mk: $(ENGINE)/bin/gone-missing が engine に実在しません
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

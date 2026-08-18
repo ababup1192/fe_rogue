@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/structure-rows-not-list/input.sprite.json

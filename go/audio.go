@@ -10,11 +10,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 var audioExcludedDirs = map[string]bool{
 	"build": true, "lib": true, ".git": true, "gallery": true,
-	".devbox": true, "node_modules": true,
+	".devbox": true, "node_modules": true, "testdata": true,
 }
 
 var callRe = regexp.MustCompile(
@@ -94,7 +96,7 @@ func isRenderFile(rel string) bool {
 
 func checkAudioGame(root, game string, problems, warnings *[]string) int {
 	gameDir := filepath.Join(root, game)
-	project, ok := asObject(readJSON(filepath.Join(gameDir, "project.json")))
+	project, ok := pxlib.AsObject(pxlib.ReadJSON(filepath.Join(gameDir, "project.json")))
 	if !ok {
 		return 0
 	}
@@ -113,7 +115,7 @@ func checkAudioGame(root, game string, problems, warnings *[]string) int {
 	rendered := renderedPathsOf(files)
 	declared := map[string]string{}
 	for _, entryAny := range soundsAny {
-		entry, ok := asObject(entryAny)
+		entry, ok := pxlib.AsObject(entryAny)
 		if !ok {
 			continue
 		}
@@ -129,7 +131,7 @@ func checkAudioGame(root, game string, problems, warnings *[]string) int {
 				"%s/project.json: 論理名 \"%s\" と WAV の茎 \"%s\" が違う"+
 					" (path=%s。名前は 1 本にそろえる)", game, name, stem, path))
 		}
-		if !hasFile(filepath.Join(gameDir, path)) && !rendered[path] {
+		if !pxlib.HasFile(filepath.Join(gameDir, path)) && !rendered[path] {
 			*problems = append(*problems, fmt.Sprintf(
 				"%s/project.json: \"%s\" の %s が無く、書き出しでも作られない", game, name, path))
 		}
@@ -192,7 +194,7 @@ type audioResult struct {
 func runAudio(out *strings.Builder, root string, asJSON bool) int {
 	var problems, warnings []string
 	soundCount := 0
-	for _, game := range gameDirsOf(root, func() bool { return hasFile(filepath.Join(root, "project.json")) }) {
+	for _, game := range pxlib.GameDirsOf(root, func() bool { return pxlib.HasFile(filepath.Join(root, "project.json")) }) {
 		soundCount += checkAudioGame(root, game, &problems, &warnings)
 	}
 

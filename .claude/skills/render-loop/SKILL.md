@@ -16,8 +16,8 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
    digest も目視も要らない
 2. 不一致の名前が出た時だけ、その名前を渡して数値で当たりを付ける:
    ```
-   python3 bin/fge digest reference/ gallery/ battle.png   # 名前を挙げた絵だけ要約
-   python3 bin/fge digest old.png new.png               # 2 枚だけ比べる
+   bin/fge digest reference/ gallery/ battle.png   # 名前を挙げた絵だけ要約
+   bin/fge digest old.png new.png               # 2 枚だけ比べる
    ```
    差分画素率・変化した領域・色数・明るさが数行で出る
 3. **画像を開くのは最終確認の 1 回だけ**
@@ -72,7 +72,7 @@ engine リポでテンプレを横断するときも同じで、ルートの `ma
 ## ループ GIF を生成したら継ぎ目を確かめる
 
 完全ループを狙う GIF（コマ 0 に戻る演出）を生成したら、目視の前に
-`make lint-loop`（または `python3 bin/fge loop <framesディレクトリ>`）で
+`make lint-loop`（または `bin/fge loop <framesディレクトリ>`）で
 最終コマ→0 コマの継ぎ目が浮いていないか機械検査する。fade・wipe など
 最初から戻らない演出は対象外。
 

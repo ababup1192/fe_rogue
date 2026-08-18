@@ -1,0 +1,1 @@
+bin/fge anim testdata/lint/anim/view-top-mismatch/input.sprite.json

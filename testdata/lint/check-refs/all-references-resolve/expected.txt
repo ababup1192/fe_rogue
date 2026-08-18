@@ -1,0 +1,2 @@
+OK: Makefile / templates / agents-pack の参照は全て実在します
+[exit=0]

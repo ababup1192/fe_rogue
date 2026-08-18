@@ -1,0 +1,5 @@
+engine: templates/ にテンプレが 1 本もありません
+BUNDLE_REQUIRED: templates/game-starter/Makefile がこのリポにありません (一覧の書き損じ?)
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

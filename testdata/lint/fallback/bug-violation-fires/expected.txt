@@ -1,0 +1,6 @@
+  testdata/lint/fallback/bug-violation-fires/Sample.flix:5: riskyLoad の中で bug! を呼んでいます
+      case Err(_) => bug!("riskyLoad: ${path}")
+[lint-fallback] 決まり 2 違反 1 件 (docs/error-handling.md)。
+  読み込みなら load* にして Err を返し、止めると決めた所なら *OrBug という名前のラッパへ移してください。
+  どうしても残すなら bin/lint-fallback.py の EXEMPT へ "パス::関数名" と理由 1 行を書いてください
+[exit=1]

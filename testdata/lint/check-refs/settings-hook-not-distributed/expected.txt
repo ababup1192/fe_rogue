@@ -1,0 +1,4 @@
+agents-pack/settings.json: .claude/hooks/after-flix-work.py が sync-agents の配布リスト (cp 行) に見当たりません
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

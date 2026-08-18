@@ -1,0 +1,3 @@
+# 使い方の誤り。cwd: $WORK / 環境変数: ENGINE WORK
+cd "$WORK"
+"$ENGINE/bin/fge" check-refs --root "$ENGINE" --bundle

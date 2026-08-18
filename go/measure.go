@@ -6,6 +6,8 @@ package main
 import (
 	"math"
 	"sort"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 const (
@@ -59,12 +61,6 @@ type Stats struct {
 	RegionArea   float64
 }
 
-// rgbAt は (x, y) の RGB を 1 つの整数にした物。
-func (im *Image) rgbAt(x, y int) uint32 {
-	o := (y*im.W + x) * 4
-	return uint32(im.Pix[o])<<16 | uint32(im.Pix[o+1])<<8 | uint32(im.Pix[o+2])
-}
-
 func chanMaxDiff(p, q uint32) int {
 	d := 0
 	for s := 0; s < 3; s++ {
@@ -88,7 +84,7 @@ type scanResult struct {
 	luma   float64
 }
 
-func scanImage(im *Image) scanResult {
+func scanImage(im *pxlib.Image) scanResult {
 	w, h := im.W, im.H
 	counts := make(map[uint32]int)
 	soft := 0
@@ -97,7 +93,7 @@ func scanImage(im *Image) scanResult {
 	lumaSum := 0
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			p := im.rgbAt(x, y)
+			p := im.RGBAt(x, y)
 			counts[p]++
 			v := (299*int(p>>16&255) + 587*int(p>>8&255) + 114*int(p&255)) / 1000
 			lumaSum += v
@@ -116,12 +112,12 @@ func scanImage(im *Image) scanResult {
 					if x+1 >= w {
 						continue
 					}
-					q = im.rgbAt(x+1, y)
+					q = im.RGBAt(x+1, y)
 				} else {
 					if y+1 >= h {
 						continue
 					}
-					q = im.rgbAt(x, y+1)
+					q = im.RGBAt(x, y+1)
 				}
 				if q == p {
 					continue
@@ -148,12 +144,12 @@ func scanImage(im *Image) scanResult {
 						if x == 0 {
 							continue
 						}
-						q = im.rgbAt(x-1, y)
+						q = im.RGBAt(x-1, y)
 					} else {
 						if y == 0 {
 							continue
 						}
-						q = im.rgbAt(x, y-1)
+						q = im.RGBAt(x, y-1)
 					}
 					if q == p {
 						continue
@@ -183,14 +179,14 @@ func scanImage(im *Image) scanResult {
 	}
 }
 
-func gridFit(im *Image, unit int) float64 {
+func gridFit(im *pxlib.Image, unit int) float64 {
 	if unit <= 1 {
 		return 1.0
 	}
 	on, off := 0, 0
 	for y := 0; y < im.H; y++ {
 		for x := 1; x < im.W; x++ {
-			if im.rgbAt(x, y) != im.rgbAt(x-1, y) {
+			if im.RGBAt(x, y) != im.RGBAt(x-1, y) {
 				if x%unit != 0 {
 					off++
 				} else {
@@ -202,7 +198,7 @@ func gridFit(im *Image, unit int) float64 {
 	for y := 1; y < im.H; y++ {
 		hit := y%unit == 0
 		for x := 0; x < im.W; x++ {
-			if im.rgbAt(x, y) != im.rgbAt(x, y-1) {
+			if im.RGBAt(x, y) != im.RGBAt(x, y-1) {
 				if hit {
 					on++
 				} else {
@@ -217,7 +213,7 @@ func gridFit(im *Image, unit int) float64 {
 	return float64(on) / float64(on+off)
 }
 
-func gridScore(im *Image, unit int) (float64, bool) {
+func gridScore(im *pxlib.Image, unit int) (float64, bool) {
 	if unit <= 1 {
 		return 0, false
 	}
@@ -226,7 +222,7 @@ func gridScore(im *Image, unit int) (float64, bool) {
 	return math.Max(0.0, (raw-chance)/(1.0-chance)), true
 }
 
-func findUnit(im *Image) (int, float64) {
+func findUnit(im *pxlib.Image) (int, float64) {
 	best, bestScore := 1, 0.0
 	for u := 2; u <= maxUnit; u++ {
 		s, ok := gridScore(im, u)
@@ -240,7 +236,7 @@ func findUnit(im *Image) (int, float64) {
 	return 1, bestScore
 }
 
-func quantize(im *Image) []uint32 {
+func quantize(im *pxlib.Image) []uint32 {
 	out := make([]uint32, im.W*im.H)
 	const step = regionQuant
 	for i := range out {
@@ -399,7 +395,7 @@ func coverCount(counts map[uint32]int, total int) int {
 
 // Measure は 1 枚を測る。unit に 0 以下を渡すと自動で探す。
 func Measure(path string, unit int) (*Stats, error) {
-	im, err := ReadPNG(path)
+	im, err := pxlib.ReadPNG(path)
 	if err != nil {
 		return nil, err
 	}

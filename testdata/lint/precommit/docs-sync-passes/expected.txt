@@ -1,0 +1,3 @@
+[lint-jargon] OK (33 語で検査)
+配線 OK
+[exit=0]

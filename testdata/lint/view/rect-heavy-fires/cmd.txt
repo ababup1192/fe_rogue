@@ -1,0 +1,1 @@
+bin/fge view testdata/lint/view/rect-heavy-fires/View.flix

@@ -1,0 +1,6 @@
+
+testdata/lint/anim/area-drift/input.sprite.json
+  注意: walker.walk: コマ walk_1 の面積が +25% ずれる (上限 ±20%) — 曲げても体の太さは変わらない
+
+1 ファイル / 注意 1 件
+[exit=0]

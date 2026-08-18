@@ -1,0 +1,1 @@
+bin/fge view testdata/lint/view/hud-smell-no-fire/src/View.flix

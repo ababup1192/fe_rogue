@@ -1,0 +1,1 @@
+bin/fge style --hand coarse testdata/lint/style/ellipse-warn-circle-region/assets/circle.png

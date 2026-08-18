@@ -206,7 +206,7 @@ mod HeadlessRender {
     /// 宣言シェーダー面も含めた silhouette。面は「rect と mask の形をそのまま黒で塗る」に
     /// 写す（中の場・グラデーション・alpha の抜きは全部捨てる）。
     /// 地面や空をシェーダーの面で塗る絵では、面を外したシルエットは地平線も接地も写らず、
-    /// 構図の検査（bin/lint-composition.py）が何も見ずに「壊れなし」と答えてしまう。
+    /// 見る側は何も写っていない画像を見て「壊れなし」と受け取ってしまう。
     pub def silhouetteWith(scope: SilhouetteScope,
                            drawables: List[GameEngine.Drawable],
                            polygons: List[GameEngine.PolygonRenderCmd],

@@ -48,3 +48,7 @@ NOTES.md
 bin/fge-go
 bin/fge-go.exe
 bin/dist/
+# WhyNot: go/go だけ名指しで消す。go/ を丸ごと無視すると Go のソースまで運べなくなる
+# (出力名を省いた `go build` がディレクトリ名を取るので、この 1 つだけ生えやすい)
+go/go
+go/go.exe

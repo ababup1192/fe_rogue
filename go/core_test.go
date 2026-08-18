@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
 func TestSeamQuietFloorPasses(t *testing.T) {
@@ -33,11 +35,11 @@ func TestSeamAllZeroWithOnePercentWarns(t *testing.T) {
 	}
 }
 
-func writeFramePNG(t *testing.T, path string, w, h int, at func(x, y int) RGBA) {
+func writeFramePNG(t *testing.T, path string, w, h int, at func(x, y int) pxlib.RGBA) {
 	t.Helper()
-	grid := make([][]RGBA, h)
+	grid := make([][]pxlib.RGBA, h)
 	for y := 0; y < h; y++ {
-		grid[y] = make([]RGBA, w)
+		grid[y] = make([]pxlib.RGBA, w)
 		for x := 0; x < w; x++ {
 			grid[y][x] = at(x, y)
 		}
@@ -49,7 +51,7 @@ func writeFramePNG(t *testing.T, path string, w, h int, at func(x, y int) RGBA) 
 
 func TestLoopStillFramesPass(t *testing.T) {
 	dir := t.TempDir()
-	red := func(x, y int) RGBA { return RGBA{255, 0, 0, 255} }
+	red := func(x, y int) pxlib.RGBA { return pxlib.RGBA{255, 0, 0, 255} }
 	for i := 0; i < 3; i++ {
 		writeFramePNG(t, filepath.Join(dir, string(rune('0'+i))+".png"), 4, 4, red)
 	}
@@ -63,11 +65,11 @@ func TestLoopDriftWarns(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		n := i
 		writeFramePNG(t, filepath.Join(dir, string(rune('0'+i))+".png"), 4, 4,
-			func(x, y int) RGBA {
+			func(x, y int) pxlib.RGBA {
 				if x < n {
-					return RGBA{0, 0, 255, 255}
+					return pxlib.RGBA{0, 0, 255, 255}
 				}
-				return RGBA{255, 0, 0, 255}
+				return pxlib.RGBA{255, 0, 0, 255}
 			})
 	}
 	if got := checkLoopDir(dir); len(got) == 0 {
@@ -78,10 +80,10 @@ func TestLoopDriftWarns(t *testing.T) {
 func TestPNGRoundTripKeepsPixels(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "a.png")
-	writeFramePNG(t, path, 3, 2, func(x, y int) RGBA {
-		return RGBA{byte(x * 40), byte(y * 90), 7, byte(200 + x)}
+	writeFramePNG(t, path, 3, 2, func(x, y int) pxlib.RGBA {
+		return pxlib.RGBA{byte(x * 40), byte(y * 90), 7, byte(200 + x)}
 	})
-	im, err := ReadPNG(path)
+	im, err := pxlib.ReadPNG(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,46 +101,46 @@ func TestReadPNGRejectsNonPNG(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := ReadPNG(path)
+	_, err := pxlib.ReadPNG(path)
 	if err == nil || err.Error() != "PNG ではない" {
 		t.Errorf("PNG でない旨を返すはず: %v", err)
 	}
 }
 
 func TestIsHexColorAcceptsBareBody(t *testing.T) {
-	if !isHexColor("1A2b3C") {
+	if !pxlib.IsHexColor("1A2b3C") {
 		t.Error("# 無しの 6 桁も色として読めるはず")
 	}
 }
 
 func TestIsHexColorRejectsShortForm(t *testing.T) {
-	if isHexColor("#abc") {
+	if pxlib.IsHexColor("#abc") {
 		t.Error("3 桁は色として読まないはず")
 	}
 }
 
 func TestHexOfValueUnwrapsNestedKey(t *testing.T) {
 	v := map[string]any{"color": map[string]any{"hex": "#AABBCC"}}
-	if got := hexOfValue(v); got != "#aabbcc" {
+	if got := pxlib.HexOfValue(v); got != "#aabbcc" {
 		t.Errorf("包みを開いて小文字にするはず: %q", got)
 	}
 }
 
 func TestRGBAOfHSVMatchesPureRed(t *testing.T) {
-	if got := rgbaOfHSV(0.0, 1.0, 1.0); got != (RGBA{255, 0, 0, 255}) {
+	if got := pxlib.RGBAOfHSV(0.0, 1.0, 1.0); got != (pxlib.RGBA{255, 0, 0, 255}) {
 		t.Errorf("h=0 s=1 v=1 は赤のはず: %v", got)
 	}
 }
 
 func TestRGBAOfFloatsRoundsToEven(t *testing.T) {
 	// 0.5/255 は 0.5 に落ちる。Python の round() と同じく偶数側 (0) へ寄せる。
-	if got := rgbaOfFloats([3]float64{0.5 / 255.0, 0, 0}); got[0] != 0 {
+	if got := pxlib.RGBAOfFloats([3]float64{0.5 / 255.0, 0, 0}); got[0] != 0 {
 		t.Errorf("ちょうど半分は偶数側へ寄せるはず: %v", got)
 	}
 }
 
 func TestToGrayUsesLumaWeights(t *testing.T) {
-	if got := toGray(RGBA{255, 255, 255, 128}); got != (RGBA{255, 255, 255, 128}) {
+	if got := toGray(pxlib.RGBA{255, 255, 255, 128}); got != (pxlib.RGBA{255, 255, 255, 128}) {
 		t.Errorf("白は白のまま・alpha は残すはず: %v", got)
 	}
 }
@@ -165,7 +167,7 @@ func TestDigestPairReportsIdenticalPixels(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "a.png")
 	b := filepath.Join(dir, "b.png")
-	fill := func(x, y int) RGBA { return RGBA{1, 2, 3, 255} }
+	fill := func(x, y int) pxlib.RGBA { return pxlib.RGBA{1, 2, 3, 255} }
 	writeFramePNG(t, a, 2, 2, fill)
 	writeFramePNG(t, b, 2, 2, fill)
 	lines, rate, err := digestPair(a, b)

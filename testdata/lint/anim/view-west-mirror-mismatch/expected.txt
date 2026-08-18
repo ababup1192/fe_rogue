@@ -1,0 +1,6 @@
+
+testdata/lint/anim/view-west-mirror-mismatch/input.sprite.json
+  注意: walker: 左右が反転になっていない (重なり 0.50)。非対称の持ち物があるなら意図的 — 除外記法で書く
+
+1 ファイル / 注意 1 件
+[exit=0]

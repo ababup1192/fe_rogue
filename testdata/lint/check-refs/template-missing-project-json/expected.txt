@@ -1,0 +1,4 @@
+engine: templates/game-starter/project.json がありません
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

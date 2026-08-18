@@ -20,6 +20,9 @@ import sys
 
 IMAGE_EXTS = (".png", ".gif", ".jpg", ".jpeg", ".webp", ".bmp")
 
+# 検査そのものの見本置き場。中身はわざと違反を書いたファイルなので数え上げから外す。
+TESTDATA_DIR = "testdata"
+
 # 展示場 docs/gallery/ の上限 (docs/gallery/README.md に同じ数字を書いてある)。
 GALLERY_MAX_FILES = 20
 GALLERY_MAX_FILE_BYTES = 300 * 1024
@@ -51,12 +54,22 @@ def human(n):
     return f"{n / 1024:.0f}KB"
 
 
+def in_testdata(path):
+    """testdata という名前のフォルダの中か。
+
+    WhyNot: 前方一致 ("testdata/" で始まるか) にしないのは、ゲームのリポで
+    もっと深い所に置かれても効かせるため。"""
+    parts = path.replace("\\", "/").split("/")
+    return TESTDATA_DIR in parts[:-1]
+
+
 def tracked_images(root):
     out = subprocess.run(
         ["git", "-C", root, "ls-files", "-z"],
         capture_output=True, text=True, check=True,
     ).stdout
-    paths = [p for p in out.split("\0") if p.lower().endswith(IMAGE_EXTS)]
+    paths = [p for p in out.split("\0")
+             if p.lower().endswith(IMAGE_EXTS) and not in_testdata(p)]
     return sorted(paths)
 
 

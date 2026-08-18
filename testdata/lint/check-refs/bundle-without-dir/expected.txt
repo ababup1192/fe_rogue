@@ -1,0 +1,2 @@
+usage: check-refs.py --bundle DIR [--windows]
+[exit=2]

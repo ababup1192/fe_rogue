@@ -1,0 +1,1 @@
+bin/fge sprite testdata/lint/sprite/structure-empty-frame/input.sprite.json

@@ -1,0 +1,3 @@
+除外: BootFontData — 生成物（make boot-font）。索引は BootFont の行が案内する
+OK: 索引とソースの pub def はそろっています（除外 1 件）
+[exit=0]

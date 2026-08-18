@@ -1,0 +1,6 @@
+
+testdata/lint/anim/loop-seam-jump/input.sprite.json
+  注意: walker.walk: 輪が閉じていない (walk_2 → walk_0 で 100% 入れ替わる) — 繰り返した瞬間に飛ぶ
+
+1 ファイル / 注意 1 件
+[exit=0]

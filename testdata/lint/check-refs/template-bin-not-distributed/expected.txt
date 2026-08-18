@@ -1,0 +1,4 @@
+templates/game-starter/Makefile: bin/lint-anim.py は sync-agents の配布リスト (engine Makefile の cp 行) に見当たりません — 産まれたゲームに配られず参照が宙に浮きます
+
+参照した先を実在させるか、参照の方を直してください。
+[exit=1]

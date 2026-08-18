@@ -1,0 +1,4 @@
+  testdata/lint/jargon/shouhon-fires/Sample.flix:2: 「正本」→ source of truth / 元データ (source of truth)
+      // これが正本です
+[lint-jargon] 独自語 1 件。上の言い換えへ直すか、本当に必要なら行末に jargon-ok: 理由 を書いてください
+[exit=1]

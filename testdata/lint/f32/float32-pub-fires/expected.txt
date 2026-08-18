@@ -1,0 +1,6 @@
+  Sample.flix: Demo.setScale の pub 面に Float32 があります
+      pub def setScale(value: Float32): Unit
+[lint-f32] pub 面の Float32 1 件。
+  ゲームを書く側は Float64 と Int32 だけで済むのが決まりです。型を Float64 にして、Float32 への変換は GL / OpenAL / STB を呼ぶ手前まで下げてください
+  どうしても残すなら bin/lint-f32.py の EXEMPT へ "モジュール名.宣言名" と理由 1 行を書いてください
+[exit=1]

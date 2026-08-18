@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "root": {
+    "name": "panel",
+    "width": 120,
+    "children": [
+      {
+        "name": "label",
+        "widget": "text",
+        "text": "ながいながい文言がここに入る予定"
+      }
+    ]
+  }
+}

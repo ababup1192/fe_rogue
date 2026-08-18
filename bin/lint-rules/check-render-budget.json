@@ -1,0 +1,6 @@
+{
+  "note": "check-render-budget（絵の値段 = 1 場面が組んだ描き物の数）の規約データ。source of truthは bin/check-render-budget.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go check-render-budget）はこれを読んで動くので、規約を変えるときは bin/check-render-budget.py とこの 2 つを同時に直す。ずれると go/internal/renderbudget の TestRulesMatchPython が落ちる。",
+  "defaultCap": 2000,
+  "driftFactor": 1.5,
+  "driftFloor": 200
+}

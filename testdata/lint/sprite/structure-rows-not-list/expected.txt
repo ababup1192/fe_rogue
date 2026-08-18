@@ -1,0 +1,3 @@
+testdata/lint/sprite/structure-rows-not-list/input.sprite.json: hero/idle: rows が文字列の配列でない
+NG: 1 件 (sprite Doc 1 件・スプライト 1 個を検査)
+[exit=1]

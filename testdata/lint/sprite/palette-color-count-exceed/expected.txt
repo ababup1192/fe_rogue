@@ -1,0 +1,3 @@
+注意: testdata/lint/sprite/palette-color-count-exceed/input.sprite.json: hero: 色数 13 が目安 12 を超えている (少数パレットの画風なら色を束ねる。色ランプ+ディザの画風なら気にしなくてよい)
+OK: sprite Doc 1 件・スプライト 1 個を検査 (注意 1 件・除外 0 件)
+[exit=0]

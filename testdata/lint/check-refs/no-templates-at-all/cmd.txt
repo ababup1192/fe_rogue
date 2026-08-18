@@ -1,0 +1,8 @@
+# 見に行く先の差し替え: --root で偽リポを渡す。
+# 規約データ (bin/lint-rules) は --root の下から読むので、偽リポの bin/ へ写す。
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/check-refs/_base/build.sh" "$WORK"
+[ -d overlay ] && cp -R overlay/. "$WORK"/
+rm -rf "$WORK/templates"
+cp -R "$ENGINE/bin/lint-rules" "$WORK/bin/"
+"$ENGINE/bin/fge" check-refs --root "$WORK"

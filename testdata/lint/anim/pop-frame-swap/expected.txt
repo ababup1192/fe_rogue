@@ -1,0 +1,6 @@
+
+testdata/lint/anim/pop-frame-swap/input.sprite.json
+  注意: walker.walk: walk_0 → walk_1 でシルエットの 100% が入れ替わる (上限 45%) — 別の絵に見えて画面がちらつく
+
+1 ファイル / 注意 1 件
+[exit=0]

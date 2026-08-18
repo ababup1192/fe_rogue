@@ -25,7 +25,8 @@ import os
 import re
 import sys
 
-EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
+EXCLUDED_DIRS = {"build", "lib", ".git", "gallery", ".devbox", "node_modules",
+                 "testdata"}  # testdata/ は検査の見本 (わざと違反を書いたファイル)
 
 GAME_ROOTS = ("templates",)
 

@@ -36,6 +36,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# 検査そのものの見本置き場。中身はわざと違反を書いたファイルなので裁く相手から外す。
+TESTDATA_DIR = "testdata"
+
+
+def in_testdata(path):
+    """testdata という名前のフォルダの中か。
+
+    WhyNot: 前方一致 ("testdata/" で始まるか) にしないのは、ゲームのリポで
+    もっと深い所に置かれても効かせるため。"""
+    parts = path.replace("\\", "/").split("/")
+    return TESTDATA_DIR in parts[:-1]
+
 
 def tool(name):
     """bin/ の検査スクリプトの場所。無ければ None (ゲームリポで pack が古い・
@@ -65,7 +77,7 @@ def staged_files():
          "--diff-filter=ACMR", "-z"],
         capture_output=True, text=True, check=True,
     ).stdout
-    return [p for p in out.split("\0") if p]
+    return [p for p in out.split("\0") if p and not in_testdata(p)]
 
 
 def run(cmd):

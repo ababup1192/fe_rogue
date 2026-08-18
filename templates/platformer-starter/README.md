@@ -54,14 +54,12 @@ Studio(エディタ)のフォームからも編集できる。ドット絵の意
 
 ```bash
 make test     # ルール(手触り・収支・ギミック)と Doc 橋渡しのテスト
-make stages   # 面の静的検査 — 罠ゼロ(BFS)と流れ(平地の単調・見せ場の空き)
 make playtest # bot に通しで遊ばせて「走れるか・詰まらないか」を測る
 make render-all # 決定的な 4 場面を gallery/ に描き出す(title / hill / cave / tower)
 make render SHOT=cave # その場面だけ debug/cave.png へ描き出す(複数は SHOT="hill cave")
 make reference-check    # 描き出した絵を reference/ とバイト比較(リグレッション検知)
 make reference-update   # いまの gallery を新しい基準として更新する
 make probe    # 面の読み込み・1 tick・1 フレームの部品数を測る(重い一手の切り分け)
-make checkpoints # 中間ポイント(c)を等間隔に置き直し、そのまま make stages に掛ける
 make loc      # src/ + test/ の合計行数(上限 3,000 行)
 ```
 
@@ -74,7 +72,7 @@ make loc      # src/ + test/ の合計行数(上限 3,000 行)
 バランス調整でテストは壊れない。**コードに直書きの数値を置かない**のがこの見本の芯 —
 「いつ加点するか」の規則だけがコード側にあり、その規則が読む数値は全部 Doc に出ている。
 
-### 面をいじったら `make stages` と `make playtest`
+### 面をいじったら `make playtest`
 
 面白さは主観だが、**主観が壊れている面は数字にも出る**。`make playtest` は
 「右へ走り、前が壁・穴・敵なら跳ぶ」だけの下手な bot に通しプレイさせて、

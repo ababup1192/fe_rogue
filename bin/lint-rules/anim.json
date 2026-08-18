@@ -1,0 +1,28 @@
+{
+  "note": "lint-anim（コマ列と 4 方向のそろい方）の規約データ。source of truthは bin/lint-anim.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go anim）はこれを読んで動くので、閾値を変えるときは bin/lint-anim.py とこの 2 つを同時に直す。ずれると go/internal/anim の TestRulesMatchPython が落ちる。",
+  "maxPopShare": 0.45,
+  "maxAreaDrift": 0.20,
+  "maxBob": 2,
+  "minSideRatio": 0.60,
+  "maxSideRatio": 0.85,
+  "minBackIou": 0.90,
+  "footTolerance": 1,
+  "changeShareSlack": 2,
+  "transparent": [".", " "],
+  "rules": ["pop", "area", "ground", "bob", "loop", "palette", "view"],
+  "directions": {
+    "front": "front",
+    "south": "front",
+    "down": "front",
+    "back": "back",
+    "north": "back",
+    "up": "back",
+    "side": "side",
+    "east": "side",
+    "right": "side",
+    "west": "side_w",
+    "left": "side_w"
+  },
+  "gameRoots": ["templates"],
+  "excludedDirs": [".git", "build", "lib", ".devbox", "gallery", "reference", "target", "testdata"]
+}

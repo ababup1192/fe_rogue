@@ -1,0 +1,1 @@
+bin/fge jargon --show-warn testdata/lint/jargon/haku-no-fire/Sample.flix
