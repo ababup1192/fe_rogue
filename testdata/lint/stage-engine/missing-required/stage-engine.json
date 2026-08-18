@@ -1,0 +1,7 @@
+{
+  "note": "負の見本用の一覧。運ぶ物を 2 つだけにして、片方を置かない偽リポで走らせる。",
+  "items": [
+    { "src": "docs/module-index.md", "dest": "docs/module-index.md" },
+    { "src": "docs/glossary.md", "dest": "docs/glossary.md" }
+  ]
+}

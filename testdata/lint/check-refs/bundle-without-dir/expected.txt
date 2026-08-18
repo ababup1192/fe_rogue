@@ -1,2 +1,2 @@
-usage: check-refs.py --bundle DIR [--windows]
+usage: fge check-refs --bundle DIR [--windows]
 [exit=2]

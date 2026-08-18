@@ -1,14 +1,13 @@
 #!/bin/sh
-# 偽の engine リポを $1 に組む。check-refs.py が全て緑になる最小の形。
+# 偽の engine リポを $1 に組む。check-refs が全て緑になる最小の形。
 #
-# check-refs.py は ROOT を __file__ から決めるので、見に行く先を差し替える口が無い。
-# 唯一の手は「偽リポの bin/ へ check-refs.py を写して、そこから走らせる」こと
-# （Path.resolve() がシンボリックリンクを辿ってしまうので、写しでないと本物のリポを見る）。
+# WhyNot: 本物のリポから走らせないのは、check-refs が見に行く根を実行した場所から
+# 決めるため。偽リポの中で走らせないと本物のリポを検査してしまう。
 set -eu
 R=$1
 mkdir -p "$R"
 
-# BUNDLE_REQUIRED（check-refs.py の一覧そのもの）。中身は見られないので空でよい。
+# bundleRequired（bin/lint-rules/check-refs.json の一覧そのもの）。中身は見られないので空でよい。
 for p in \
   Makefile flix.toml \
   bin/flix bin/checkd bin/explain-error bin/gen-api-digest.py \

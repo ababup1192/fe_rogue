@@ -350,7 +350,7 @@ func (c *checker) checkMakefile(problems *[]string) (map[string]bool, error) {
 		*problems = append(*problems,
 			"agents-pack/manifest.json が読み取れません"+
 				" (配布リストの照合ができない — 形を変えたなら"+
-				" bin/check-refs.py の sync_agents_dist を追随)")
+				" go/internal/checkrefs の syncAgentsDist を追随)")
 	}
 	return dist, nil
 }
@@ -630,8 +630,8 @@ func (c *checker) checkBundle(bundleDir string, windows bool) (int, error) {
 		for _, rel := range missing {
 			fmt.Fprintf(c.errOut, "  %s\n", rel)
 		}
-		fmt.Fprintln(c.errOut, "同梱リスト (Studio の stage-engine) に cp を足してください。"+
-			"必須一覧は bin/check-refs.py の BUNDLE_REQUIRED。")
+		fmt.Fprintln(c.errOut, "運ぶ物の一覧 bin/lint-rules/stage-engine.json に足してください。"+
+			"必須一覧は bin/lint-rules/check-refs.json の bundleRequired。")
 		return 1, nil
 	}
 	var problems []string
@@ -679,7 +679,7 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 			continue
 		}
 		if i+1 >= len(args) {
-			fmt.Fprintln(errOut, "usage: check-refs.py --bundle DIR [--windows]")
+			fmt.Fprintln(errOut, "usage: fge check-refs --bundle DIR [--windows]")
 			return 2, nil
 		}
 		return c.checkBundle(args[i+1], containsString(args, "--windows"))

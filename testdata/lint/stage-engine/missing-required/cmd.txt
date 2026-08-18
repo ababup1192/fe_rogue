@@ -1,0 +1,9 @@
+# 見に行く先の差し替え: --root DIR（偽の engine リポ）と --out DIR（組み立て先）。
+# 出力に $WORK の絶対パスを混ぜないため、偽リポへ cd して相対パスで渡す。
+# 一覧に在る物がリポに無ければ、痩せたまま組み上げずにここで止まる。
+# cwd: ケースのフォルダ / 環境変数: ENGINE(本物のリポ) CASE(このケース) WORK(使い捨ての作業先)
+mkdir -p "$WORK/repo/bin/lint-rules" "$WORK/repo/docs"
+cp "$CASE/stage-engine.json" "$WORK/repo/bin/lint-rules/stage-engine.json"
+printf 'module index\n' > "$WORK/repo/docs/module-index.md"
+cd "$WORK/repo"
+"$ENGINE/bin/fge" stage-engine --root . --out out

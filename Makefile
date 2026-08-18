@@ -131,6 +131,7 @@ help:
 	@echo "  make release              sync→test-par→gl-parity→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
 	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)。release の前に実行する"
 	@echo "  make hooks                git の pre-commit ゲート (bin/githooks) をこの clone に配線する"
+	@echo "  make bundle-zip           Studio に同梱する engine 一式を zip に固める (Release に添える)"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
 # 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。
@@ -484,6 +485,32 @@ release: release-guard sync $(TEST) gl-parity
 	  "$(ENGINE_FULL_FPKG_SRC)#$(ENGINE_FULL_FPKG_NAME)" \
 	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)"
 	@echo "[release] 完了。外部 fetch 検証: lib/ を消したサンプルで github:ababup1192/flix_game_engine v$(VERSION) を引けるか確認してください"
+
+# ── 同梱用 zip ────────────────────────────────────────────
+# Studio に同梱する engine 一式を、そのまま Release に添えられる zip にする。
+# 中身の一覧は bin/lint-rules/stage-engine.json が source of truth で、組み立ても最後の照合も
+# bin/fge stage-engine が持つ (Studio の make stage-engine・ci/package-windows.ps1 と同じ口)。
+#
+# lwjgl (Maven) の種は入れない。あれは engine のバージョンで変わらないので、
+# Studio 側が自分の server/lib から渡せば足りる (入れると zip が 9M ほど太る)。
+#
+# flix.jar は devbox profile が指す nix store の実体から借りる (Studio の FLIX_JAR と同じ
+# 見つけ方)。手で置いた bin/flix.jar が古いことがあるので既定にしない。
+BUNDLE_ZIP   := flix_game_engine-engine-v$(VERSION).zip
+BUNDLE_STAGE := build/bundle/engine
+BUNDLE_FLIX_JAR ?= $(shell real=$$(readlink -f .devbox/nix/profile/default/bin/flix 2>/dev/null); \
+                     [ -n "$$real" ] && echo "$$(dirname $$(dirname $$real))/share/java/flix/flix.jar")
+BUNDLE_FLIX_WRAPPER ?= bin/flix
+.PHONY: bundle-zip
+bundle-zip:
+	@test -n "$(BUNDLE_FLIX_JAR)" -a -f "$(BUNDLE_FLIX_JAR)" \
+	  || (echo "!! flix.jar が見つかりません (BUNDLE_FLIX_JAR= で場所を指定してください)" && exit 1)
+	rm -rf build/bundle "$(BUNDLE_ZIP)"
+	bin/fge stage-engine --out "$(BUNDLE_STAGE)" \
+	  --flix-jar "$(BUNDLE_FLIX_JAR)" \
+	  --flix-wrapper "$(BUNDLE_FLIX_WRAPPER)"
+	cd build/bundle && zip -qry "../../$(BUNDLE_ZIP)" engine
+	@echo "[bundle-zip] $(BUNDLE_ZIP) ($$(du -h $(BUNDLE_ZIP) | cut -f1))"
 
 # ── バージョン更新 (lockstep) ─────────────────────────────
 # 5パッケージの flix.toml の [package] version と、パッケージ間・templates/bench の

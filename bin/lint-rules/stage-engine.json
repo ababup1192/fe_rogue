@@ -1,0 +1,137 @@
+{
+  "note": "同梱 engine の組み立ての規約データ。この JSON が source of truth で、bin/fge stage-engine はこれを読んで運ぶ物を決める。mac の Studio (make stage-engine)・Windows (ci/package-windows.ps1)・engine の make bundle-zip はどれもこの一覧を通るので、増やすときはここだけ直す。src が @ で始まる物は場所を引数で渡す (@flix-jar / @flix-wrapper / @fge-go / @maven-seed)。それ以外は engine リポの根からの相対。末尾が /* の src はそのフォルダ直下の当たるファイルだけ、フォルダを指す src は中身ごと。",
+  "items": [
+    {
+      "src": "@flix-jar",
+      "dest": "bin/flix.jar",
+      "why": "Flix コンパイラ本体"
+    },
+    {
+      "src": "@flix-wrapper",
+      "dest": "bin/flix",
+      "exec": true,
+      "skipOnWindows": true,
+      "why": "同梱 JRE と隣の flix.jar だけを見るラッパ (bash 前提)"
+    },
+    {
+      "src": "bin/reference-update.sh",
+      "dest": "bin/reference-update.sh",
+      "skipOnWindows": true,
+      "why": "生まれたゲームへ配る道具 (agents-pack/manifest.json の copy と対)"
+    },
+    {
+      "src": "bin/reference-check.sh",
+      "dest": "bin/reference-check.sh",
+      "skipOnWindows": true,
+      "why": "同上"
+    },
+    {
+      "src": "bin/githooks/pre-commit",
+      "dest": "bin/githooks/pre-commit",
+      "why": "生まれたゲームの pre-commit ゲートの実体"
+    },
+    {
+      "src": "bin/fge",
+      "dest": "bin/fge",
+      "exec": true,
+      "why": "検査・要約の呼び口 (sh)"
+    },
+    {
+      "src": "bin/fge.cmd",
+      "dest": "bin/fge.cmd",
+      "why": "同じ呼び口の cmd 版"
+    },
+    {
+      "src": "@fge-go",
+      "dest": "bin/fge-go",
+      "destWindows": "bin/fge-go.exe",
+      "exec": true,
+      "why": "検査の中身 (Go)。OS/CPU ごとに別物なので走らせる先に合う 1 つだけ"
+    },
+    {
+      "src": "bin/lint-rules",
+      "dest": "bin/lint-rules",
+      "why": "検査の判定値。無いと検査が全部「規約ファイルを読めません」で止まる"
+    },
+    {
+      "src": "docs/api-digest.md",
+      "dest": "docs/api-digest.md",
+      "why": "ゲームの make api / status / スキルの参照先"
+    },
+    {
+      "src": "docs/module-index.md",
+      "dest": "docs/module-index.md"
+    },
+    {
+      "src": "docs/engine-module-index.md",
+      "dest": "docs/engine-module-index.md"
+    },
+    {
+      "src": "docs/doc-conventions.md",
+      "dest": "docs/doc-conventions.md"
+    },
+    {
+      "src": "docs/glossary.md",
+      "dest": "docs/glossary.md"
+    },
+    {
+      "src": "docs/shader-doc.md",
+      "dest": "docs/shader-doc.md"
+    },
+    {
+      "src": "docs/checkd.md",
+      "dest": "docs/checkd.md"
+    },
+    {
+      "src": "docs/api-digest/*.md",
+      "dest": "docs/api-digest"
+    },
+    {
+      "src": "mk/*.mk",
+      "dest": "mk",
+      "why": "ゲームの Makefile が include する共通部。漏れると include ごと落ちる"
+    },
+    {
+      "src": "Makefile",
+      "dest": "Makefile",
+      "why": "new-game の入口と、版刻印の出どころ (VERSION :=)"
+    },
+    {
+      "src": "flix.toml",
+      "dest": "flix.toml",
+      "why": "その new-game が engine のバージョンを読むのに要る"
+    },
+    {
+      "src": "engine_full/flix.toml",
+      "dest": "engine_full/flix.toml"
+    },
+    {
+      "src": "engine_full/artifact/engine_full.fpkg",
+      "dest": "engine_full/artifact/engine_full.fpkg",
+      "why": "生まれたゲームの lib/ に座る engine の fpkg"
+    },
+    {
+      "src": "agents-pack",
+      "dest": "agents-pack",
+      "why": "生まれたゲームに配る AGENTS.md と skills の元"
+    },
+    {
+      "src": "templates",
+      "dest": "templates",
+      "pruneDirs": ["lib", "build", ".devbox"],
+      "why": "new-game の複製元。ジャンルカードのサムネ (reference/title.png) もここから読む"
+    },
+    {
+      "src": "@maven-seed/cache",
+      "dest": "lib/cache",
+      "optional": true,
+      "why": "lwjgl (Maven) の取り寄せ済みの種。無いと生まれたゲームの初回ビルドが取りに行く"
+    },
+    {
+      "src": "@maven-seed/external",
+      "dest": "lib/external",
+      "optional": true,
+      "why": "同上"
+    }
+  ]
+}

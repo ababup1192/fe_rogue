@@ -147,7 +147,7 @@ func TestBundleUsage(t *testing.T) {
 	if code != 2 {
 		t.Errorf("終了コードは 2 のはずが %d", code)
 	}
-	if errOut.String() != "usage: check-refs.py --bundle DIR [--windows]\n" {
+	if errOut.String() != "usage: fge check-refs --bundle DIR [--windows]\n" {
 		t.Errorf("使い方の出し方が違います: %q", errOut.String())
 	}
 	if out.String() != "" {

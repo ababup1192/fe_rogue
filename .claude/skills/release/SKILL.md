@@ -41,11 +41,17 @@ allowed-tools: Read, Grep, Glob, Bash
 - [ ] 2. make bump FROM=x TO=y
 - [ ] 3. コミット / push（push を忘れると gh が明示エラーを出す）
 - [ ] 4. make release
-- [ ] 5. lib/ を消したコピーで外部 fetch 検証
+- [ ] 5. make bundle-zip → 出来た zip を Release に上げる（gh release upload v<新> <zip>）
+- [ ] 6. lib/ を消したコピーで外部 fetch 検証
 ```
 
 `make release` は sync → `test-par`（全量ゲート）→ `gl-parity` → build-pkg → `gh release create` を一括で回す。
 tag は現在の HEAD SHA に固定される。
+
+`make bundle-zip` は Studio に同梱する engine 一式（`bin/fge stage-engine`）を
+`flix_game_engine-engine-v<バージョン>.zip` に固める。中身の一覧は
+`bin/lint-rules/stage-engine.json` が source of truth で、組み立てた後に `check-refs --bundle` 相当の
+照合まで通る。lwjgl（Maven）の種は入っていない（Studio 側が自分の `server/lib` から渡す）。
 
 ## こけやすいゲート（特にエンジン拡張のあと）
 
