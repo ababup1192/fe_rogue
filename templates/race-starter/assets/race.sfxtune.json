@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "音（エンジンとタイヤ）",
   "note": "効果音のつまみ。音の中身（どんな波を重ねるか）は src/render/SfxRender.flix のデザインで、ここはそれに掛ける倍率だけを持つ。volume=音量（0 で鳴らさない）、pitch=高さ（1 より上で甲高く）、speed=鳴りの速さ（1 より上で短く鋭く）。つまみは WAV を描き出すときに効くので、保存したら make render-all して起動し直す。engine の高さの振れ幅（enginePitchLow / enginePitchHigh）だけは鳴らしながら掛ける値なので保存で即反映される。各欄の意味は sfxtune.schema.json の label に。",
   "enginePitchLow": 0.7,
   "enginePitchHigh": 1.9,

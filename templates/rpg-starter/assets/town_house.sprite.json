@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "民家",
   "note": "民家。壁と屋根の 2 枚で 1 棟。複数タイルにまたがる大きな 1 枚として描く。 文字は意味色キーで、実色は ThemeDoc.resolver が素材ごとの4階調(明・中・影・締め)に解く。",
   "paletteFile": "assets/rpg.palette.json",
   "entityId": "town.house",

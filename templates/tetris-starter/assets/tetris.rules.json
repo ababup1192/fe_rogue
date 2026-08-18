@@ -1,9 +1,16 @@
 {
   "version": 1,
+  "title": "遊びの決まり（落ちる速さ・得点）",
   "gravityInterval": 0.8,
   "softDropFactor": 8.0,
   "lockDelay": 0.5,
   "maxLockResets": 15,
   "clearDuration": 0.35,
-  "scores": [0, 100, 300, 500, 800]
+  "scores": [
+    0,
+    100,
+    300,
+    500,
+    800
+  ]
 }

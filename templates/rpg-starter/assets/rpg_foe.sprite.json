@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "魔物",
   "note": "魔物。戦いでだけ現れ、そこでは大きく引き伸ばして描くので、粗さの見え方が人や物と違う。 文字は意味色キーで、実色は ThemeDoc.resolver が解決する（実色は書かない）。",
   "paletteFile": "assets/rpg.palette.json",
   "entityId": "rpg.foe",

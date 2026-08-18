@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "持ち物（薬草）",
   "note": "拾う物・道ばたに生える物。16×16 等倍。持ち物が増えるのはこの紙。 文字は意味色キーで、実色は ThemeDoc.resolver が解決する（実色は書かない）。",
   "paletteFile": "assets/rpg.palette.json",
   "entityId": "rpg.item",

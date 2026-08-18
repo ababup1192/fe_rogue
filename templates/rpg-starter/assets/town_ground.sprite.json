@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "地面（芝と石畳）",
   "note": "街の地面。芝(3種+縁12種)と石畳。どの縁を使うかはコード(TownMap)が近傍から選ぶ。 文字は意味色キーで、実色は ThemeDoc.resolver が素材ごとの4階調(明・中・影・締め)に解く。",
   "paletteFile": "assets/rpg.palette.json",
   "entityId": "town.ground",

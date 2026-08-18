@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "ドット絵",
   "note": "ドット絵。文字は意味色キーで、実色は race.palette.json（と車体はテーマの player / rivalA..C）が決める。car は上向き 17x27 — 描くときは遠近の倍率で縮めて置く。",
   "paletteFile": "assets/race.palette.json",
   "legend": {

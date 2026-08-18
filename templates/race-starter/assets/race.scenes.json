@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "場面の説明",
   "note": "gallery/ に描き出す場面の説明。name は SceneRender.shotNames() の名前とそろえる。ここを直すと Studio のギャラリーのカードの題と一言が変わる（絵そのものは変わらない）。",
   "rows": [
     {

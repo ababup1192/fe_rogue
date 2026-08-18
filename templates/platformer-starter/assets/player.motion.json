@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "手触り（走り・跳び）",
   "note": "主役の手触り。保存すると即反映される。jumpHeightTiles/timeToApex を触るとジャンプの重さが変わる(重力はコードが導出)。coyoteTime/jumpBufferTime は『ゆるし』— 0 にすると昔のゲームの硬さになる。dashMult = B ダッシュ中の最高速 = walkSpeed × これ。wallJump: true で壁ジャンプ開放(空中で壁に押し当てて跳ぶ)。 blinkPeriod/blinkOnSec = 消える床、platformAmpTiles/platformPeriodSec = 動く床の節奏。cam* = カメラの追従(先読み・不感帯・追い付きの速さ)— 歩速やジャンプを触ったら一緒に見直す。",
   "walkSpeed": 150.0,
   "dashMult": 1.75,

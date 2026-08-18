@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "水路と橋",
   "note": "水路と橋。岸の縁・角と、水面に落ちる影。橋は水路の上に架かるので同じ紙に置く。 文字は意味色キーで、実色は ThemeDoc.resolver が素材ごとの4階調(明・中・影・締め)に解く。",
   "paletteFile": "assets/rpg.palette.json",
   "entityId": "town.water",

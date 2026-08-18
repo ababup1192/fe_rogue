@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "title": "人（主人公・住人）",
   "note": "里を歩く人。主人公と住人。どちらも 16×16 等倍で、向きや動きのコマを持つ。人が増えるのはこの紙。 文字は意味色キーで、実色は ThemeDoc.resolver が解決する（実色は書かない）。",
   "paletteFile": "assets/rpg.palette.json",
   "entityId": "rpg.people",
