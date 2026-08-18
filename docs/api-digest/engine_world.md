@@ -1,4 +1,4 @@
-<!-- engine v0.30.0 / 生成: 2026-08-18 -->
+<!-- engine v0.31.0 / 生成: 2026-08-19 -->
 <!-- 生成物: bin/fge api-digest が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
