@@ -20,7 +20,30 @@ import (
 // WhyNot: manifest から引かないのは、engine 側から道具を消した時点で manifest からも
 // 消えて、消すべき名前が分からなくなるため (この道具の出番はまさにその後)。
 // 写し漏れは TestStaleToolsCoverManifest が見張る。
+//
+// WhyNot: 今の manifest に載っていた物だけでなく、engine がこれまでに消した道具を
+// 全部並べるのは、配った後に捨てた道具がゲーム側に取り残されるため (lint-composition.py が
+// 実際にそうなっていた)。名前が余分にあっても、ゲームに無ければ何も起きない。
 var StaleTools = []string{
+	"bin/lint-composition.py",
+	"bin/lint-loop.py",
+	"bin/lint-f32.py",
+	"bin/lint-fallback.py",
+	"bin/sil-png.py",
+	"bin/check-api-index.py",
+	"bin/check-api-released.py",
+	"bin/check-refs.py",
+	"bin/check-render-budget.py",
+	"bin/gen-api-digest.py",
+	"bin/gen-rules.py",
+	"bin/sync-agents.py",
+	"bin/verify-win-checkd.py",
+	"bin/carve/adopt.py",
+	"bin/carve/carve.py",
+	"bin/carve/gifs.py",
+	"bin/carve/png_read.py",
+	"bin/carve/render.py",
+	"bin/carve/sheet.py",
 	"bin/lint-view.py",
 	"bin/lint-style.py",
 	"bin/lint-palette.py",
@@ -134,6 +157,11 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 		if err := os.Remove(filepath.Join(game, filepath.FromSlash(rel))); err != nil {
 			return 2, err
 		}
+	}
+	for _, rel := range targets {
+		// WhyNot: 中身が残っていれば失敗する os.Remove を使うのは、空になった
+		// bin/carve/ や .claude/hooks/ だけを畳みたいため。中身のある置き場は触らない。
+		_ = os.Remove(filepath.Dir(filepath.Join(game, filepath.FromSlash(rel))))
 	}
 	fmt.Fprintf(out, "[prune-stale-tools] %d 件消しました\n", len(targets))
 	return 0, nil
