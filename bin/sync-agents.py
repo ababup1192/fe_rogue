@@ -196,6 +196,7 @@ def sync(game, version):
                      if Path(e["dst"]).name.startswith("lint-"))
     print(f"[sync-agents] lint: {lints}")
     print("[sync-agents] checkd: bin/checkd + .claude/hooks/after-flix-edit.py")
+    print("[sync-agents] 呼び口: bin/fge (検査・要約はここへ委譲。一覧は bin/fge)")
     print("[sync-agents] ゲート: bin/precommit.py + bin/githooks/pre-commit (配線は make hooks)")
     print(f"[sync-agents] wrote {game}/AGENTS.md + CLAUDE.md")
     return 0

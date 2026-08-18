@@ -53,6 +53,9 @@ BUNDLE_REQUIRED = [
     # 打てなくなる（テンプレ側の $(error) ガードが直し方を出すが、Studio 同梱では
     # 直しようが無い）。
     "mk/game.mk",
+    # 検査・要約の呼び口。Makefile・フック・スキルはこの 1 本しか呼ばないので、
+    # 漏れると lint も status も打てなくなる。
+    "bin/fge",
     "bin/img-digest.py",
     "bin/status.py",
     "bin/lint-view.py",

@@ -23,8 +23,8 @@
 
 使い方:
   通常は git が bin/githooks/pre-commit 経由で呼ぶ (配線は make hooks)
-  python3 bin/precommit.py --files a.png b.flix   # ステージの代わりに指定して試す
-  git commit --no-verify                          # どうしても迂回したいとき
+  python3 bin/fge precommit --files a.png b.flix   # ステージの代わりに指定して試す
+  git commit --no-verify                           # どうしても迂回したいとき
 
 標準ライブラリだけで動く (Windows / macOS / Linux 共通)。
 """
@@ -73,6 +73,13 @@ def run(cmd):
     return subprocess.run(cmd, cwd=ROOT).returncode
 
 
+def run_lint(name, sub, *args):
+    """bin/ の検査を bin/fge 経由で走らせる。無ければ 0 (fail-open)。"""
+    if tool(name) is None:
+        return 0
+    return run([sys.executable, str(ROOT / "bin" / "fge"), sub, *args])
+
+
 def human(n):
     if n >= 1024 * 1024:
         return f"{n / 1024 / 1024:.1f}MB"
@@ -102,12 +109,12 @@ def check_staged_images(staged, li):
     # 過去分の違反はここでは止めない。画像を触るコミットのときだけ 1 行知らせる。
     if imgs and not problems:
         legacy = subprocess.run(
-            [sys.executable, str(ROOT / "bin" / "lint-images.py")],
+            [sys.executable, str(ROOT / "bin" / "fge"), "images"],
             capture_output=True, cwd=ROOT,
         )
         if legacy.returncode != 0:
             print("[pre-commit] 注意: 過去から追跡されている絵に違反が残っています"
-                  " (このコミットは止めません): python3 bin/lint-images.py で一覧")
+                  " (このコミットは止めません): python3 bin/fge images で一覧")
     return problems
 
 
@@ -161,43 +168,37 @@ def main():
 
     flix = [p for p in staged if p.endswith(".flix")]
     if flix:
-        lv = tool("lint-view.py")
-        if lv and run([sys.executable, str(lv), *flix]) != 0:
+        if run_lint("lint-view.py", "view", *flix) != 0:
             failed = True
 
     if any(p.endswith((".sprite.json", ".theme.json")) or "palette" in p
            for p in staged):
-        lp = tool("lint-palette.py")
-        if lp and run([sys.executable, str(lp)]) != 0:
+        if run_lint("lint-palette.py", "palette") != 0:
             failed = True
 
     ui = [p for p in staged if p.endswith(".ui.json")]
     if ui:
-        lu = tool("lint-ui-overflow.py")
-        if lu and run([sys.executable, str(lu), "--strict", *ui]) != 0:
+        if run_lint("lint-ui-overflow.py", "ui-overflow", "--strict", *ui) != 0:
             failed = True
 
     if flix:
-        lf = tool("lint-fallback.py")
         # 引数は渡さない: lint-fallback 自身がステージの + 行だけを読む (既存の bug! は叩かない)
-        if lf and run([sys.executable, str(lf)]) != 0:
+        if run_lint("lint-fallback.py", "fallback") != 0:
             failed = True
 
     if any(p.startswith(("engine/src/", "engine_world/src/", "engine_tools/src/"))
            for p in flix):
-        l32 = tool("lint-f32.py")
         # 引数は渡さない: pub 面は宣言 1 つが複数ファイルに散らないので全量が速く、
         # 別のファイルの型を変えた巻き添えで pub 面へ Float32 が出た場合も拾える
-        if l32 and run([sys.executable, str(l32)]) != 0:
+        if run_lint("lint-f32.py", "f32") != 0:
             failed = True
 
     prose = [p for p in staged
              if p.endswith((".md", ".flix", ".elm", ".json", ".py"))
              or p == "Makefile" or p.endswith("/Makefile")]
     if prose:
-        lj = tool("lint-jargon.py")
         # 引数は渡さない: lint-jargon 自身がステージの + 行だけを読む (既存の行は叩かない)
-        if lj and run([sys.executable, str(lj)]) != 0:
+        if run_lint("lint-jargon.py", "jargon") != 0:
             failed = True
 
     if needs_docs_sync(staged) and has_docs_sync_target():

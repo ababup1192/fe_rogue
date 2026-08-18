@@ -250,10 +250,10 @@
 人に見せる前に自分で確かめる（OS・エージェントを問わず動く）:
 
 ```
-python3 bin/lint-view.py [ファイル...]   # 矩形と円だけになっていないか
-python3 bin/lint-palette.py              # ドット絵の意味色キーが色票から解けるか
-python3 bin/lint-sprite.py [ファイル...]  # ドット絵の画素の並び(浮き・階段・細長さ・色数)
-python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4 方向のそろい
+python3 bin/fge view [ファイル...]   # 矩形と円だけになっていないか
+python3 bin/fge palette              # ドット絵の意味色キーが色票から解けるか
+python3 bin/fge sprite [ファイル...]  # ドット絵の画素の並び(浮き・階段・細長さ・色数)
+python3 bin/fge anim [ファイル...]    # コマ間の飛び・接地と 4 方向のそろい
 ```
 
 ## 迷ったら読む物

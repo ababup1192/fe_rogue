@@ -139,11 +139,11 @@ reference-update: render-all
 # pack が欠けたゲーム (sync-agents を配りきらない産み方をされた物) はここで配り直す —
 # AGENTS.md がセッションの入口を必ずこの target にしているため、最初の 1 回で自己修復できる。
 status:
-	@if [ ! -f bin/status.py ]; then \
-		echo "[status] agents-pack が未配布です (bin/status.py が無い) — $(ENGINE) から配り直します"; \
+	@if [ ! -f bin/fge ]; then \
+		echo "[status] agents-pack が未配布です (bin/fge が無い) — $(ENGINE) から配り直します"; \
 		$(MAKE) -C "$(ENGINE)" sync-agents GAME="$(CURDIR)" || { echo "[status] 配布に失敗 — engine リポで make sync-agents GAME=$(CURDIR) を実行してください"; exit 1; }; \
 	fi
-	@$(PYTHON) bin/status.py
+	@$(PYTHON) bin/fge status
 
 # engine の版に追随する (flix.toml と lib/ の fpkg 差し替え + pack 配り直し + check)。
 # status の「engine 版ズレ」を見たらこれ。実体は engine 側の upgrade-game。

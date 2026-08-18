@@ -1,0 +1,336 @@
+package main
+
+// sil — ドット絵 (*.sprite.json) を目視用の PNG に描き出す (bin/sil-png.py と同じ絵)。
+//   sil  … 全 legend を黒 1 色に潰す
+//   gray … 明度だけのグレーにする
+//   bg   … 明背景と暗背景に並べて置く
+
+import (
+	"bytes"
+	"compress/zlib"
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+var (
+	silInk  = RGBA{0x1A, 0x1A, 0x1A, 255}
+	silBG   = RGBA{255, 255, 255, 255}
+	bgLight = RGBA{0xE8, 0xE8, 0xE8, 255}
+	bgDark  = RGBA{0x20, 0x20, 0x20, 255}
+)
+
+const (
+	bgGap     = 2  // 並べた 2 枚の間の隙間 (拡大前のセル数)
+	smallSide = 48 // これ以下は 8 倍、超えたら 4 倍に拡大する
+)
+
+func pngChunk(buf *bytes.Buffer, tag string, data []byte) {
+	_ = binary.Write(buf, binary.BigEndian, uint32(len(data)))
+	body := append([]byte(tag), data...)
+	buf.Write(body)
+	_ = binary.Write(buf, binary.BigEndian, crc32.ChecksumIEEE(body))
+}
+
+func encodePNG(width, height int, grid [][]RGBA) []byte {
+	raw := make([]byte, 0, height*(1+width*4))
+	for _, row := range grid {
+		raw = append(raw, 0)
+		for _, px := range row {
+			raw = append(raw, px[0], px[1], px[2], px[3])
+		}
+	}
+	var z bytes.Buffer
+	w, _ := zlib.NewWriterLevel(&z, zlib.BestCompression)
+	_, _ = w.Write(raw)
+	_ = w.Close()
+
+	var buf bytes.Buffer
+	buf.Write(pngMagic)
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(width))
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(height))
+	ihdr[8], ihdr[9] = 8, 6
+	pngChunk(&buf, "IHDR", ihdr)
+	pngChunk(&buf, "IDAT", z.Bytes())
+	pngChunk(&buf, "IEND", nil)
+	return buf.Bytes()
+}
+
+// legendColorsOf は legend の 文字 → RGBA。解けない文字は塗らない (palette の縄張り)。
+func legendColorsOf(gameDir string, doc map[string]any) map[string]RGBA {
+	names := map[string]RGBA{}
+	for _, rel := range walkJSON(gameDir, spriteExcludedDirs) {
+		if strings.HasSuffix(rel, ".theme.json") {
+			for k, v := range colorMapOf(readJSON(filepath.Join(gameDir, rel))) {
+				names[k] = v
+			}
+		}
+	}
+	if ref, ok := doc["paletteFile"].(string); ok {
+		for k, v := range colorMapOf(readJSON(filepath.Join(gameDir, ref))) {
+			names[k] = v
+		}
+	}
+	for k, v := range colorMapOf(doc["palette"]) {
+		names[k] = v
+	}
+
+	colors := map[string]RGBA{}
+	legend, _ := asObject(doc["legend"])
+	for char, value := range legend {
+		if direct, ok := rgbaOfValue(value); ok {
+			colors[char] = direct
+			continue
+		}
+		if s, ok := value.(string); ok {
+			name := strings.TrimPrefix(s, "@")
+			if got, ok := names[name]; ok {
+				colors[char] = got
+			}
+		}
+	}
+	return colors
+}
+
+func toGray(px RGBA) RGBA {
+	y := byte(math.RoundToEven(
+		0.299*float64(px[0]) + 0.587*float64(px[1]) + 0.114*float64(px[2])))
+	return RGBA{y, y, y, px[3]}
+}
+
+// framePixels は rows を RGBA の 2 次元列へ (legend に無い文字 = background)。
+func framePixels(rows []string, legend map[string]RGBA, background RGBA) (int, int, [][]RGBA) {
+	width := 0
+	runeRows := make([][]rune, len(rows))
+	for i, r := range rows {
+		runeRows[i] = []rune(r)
+		if len(runeRows[i]) > width {
+			width = len(runeRows[i])
+		}
+	}
+	grid := make([][]RGBA, len(rows))
+	for y, row := range runeRows {
+		line := make([]RGBA, width)
+		for x := 0; x < width; x++ {
+			char := "."
+			if x < len(row) {
+				char = string(row[x])
+			}
+			if got, ok := legend[char]; ok {
+				line[x] = got
+			} else {
+				line[x] = background
+			}
+		}
+		grid[y] = line
+	}
+	return width, len(rows), grid
+}
+
+func scaleUp(width, height int, grid [][]RGBA) (int, int, [][]RGBA) {
+	side := width
+	if height > side {
+		side = height
+	}
+	scale := 4
+	if side <= smallSide {
+		scale = 8
+	}
+	var out [][]RGBA
+	for _, row := range grid {
+		line := make([]RGBA, 0, len(row)*scale)
+		for _, px := range row {
+			for i := 0; i < scale; i++ {
+				line = append(line, px)
+			}
+		}
+		for i := 0; i < scale; i++ {
+			out = append(out, line)
+		}
+	}
+	return width * scale, height * scale, out
+}
+
+func buildFrame(mode string, rows []string, legend map[string]RGBA) (int, int, [][]RGBA) {
+	switch mode {
+	case "sil":
+		ink := map[string]RGBA{}
+		for char := range legend {
+			ink[char] = silInk
+		}
+		return framePixels(rows, ink, silBG)
+	case "gray":
+		gray := map[string]RGBA{}
+		for char, px := range legend {
+			gray[char] = toGray(px)
+		}
+		return framePixels(rows, gray, RGBA{0, 0, 0, 0})
+	}
+	width, height, light := framePixels(rows, legend, bgLight)
+	_, _, dark := framePixels(rows, legend, bgDark)
+	joined := make([][]RGBA, height)
+	for y := 0; y < height; y++ {
+		line := make([]RGBA, 0, width*2+bgGap)
+		line = append(line, light[y]...)
+		for i := 0; i < bgGap; i++ {
+			line = append(line, RGBA{0, 0, 0, 0})
+		}
+		line = append(line, dark[y]...)
+		joined[y] = line
+	}
+	return width*2 + bgGap, height, joined
+}
+
+// baseNameOf は書き出しファイルの頭。ゲームが違えば同じ名前の Doc があるので潰さない。
+func baseNameOf(root, shown string) string {
+	stem := strings.TrimSuffix(shown, ".sprite.json")
+	abs, err := filepath.Abs(stem)
+	if err != nil {
+		abs = stem
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		rel = abs
+	}
+	rel = strings.ReplaceAll(rel, string(os.PathSeparator), "__")
+	return strings.ReplaceAll(rel, "..", "_")
+}
+
+type silTarget struct {
+	shown   string
+	path    string
+	gameDir string
+}
+
+func gameDirOf(path string) string {
+	abs, _ := filepath.Abs(path)
+	parent := filepath.Dir(abs)
+	if filepath.Base(parent) == "assets" {
+		return filepath.Dir(parent)
+	}
+	return parent
+}
+
+func gatherTargets(argvPaths []string, root string) []silTarget {
+	var targets []silTarget
+	if len(argvPaths) > 0 {
+		for _, p := range argvPaths {
+			targets = append(targets, silTarget{p, p, gameDirOf(p)})
+		}
+		return targets
+	}
+	for _, game := range gameDirsOf(root, func() bool { return hasDir(filepath.Join(root, "assets")) }) {
+		gameDir := filepath.Join(root, game)
+		for _, rel := range walkJSON(gameDir, spriteExcludedDirs) {
+			if strings.HasSuffix(rel, ".sprite.json") {
+				targets = append(targets, silTarget{
+					game + "/" + rel, filepath.Join(gameDir, rel), gameDir})
+			}
+		}
+	}
+	return targets
+}
+
+func processSilDoc(root string, t silTarget, mode, outDir string) ([]string, error) {
+	doc, ok := asObject(readJSON(t.path))
+	if !ok {
+		return nil, fmt.Errorf("読めない: %s", t.shown)
+	}
+	legend := legendColorsOf(t.gameDir, doc)
+	base := baseNameOf(root, t.shown)
+	sprites, _ := asObject(doc["sprites"])
+	spriteNames := make([]string, 0, len(sprites))
+	for n := range sprites {
+		spriteNames = append(spriteNames, n)
+	}
+	sort.Strings(spriteNames)
+
+	var written []string
+	for _, spriteName := range spriteNames {
+		spec, ok := asObject(sprites[spriteName])
+		if strings.HasPrefix(spriteName, "//") || !ok {
+			continue
+		}
+		frames, _ := asObject(spec["frames"])
+		frameNames := make([]string, 0, len(frames))
+		for n := range frames {
+			frameNames = append(frameNames, n)
+		}
+		sort.Strings(frameNames)
+		for _, frameName := range frameNames {
+			rowsAny, ok := frames[frameName].([]any)
+			if !ok || len(rowsAny) == 0 {
+				continue
+			}
+			rows := make([]string, len(rowsAny))
+			allStrings := true
+			maxLen := 0
+			for i, r := range rowsAny {
+				s, ok := r.(string)
+				if !ok {
+					allStrings = false
+					break
+				}
+				rows[i] = s
+				if n := len([]rune(s)); n > maxLen {
+					maxLen = n
+				}
+			}
+			if !allStrings || maxLen == 0 {
+				continue
+			}
+			w, h, grid := buildFrame(mode, rows, legend)
+			w, h, grid = scaleUp(w, h, grid)
+			out := filepath.Join(outDir, fmt.Sprintf("%s__%s__%s.png", base, spriteName, frameName))
+			if err := os.WriteFile(out, encodePNG(w, h, grid), 0o644); err != nil {
+				return written, err
+			}
+			written = append(written, out)
+		}
+	}
+	return written, nil
+}
+
+// silResult は --json 用のまとめ。
+type silResult struct {
+	Mode    string   `json:"mode"`
+	Written []string `json:"written"`
+	Count   int      `json:"count"`
+	Exit    int      `json:"exit"`
+}
+
+func runSil(out *strings.Builder, root, mode string, files []string, asJSON bool) int {
+	outDir := filepath.Join(root, "gallery", mode)
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	count := 0
+	var written []string
+	for _, t := range gatherTargets(files, root) {
+		got, err := processSilDoc(root, t, mode, outDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		for _, p := range got {
+			rel, _ := filepath.Rel(root, p)
+			written = append(written, rel)
+			if !asJSON {
+				fmt.Fprintln(out, rel)
+			}
+			count++
+		}
+	}
+	if asJSON {
+		emitJSON(out, silResult{mode, orEmpty(written), count, 0})
+		return 0
+	}
+	fmt.Fprintf(out, "%d 枚を書き出した (%s)\n", count, mode)
+	return 0
+}

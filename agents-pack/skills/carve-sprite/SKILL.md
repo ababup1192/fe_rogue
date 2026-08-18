@@ -56,7 +56,7 @@ ENGINE はこのゲームの Makefile の `ENGINE ?=` と同じ場所。実行�
 - `接地 46` が全コマ同じ — 歩いても床にめり込まない
 - `塊 [1, 1, 1]` — 千切れが無い
 
-仕上がりは `python3 $(ENGINE)/bin/lint-sprite.py` と `lint-anim.py` にも
+仕上がりは `python3 $(ENGINE)/bin/fge sprite` と `python3 $(ENGINE)/bin/fge anim` にも
 かける (既定 16 色は lint の上限に合わせてある)。
 
 ## できないこと

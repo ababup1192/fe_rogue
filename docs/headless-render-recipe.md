@@ -165,8 +165,8 @@ check:
 検査は、描き出した PNG のパスさえ渡せばリポジトリ外からでも使える）:
 
 ```bash
-python3 bin/lint-view.py path/to/my_render/src/render/Gallery.flix   # 矩形と円だけになっていないか
-python3 bin/img-digest.py gallery/my_scene.png                       # 目視の前に数値で当たりを付ける
+python3 bin/fge view path/to/my_render/src/render/Gallery.flix   # 矩形と円だけになっていないか
+python3 bin/fge digest gallery/my_scene.png                       # 目視の前に数値で当たりを付ける
 ```
 
 最後に `gallery/my_scene.gif` か `gallery/frames/my_scene/*.png` を実際に開いて目で見る。

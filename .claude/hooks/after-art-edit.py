@@ -8,9 +8,9 @@ exit 2 で stderr が Claude に返る（作業自体は止めない）。
 「書いた直後に、書いたファイルだけ」を見る薄い入口で、同じ検査は
 どの OS・どのエージェントからでも次のコマンドで走らせられる:
 
-    python3 bin/lint-view.py [ファイル...]
-    python3 bin/lint-palette.py
-    python3 bin/lint-ui-overflow.py --strict [ファイル...]
+    python3 bin/fge view [ファイル...]
+    python3 bin/fge palette
+    python3 bin/fge ui-overflow --strict [ファイル...]
 
 Windows で `python3` が無い場合は .claude/settings.json の hook 行を
 `python .claude/hooks/after-art-edit.py` に変える。
@@ -24,14 +24,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-def run(script, args=()):
-    """bin/ のスクリプトを走らせ、失敗したら (True, 出力) を返す。"""
-    path = ROOT / "bin" / script
+def run(sub, args=()):
+    """bin/fge のサブコマンドを走らせ、失敗したら (True, 出力) を返す。"""
+    path = ROOT / "bin" / "fge"
     if not path.is_file():
         return False, ""
     try:
         proc = subprocess.run(
-            [sys.executable, str(path), *args],
+            [sys.executable, str(path), sub, *args],
             cwd=str(ROOT),
             capture_output=True,
             text=True,
@@ -63,7 +63,7 @@ def main():
     # ドット絵の意味色キーが色票に実体を持つか。
     # 解けないキーは Studio が仮色で塗るので、編集画面と実機で配色が食い違う。
     if name.endswith(".sprite.json"):
-        failed, out = run("lint-palette.py")
+        failed, out = run("palette")
         if failed:
             msgs.append(
                 "lint-palette が失敗しました。意味色キーが色票に無いと Studio が"
@@ -72,7 +72,7 @@ def main():
 
     # ui.json の text が折り返し宣言漏れ (固定幅の枠 + wrap/fit なし) になっていないか。
     if name.endswith(".ui.json"):
-        failed, out = run("lint-ui-overflow.py", ["--strict", str(target)])
+        failed, out = run("ui-overflow", ["--strict", str(target)])
         if failed:
             msgs.append(
                 "lint-ui-overflow が失敗しました。固定幅の枠内の text に wrap/fit が"
@@ -82,7 +82,7 @@ def main():
     # 描画が矩形と円だけになっていないか。
     # 名前では絞らない — 描画の少ないファイルは lint-view 側の MIN_DRAWS が除外する。
     if name.endswith(".flix"):
-        failed, out = run("lint-view.py", [str(target)])
+        failed, out = run("view", [str(target)])
         if failed:
             msgs.append(out)
 

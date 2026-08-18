@@ -82,7 +82,7 @@ SUBPATH_DEPTH := 5
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
 # 実行や変更は一切せず、残っている記録 (.test-logs/ スナップショット チケット git) を集めるだけ。
 status:
-	@python3 bin/status.py
+	@python3 bin/fge status
 
 # コミット時のゲート (描き出した絵の混入・規約の配線ずれ・矩形だけの View を止める)。
 # .git/hooks は git 管理外なので、clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
@@ -100,7 +100,7 @@ help:
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make lint-view            View が矩形と円だけになっていないか検査"
 	@echo "  make lint-images          git に入れる絵が増えすぎていないか検査"
-	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・階段・細長さ・色数) を検査"
+	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・塊の分裂・階段・細長さ・色数) を検査"
 	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
 	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
@@ -108,7 +108,10 @@ help:
 	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
 	@echo "  make lint-fallback        読み込みの途中で bug! していないか検査 (許すのは *OrBug の中だけ)"
 	@echo "  make lint-f32             engine の pub 面に Float32 が出ていないか検査 (Float32 は GL / OpenAL / STB の内側だけ)"
-	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
+	@echo "  python3 bin/fge digest A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
+	@echo "  make go-build             go/ を bin/fge-go と bin/dist/ の 4 OS 分にビルド"
+	@echo "  make go-test              go/ のテスト (CIEDE2000 の参照 34 組・外部依存ゼロの検査を含む)"
+	@echo "  make go-compare           Python 版と Go 版の出力をバイト比較"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make render-all           render-all ターゲットを持つ全 template の生成物を描き出し直す"
 	@echo "  make render-par           同上を並列実行"
@@ -329,17 +332,43 @@ test-%:
 # legend の名前が Studio から実色に解けるかを検査する (解けないと編集画面が仮色で塗り、
 # 実機と配色が食い違う)。テンプレを足す・sprite Doc を触ったら通す。
 lint-palette:
-	@python3 bin/lint-palette.py
+	@python3 bin/fge palette
 
 # ── ゲート: 音の名前 ────────────────────────────────────────
 # SfxRender の名・project.json の sounds・コード内リテラルの 3 か所で音名がそろっているか検査する
 # (ずれてもエラーは出ず、音だけ鳴らない・別の音が鳴る)。音を足した・改名したら通す。
 lint-audio:
-	@python3 bin/lint-audio.py
+	@python3 bin/fge audio
 
 .PHONY: lint-jargon
 lint-jargon:
-	@python3 bin/lint-jargon.py --all
+	@python3 bin/fge jargon --all
+
+# ── Go 版の検査 (画素・波形を扱う層) ────────────────────────
+# 置き場は go/。標準ライブラリだけで書いてあり、go.sum は空のままが正しい。
+# CGO_ENABLED=0 を固定するのは、CGO が有効だとクロスコンパイルに相手側の
+# ツールチェーンが要るようになり、Mac 1 台で 4 OS 分を出す前提が崩れるため。
+GO_OSARCH := darwin/arm64 darwin/amd64 linux/amd64 windows/amd64
+
+.PHONY: go-build
+go-build:
+	@cd go && CGO_ENABLED=0 go build -o ../bin/fge-go .
+	@for pair in $(GO_OSARCH); do \
+		os=$${pair%%/*}; arch=$${pair##*/}; \
+		ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
+		(cd go && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
+			go build -o ../bin/dist/fge-go-$$os-$$arch$$ext .) || exit 1; \
+		echo "  bin/dist/fge-go-$$os-$$arch$$ext"; \
+	done
+
+.PHONY: go-test
+go-test:
+	@cd go && CGO_ENABLED=0 go test ./...
+
+# Python 版と Go 版の出力を突き合わせる (バイト一致で挙動不変を証明する)。
+.PHONY: go-compare
+go-compare: go-build
+	@sh go/compare.sh
 
 # ── ゲート: bug! を置く場所 ──────────────────────────────────
 # 読み込みの途中で bug! すると、既定値で続けてよいかを呼ぶ側が選べない
@@ -347,8 +376,8 @@ lint-jargon:
 # 残すと決めた bug! は bin/lint-fallback.py の EXEMPT に理由付きで載っている。
 .PHONY: lint-fallback
 lint-fallback:
-	@python3 bin/lint-fallback.py --self-test >/dev/null
-	@python3 bin/lint-fallback.py --all
+	@python3 bin/fge fallback --self-test >/dev/null
+	@python3 bin/fge fallback --all
 
 # ── ゲート: pub 面に Float32 を出さない ───────────────────────
 # ゲームを書く側は Float64 と Int32 だけで済むのが決まり。Float32 は
@@ -356,8 +385,8 @@ lint-fallback:
 # 残すと決めた Float32 は bin/lint-f32.py の EXEMPT に理由付きで載っている。
 .PHONY: lint-f32
 lint-f32:
-	@python3 bin/lint-f32.py --self-test >/dev/null
-	@python3 bin/lint-f32.py
+	@python3 bin/fge f32 --self-test >/dev/null
+	@python3 bin/fge f32
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
@@ -608,37 +637,37 @@ api:
 # 絵の下限（矩形と円だけになっていないか）。どの OS・どのエージェントからも同じ検査。
 .PHONY: lint-view
 lint-view:
-	@python3 bin/lint-view.py
+	@python3 bin/fge view
 
 # git に入れる絵が増えすぎていないか（描き出した絵が紛れ込んでいないか）の検査。
 .PHONY: lint-images
 lint-images:
-	@python3 bin/lint-images.py
+	@python3 bin/fge images
 
 # ドット絵の画素の並びの検査。自己テストが壊れた lint には門番をさせない。
 .PHONY: lint-sprite
 lint-sprite:
-	@python3 bin/lint-sprite.py --self-test >/dev/null
-	@python3 bin/lint-sprite.py
+	@python3 bin/fge sprite --self-test >/dev/null
+	@python3 bin/fge sprite
 
 .PHONY: lint-anim
 lint-anim:
-	@python3 bin/lint-anim.py --self-test >/dev/null
-	@python3 bin/lint-anim.py
+	@python3 bin/fge anim --self-test >/dev/null
+	@python3 bin/fge anim
 
 # ui.json の text の折り返し宣言漏れ (固定幅の枠 + wrap/fit なし) の検査。
 # 実寸は測らない構造検査。コード直組みの Text と instance 参照ノードは見えない。
 .PHONY: lint-ui
 lint-ui:
-	@python3 bin/lint-ui-overflow.py --self-test >/dev/null
-	@python3 bin/lint-ui-overflow.py
+	@python3 bin/fge ui-overflow --self-test >/dev/null
+	@python3 bin/fge ui-overflow
 
 # ループ GIF の継ぎ目（最終コマ→0 コマ）が浮かないかの検査。描き出し済みのコマが前提なので
 # 保存時フックや pre-commit には乗せない（手動で回す）。
 .PHONY: lint-loop
 lint-loop:
-	@python3 bin/lint-loop.py --self-test >/dev/null
-	@python3 bin/lint-loop.py
+	@python3 bin/fge loop --self-test >/dev/null
+	@python3 bin/fge loop
 
 # 規約まわりの配線が崩れていないかの検査（生成はしない）。
 .PHONY: check-docs-sync

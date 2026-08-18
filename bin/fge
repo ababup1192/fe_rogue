@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""fge — bin/ の検査・要約ツールの呼び口を 1 本にまとめる薄い前面。
+
+`bin/fge sprite foo.sprite.json` は `python3 bin/lint-sprite.py foo.sprite.json` を
+そのまま呼ぶだけ。標準出力・標準エラー・終了コードは一切加工せず通す。
+中身はどれも委譲先が持っていて、ここには判定が 1 つも無い。
+
+呼ぶ側 (Makefile・フック・スキル・docs) がこの 1 本だけを覚えていれば、
+委譲先の実装が別の言語や別のファイルへ移っても、呼び口は動かないで済む。
+`bin/*.py` を直に呼ぶ道も今までどおり開いている (この前面は付け足し)。
+
+    bin/fge                 サブコマンドの一覧
+    bin/fge --version       engine のバージョン
+    bin/fge <名前> [引数...]  委譲
+
+載せるのは「人とフックが繰り返し打つ検査・要約」だけ。check-*.py・gen-*.py・
+sync-agents.py・BootFontGen.java・carve/ は make の中から 1 回だけ呼ばれる生成と
+配布の道具で、打ち手が違うので入れない。
+
+標準ライブラリだけで動く (Windows / macOS / Linux 共通)。
+"""
+
+import difflib
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+# サブコマンド名 → (委譲先のファイル名, 一覧に出す 1 行説明)
+COMMANDS = {
+    "digest":     ("img-digest.py",       "絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"),
+    "loop":       ("lint-loop.py",        "ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか"),
+    "sil":        ("sil-png.py",          "ドット絵を目視用の PNG に描き出す (シルエット・明度・背景の明暗)"),
+    "images":     ("lint-images.py",      "git に入れる絵が増えすぎていないか"),
+    "audio":      ("lint-audio.py",       "音名が SfxRender・project.json・コードの 3 か所でそろっているか"),
+    "palette":    ("lint-palette.py",     "ドット絵 legend の意味色キーが色票から解けるか"),
+    "sprite":     ("lint-sprite.py",      "ドット絵の画素の並び (浮き・塊の分裂・階段・細長さ・色数)"),
+    "anim":       ("lint-anim.py",        "コマ間の飛び・体積・接地と 4 方向のそろい"),
+    "composition": ("lint-composition.py", "構図のシルエット PNG を測る (層の分かれ・主役の分離)"),
+    "style":      ("lint-style.py",       "焼いた PNG を測って画風の軸がズレていないか"),
+    "view":       ("lint-view.py",        "View が矩形と円だけになっていないか"),
+    "jargon":     ("lint-jargon.py",      "コメント・文章に独自の比喩語が混ざっていないか"),
+    "f32":        ("lint-f32.py",         "engine の pub 面に Float32 が出ていないか"),
+    "fallback":   ("lint-fallback.py",    "読み込みの途中で bug! していないか"),
+    "ui-overflow": ("lint-ui-overflow.py", "ui.json の text の折り返し宣言漏れ (はみ出す形)"),
+    "status":     ("status.py",           "現状 1 画面 (テスト記録・スナップショット・チケット・git)"),
+    "precommit":  ("precommit.py",        "コミット時のゲート (bin/githooks/pre-commit の本体)"),
+}
+
+
+# Go 版 (go/ をビルドした bin/fge-go) が持っているサブコマンド。
+# 出力は Python 版とバイト一致することを go/compare.sh が確かめている。
+# 無ければ Python 版へ落ちる。FGE_GO=0 で常に Python 版を使う。
+GO_COMMANDS = ("digest", "loop", "sil", "images", "audio", "palette")
+
+
+def go_binary():
+    """使える bin/fge-go の場所。無ければ None。"""
+    if os.environ.get("FGE_GO") == "0":
+        return None
+    name = "fge-go.exe" if os.name == "nt" else "fge-go"
+    path = os.path.join(ROOT, "bin", name)
+    return path if os.path.isfile(path) and os.access(path, os.X_OK) else None
+
+
+def read_engine_dir():
+    """このリポが使う engine の場所。環境変数 ENGINE → local.mk の順で読む
+    (bin/status.py・bin/checkd と同じ解決順)。"""
+    engine = os.environ.get("ENGINE")
+    if engine:
+        return engine
+    try:
+        with open(os.path.join(ROOT, "local.mk"), encoding="utf-8",
+                  errors="replace") as fh:
+            for line in fh:
+                m = re.match(r"\s*ENGINE\s*[?:]*=\s*(.+?)\s*$", line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    return None
+
+
+def read_engine_version(engine):
+    """engine の Makefile から VERSION := を読む。読めなければ None
+    (bin/status.py の read_engine_version と同じ読み方)。"""
+    try:
+        with open(os.path.join(engine, "Makefile"), encoding="utf-8",
+                  errors="replace") as fh:
+            return next((m.group(1) for line in fh
+                         for m in [re.match(r"VERSION\s*:=\s*(\S+)", line)] if m), None)
+    except OSError:
+        return None
+
+
+def print_version():
+    # engine リポ自身なら足元の Makefile。ゲームリポなら ENGINE の指す先。
+    version = read_engine_version(ROOT)
+    if version is None:
+        engine = read_engine_dir()
+        version = read_engine_version(engine) if engine else None
+    if version is None:
+        print("fge (engine のバージョンが読めません: Makefile の VERSION が見当たらない)",
+              file=sys.stderr)
+        return 1
+    print("fge (engine v%s)" % version)
+    return 0
+
+
+def print_help():
+    print(__doc__.strip().splitlines()[0])
+    print()
+    print("使い方: bin/fge <サブコマンド> [引数...]")
+    print()
+    width = max(len(name) for name in COMMANDS)
+    for name in sorted(COMMANDS):
+        script, note = COMMANDS[name]
+        mark = "" if os.path.isfile(os.path.join(ROOT, "bin", script)) else "  (未配布)"
+        print("  %-*s  %s%s" % (width, name, note, mark))
+    print()
+    print("  --version                engine のバージョン")
+    print()
+    print("引数はそのまま委譲先へ渡ります (--help も委譲先の物が出ます)。")
+    return 0
+
+
+def unknown(name):
+    print("fge: 知らないサブコマンドです: %s" % name, file=sys.stderr)
+    near = difflib.get_close_matches(name, COMMANDS, n=3, cutoff=0.4)
+    if near:
+        print("もしかして: %s" % " / ".join(near), file=sys.stderr)
+    else:
+        print("一覧は bin/fge (引数なし)", file=sys.stderr)
+    return 2
+
+
+def delegate(name, args):
+    if name in GO_COMMANDS:
+        binary = go_binary()
+        if binary:
+            return subprocess.call([binary, name, *args])
+    script = os.path.join(ROOT, "bin", COMMANDS[name][0])
+    if not os.path.isfile(script):
+        print("fge: bin/%s がありません (engine の make sync-agents GAME=... で"
+              "配り直せます)" % COMMANDS[name][0], file=sys.stderr)
+        return 127
+    # capture しない = 子の出力がそのまま端末へ流れる。終了コードもそのまま返す。
+    # cwd も渡さない: 委譲先はカレントを起点に走査する物が多く、直に呼んだときと
+    # 同じ場所から見せる必要がある (引数の相対パスも同じ理由)。
+    return subprocess.call([sys.executable, script, *args])
+
+
+def main(argv):
+    if not argv or argv[0] in ("--help", "-h", "help"):
+        return print_help()
+    if argv[0] in ("--version", "-V"):
+        return print_version()
+    name = argv[0]
+    if name not in COMMANDS:
+        return unknown(name)
+    return delegate(name, argv[1:])
+
+
+if __name__ == "__main__":
+    # Windows の既定はロケール依存の文字コードで日本語が化けるので UTF-8 に固定。
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+    sys.exit(main(sys.argv[1:]))
