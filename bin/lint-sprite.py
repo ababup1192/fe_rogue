@@ -8,6 +8,7 @@ lint-palette が「色が解けるか」を見るのに対し、こちらは画�
                 anchor が格子の外 / 空のコマ / コマの丸ごとコピペ
     orphan    : 周り 4 方向すべて透明の浮いた 1 画素
   注意 (終了コード 0。--strict で NG に昇格) — 閾値に依存する美学の規則
+    connect   : 絵が 4 連結で 2 つ以上の塊に分かれている (ちぎれの疑い)
     jaggy     : 輪郭の階段のラン長が 長,1,長 と乱れる (例 3,1,3)
     banding   : ある色が輪郭の内側 1px の縁取りとしてしか使われていない
     corner    : 1px 線の角に画素が L 字に 2 重になっている
@@ -17,7 +18,7 @@ lint-palette が「色が解けるか」を見るのに対し、こちらは画�
                  高精細一枚絵では超えて良い — 気になるなら --strict で)
 
 塗り率 90% 以上のコマは「テクスチャ」(全面ディザ・タイル) と見なし、
-形の規則 (orphan/jaggy/banding/corner/silhouette) を掛けない。
+形の規則 (orphan/connect/jaggy/banding/corner/silhouette) を掛けない。
 それでも残る意図的な例外は、スプライト (またはファイルのトップレベル) に
   "lint-sprite": "対象外(jaggy, banding) — 遠景の山肌はギザギザが画風"
 と理由付きで書く (括弧を省くと全規則が対象外)。黙って除外はしない。
@@ -32,6 +33,7 @@ lint-palette が「色が解けるか」を見るのに対し、こちらは画�
 
 import importlib.util
 import json
+import math
 import os
 import re
 import sys
@@ -49,13 +51,18 @@ GAME_ROOTS = ("templates",)
 # (エンジンは fail-open で無言で透明にするため、ゲートが代わりに声を出す)。
 TRANSPARENT_CHARS = {".", " "}
 
-RULES = ("structure", "orphan", "palette", "jaggy", "banding", "corner", "silhouette")
+RULES = (
+    "structure", "orphan", "connect", "palette",
+    "jaggy", "banding", "corner", "silhouette",
+)
 
 MAX_COLORS = 12          # 1 スプライトの色数上限 (legend の値の異なり数)
 MAX_COLORS_BIG = 16      # 32px を超える大物 (建物・細長い物) は少し緩める
 BIG_SIDE = 32
 TEXTURE_FILL = 0.90      # これ以上塗られたコマはテクスチャ扱い
 MIN_ORPHAN_CELLS = 4     # これ未満の極小スプライト (粒など) は orphan を見ない
+MIN_CONNECT_CELLS = 4    # 同上。塊の分かれ方を言っても直しようが無い大きさ
+CONNECT_SHOWN = 4        # 報告に座標を並べる塊の数の上限
 JAGGY_MIN_COUNT = 3      # 1 コマにこれ以上の乱れで注意
 BANDING_MIN_RUN = 8      # 縁取り専用色がこの画素数以上で注意
 SILHOUETTE_MIN_OCC = 0.20
@@ -166,9 +173,67 @@ def lab_of(hex_color):
     return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
 
 
+def delta_e_lab(lab_a, lab_b):
+    """Lab 2 点の CIEDE2000 の色差。
+
+    Lab のユークリッド距離 (CIE76) は彩度の高い色 — とくに青 — で人の目より
+    大きく出る。少数パレットのドット絵は鮮やかな色を並べるので、そこで緩むと
+    「近すぎる 2 色」の検査がいちばん効いてほしい場面で素通りする。
+    """
+    l1, a1, b1 = lab_a
+    l2, a2, b2 = lab_b
+
+    c_bar = (math.hypot(a1, b1) + math.hypot(a2, b2)) / 2
+    g = 0.5 * (1 - math.sqrt(c_bar**7 / (c_bar**7 + 25.0**7)))
+    ap1, ap2 = (1 + g) * a1, (1 + g) * a2
+    cp1, cp2 = math.hypot(ap1, b1), math.hypot(ap2, b2)
+
+    def hue_of(ap, b):
+        return 0.0 if ap == 0 and b == 0 else math.degrees(math.atan2(b, ap)) % 360
+
+    hp1, hp2 = hue_of(ap1, b1), hue_of(ap2, b2)
+
+    d_l = l2 - l1
+    d_c = cp2 - cp1
+    if cp1 * cp2 == 0:
+        d_h = 0.0
+        h_bar = hp1 + hp2
+    else:
+        d_h = hp2 - hp1
+        if d_h > 180:
+            d_h -= 360
+        elif d_h < -180:
+            d_h += 360
+        # 平均色相は色相環をまたぐと単純な平均が反対側を指す (350 と 10 の平均は 0)。
+        total = hp1 + hp2
+        if abs(hp1 - hp2) <= 180:
+            h_bar = total / 2
+        else:
+            h_bar = (total + 360) / 2 if total < 360 else (total - 360) / 2
+    big_h = 2 * math.sqrt(cp1 * cp2) * math.sin(math.radians(d_h) / 2)
+
+    l_bar = (l1 + l2) / 2
+    cp_bar = (cp1 + cp2) / 2
+    t = (
+        1
+        - 0.17 * math.cos(math.radians(h_bar - 30))
+        + 0.24 * math.cos(math.radians(2 * h_bar))
+        + 0.32 * math.cos(math.radians(3 * h_bar + 6))
+        - 0.20 * math.cos(math.radians(4 * h_bar - 63))
+    )
+    s_l = 1 + (0.015 * (l_bar - 50) ** 2) / math.sqrt(20 + (l_bar - 50) ** 2)
+    s_c = 1 + 0.045 * cp_bar
+    s_h = 1 + 0.015 * cp_bar * t
+    r_t = -2 * math.sqrt(cp_bar**7 / (cp_bar**7 + 25.0**7)) * math.sin(
+        math.radians(60 * math.exp(-(((h_bar - 275) / 25) ** 2)))
+    )
+
+    term_c, term_h = d_c / s_c, big_h / s_h
+    return math.sqrt((d_l / s_l) ** 2 + term_c**2 + term_h**2 + r_t * term_c * term_h)
+
+
 def delta_e(hex_a, hex_b):
-    la, lb = lab_of(hex_a), lab_of(hex_b)
-    return sum((p - q) ** 2 for p, q in zip(la, lb)) ** 0.5
+    return delta_e_lab(lab_of(hex_a), lab_of(hex_b))
 
 
 # ---------------------------------------------------------------- 格子の下ごしらえ
@@ -235,6 +300,33 @@ def orphan_cells(cells):
     return sorted(
         (x, y) for x, y in cells if all(n not in cells for n in neighbors8(x, y))
     )
+
+
+def connect_blobs(cells):
+    """4 連結の塊ごとの (画素数, 左上の画素)。斜めだけの接触は別の塊に数える。
+
+    斜めで触れた 2 つの塊は実寸でちぎれて見える (腕が胴から外れる・弓が
+    ばらける)。orphan の粒度違いで、こちらは 1 画素でなく塊の単位。
+    """
+    if len(cells) < MIN_CONNECT_CELLS:
+        return []
+    seen = set()
+    blobs = []
+    for start in sorted(cells, key=lambda p: (p[1], p[0])):
+        if start in seen:
+            continue
+        seen.add(start)
+        stack = [start]
+        size = 0
+        while stack:
+            x, y = stack.pop()
+            size += 1
+            for n in neighbors4(x, y):
+                if n in cells and n not in seen:
+                    seen.add(n)
+                    stack.append(n)
+        blobs.append((size, start))
+    return blobs
 
 
 def contour_profiles(cells, width, height):
@@ -466,6 +558,19 @@ def check_doc(doc, legend_hexes):
                 continue
             for x, y in orphan_cells(cells):
                 report("orphan", True, f"{where}: ({x},{y}) に浮いた 1 画素 (周り 8 方向すべて透明)")
+            blobs = connect_blobs(cells)
+            if len(blobs) > 1:
+                shown = "・".join(
+                    f"({x},{y}) から始まる塊 {size}px"
+                    for size, (x, y) in blobs[:CONNECT_SHOWN]
+                )
+                more = "・…" if len(blobs) > CONNECT_SHOWN else ""
+                report(
+                    "connect",
+                    False,
+                    f"{where}: 絵が {len(blobs)} 個の塊に分かれている"
+                    f" ({shown}{more}) — 意図して離した絵 (火の粉・浮く飾り) なら対象外に書く",
+                )
             count = jaggy_count(cells, width, height)
             if count >= JAGGY_MIN_COUNT:
                 report("jaggy", False, f"{where}: 輪郭の階段が {count} 箇所で乱れている (長,1,長 のラン)")
@@ -662,7 +767,19 @@ def self_test():
             "浮いた 1 画素",
             doc_of({"frames": {"idle": ["ii...", "ii..s", ".....", "....."]}}),
             ["浮いた 1 画素"],
+            ["塊に分かれている"],
+        ),
+        (
+            "塊の分裂",
+            doc_of({"frames": {"idle": ["ii..ii", "ii..ii", "......", "......"]}}),
             [],
+            ["2 個の塊に分かれている"],
+        ),
+        (
+            "斜めだけの接触も分裂",
+            doc_of({"frames": {"idle": ["ii....", "ii....", "..iii.", "..iii."]}}),
+            [],
+            ["塊に分かれている"],
         ),
         (
             "全面ディザはテクスチャ扱い",
@@ -762,7 +879,7 @@ def self_test():
             doc_of(
                 {
                     "frames": {"idle": ["ii...", "ii..s", ".....", "....."]},
-                    "lint-sprite": "対象外(orphan) — 火の粉は浮かせたい",
+                    "lint-sprite": "対象外(orphan, connect) — 火の粉は浮かせたい",
                 }
             ),
             [],
@@ -797,6 +914,15 @@ def self_test():
         failures.append("ΔE: 黒と白が近すぎる判定になっている")
     if delta_e("#804030", "#814131") > DELTA_E_MIN:
         failures.append("ΔE: ほぼ同じ 2 色が遠い判定になっている")
+    # Sharma et al. (2005) の 34 組の参照値のうち、実装違いが最も出る 3 組。
+    # ユークリッド距離 (CIE76) に退行するとどれも大きく外れる。
+    for lab_a, lab_b, want in (
+        ((50.0, 2.6772, -79.7751), (50.0, 0.0, -82.7485), 2.0425),   # 青で色相の回り込み
+        ((50.0, 2.5, 0.0), (73.0, 25.0, -18.0), 27.1492),            # 明度差と彩度差の合成
+        ((22.7233, 20.0904, -46.6940), (23.0331, 14.9730, -42.5619), 2.0373),  # Rt が効く
+    ):
+        if abs(delta_e_lab(lab_a, lab_b) - want) > 0.001:
+            failures.append(f"ΔE: CIEDE2000 の参照値 {want} と合わない")
 
     if failures:
         for line in failures:
