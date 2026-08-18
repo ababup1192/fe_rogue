@@ -44,3 +44,7 @@ scratch/
 **/debug/**/*.gif
 # 次の自分への引き継ぎメモ。マシン固有なので git で運ばない
 NOTES.md
+# Go 版の検査 (go/) のビルド成果物。ソースだけを運び、バイナリは各 OS で作る。
+bin/fge-go
+bin/fge-go.exe
+bin/dist/
