@@ -476,14 +476,22 @@ release-guard:
 	@for f in $(ROOT_SRC_PKGS:%=%/flix.toml) $(ENGINE_FULL_DIR)/flix.toml; do \
 	   grep -q '^name' "$$f" || { echo "[release] $$f が壊れています (package.name が無い)。git checkout -- $$f で復元してください"; exit 1; }; \
 	 done
+	@# WhyNot: 全量ゲートの前に flix.jar の在処を見るのは、同梱 zip がこれを要るため。
+	@# 後ろで気づくと、10 分以上かけたテストの後に落ちて全部やり直しになる。
+	@test -n "$(BUNDLE_FLIX_JAR)" -a -f "$(BUNDLE_FLIX_JAR)" \
+	  || { echo "[release] flix.jar が見つかりません (同梱 zip が作れません)。BUNDLE_FLIX_JAR= で場所を指定してください"; exit 1; }
 	@echo "[release] v$(VERSION) を $(RELEASE_SHA) で公開します"
 # gl-parity も全量ゲートの一員 — GL と SoftRaster の絵の退行はテストに出ないため。
 release: release-guard sync $(TEST) gl-parity
 	cd $(ENGINE_FULL_DIR) && "$(FLIX)" build-pkg
+	@# WhyNot: build-pkg の後に置くのは、zip の中身に engine_full.fpkg が入るため。
+	@# 先に組むと 1 つ前のバージョンの fpkg を配ってしまう。
+	$(MAKE) bundle-zip
 	gh release create v$(VERSION) --repo ababup1192/flix_game_engine --target $(RELEASE_SHA) \
 	  --title "v$(VERSION)" --generate-notes \
 	  "$(ENGINE_FULL_FPKG_SRC)#$(ENGINE_FULL_FPKG_NAME)" \
-	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)"
+	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)" \
+	  "$(BUNDLE_ZIP)"
 	@echo "[release] 完了。外部 fetch 検証: lib/ を消したサンプルで github:ababup1192/flix_game_engine v$(VERSION) を引けるか確認してください"
 
 # ── 同梱用 zip ────────────────────────────────────────────
