@@ -85,6 +85,55 @@ func TestPrunesOnlyToolsGoneFromEngine(t *testing.T) {
 	}
 }
 
+// What: 古い呼び口を持つ settings.json が、道具を消す前に今の口へ直ること。
+func TestRewritesStaleHookCalls(t *testing.T) {
+	root := t.TempDir()
+	game := t.TempDir()
+	writeFile(t, filepath.Join(game, ".claude", "settings.json"),
+		`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-work.py\""}]}],`+
+			`"SessionEnd":[{"hooks":[{"type":"command","command":"python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-diet.py\""}]}],`+
+			`"Custom":[{"hooks":[{"type":"command","command":"make -s status"}]}]}}`)
+	writeFile(t, filepath.Join(game, ".claude", "hooks", "after-flix-work.py"), "x")
+
+	var dry, dryErr strings.Builder
+	if code, err := Run(&dry, &dryErr, root, []string{"--game", game, "--dry-run"}); err != nil || code != 0 {
+		t.Fatalf("code=%d err=%v", code, err)
+	}
+	if strings.Contains(read(t, filepath.Join(game, ".claude", "settings.json")), "bin/fge") {
+		t.Error("素振りなのに書き換えた")
+	}
+
+	var out, errOut strings.Builder
+	if code, err := Run(&out, &errOut, root, []string{"--game", game}); err != nil || code != 0 {
+		t.Fatalf("code=%d err=%v", code, err)
+	}
+	got := read(t, filepath.Join(game, ".claude", "settings.json"))
+	if strings.Contains(got, "python3") {
+		t.Errorf("古い呼び口が残っている: %s", got)
+	}
+	if !strings.Contains(got, `\"$CLAUDE_PROJECT_DIR/bin/fge\" hook-flix-work`) {
+		t.Errorf("hook-flix-work へ直っていない: %s", got)
+	}
+	if !strings.Contains(got, `\"$CLAUDE_PROJECT_DIR/bin/fge\" hook-session-diet`) {
+		t.Errorf("hook-session-diet へ直っていない: %s", got)
+	}
+	if !strings.Contains(got, `"make -s status"`) {
+		t.Errorf("関係のない呼び口まで触った: %s", got)
+	}
+	if !strings.Contains(out.String(), "呼び口 2 件") {
+		t.Errorf("直した数を出していない: %s", out.String())
+	}
+}
+
+func read(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 func TestMissingGameAborts(t *testing.T) {
 	var out, errOut strings.Builder
 	code, err := Run(&out, &errOut, repoRoot(), []string{"--game", filepath.Join(t.TempDir(), "nope")})

@@ -41,6 +41,20 @@ var StaleTools = []string{
 	".claude/hooks/session-diet.py",
 }
 
+// staleHookCalls は .claude/settings.json に残っている古い呼び口と、その言い換え先。
+//
+// WhyNot: settings.json を写し直さず書き換えるのは、あれが copyIfAbsent (すでに有れば
+// 上書きしない) で配られるため。ゲームが足したフックまで消えてしまう。
+//
+// WhyNot: 道具を消す前に書き換えるのは、指す先だけ消えるとフックが黙って死ぬため。
+// 型検査が走らなくなっても、エラーは出ずに「何も起きない」形になる。
+var staleHookCalls = [][2]string{
+	{`python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-touch.py\"`, `\"$CLAUDE_PROJECT_DIR/bin/fge\" hook-flix-touch`},
+	{`python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-work.py\"`, `\"$CLAUDE_PROJECT_DIR/bin/fge\" hook-flix-work`},
+	{`python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after-flix-edit.py\"`, `\"$CLAUDE_PROJECT_DIR/bin/fge\" hook-flix-edit`},
+	{`python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-diet.py\"`, `\"$CLAUDE_PROJECT_DIR/bin/fge\" hook-session-diet`},
+}
+
 const usage = "使い方: fge prune-stale-tools --game /path/to/game [--dry-run]"
 
 // Run は掃除を走らせて終了コードを返す。
@@ -88,6 +102,19 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 		}
 	}
 
+	settings := filepath.Join(game, ".claude", "settings.json")
+	fixed, err := rewriteHookCalls(settings, dryRun)
+	if err != nil {
+		return 2, err
+	}
+	if fixed > 0 {
+		verb := "書き換えました"
+		if dryRun {
+			verb = "書き換えます"
+		}
+		fmt.Fprintf(out, "[prune-stale-tools] .claude/settings.json のフックの呼び口 %d 件を %s\n", fixed, verb)
+	}
+
 	if len(kept) > 0 {
 		fmt.Fprintf(out, "[prune-stale-tools] engine にまだあるので残します: %d 件 (%s)\n",
 			len(kept), strings.Join(kept, " "))
@@ -110,6 +137,31 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 	}
 	fmt.Fprintf(out, "[prune-stale-tools] %d 件消しました\n", len(targets))
 	return 0, nil
+}
+
+// rewriteHookCalls は settings.json の古い呼び口を今の口へ書き換え、直した数を返す。
+func rewriteHookCalls(path string, dryRun bool) (int, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	text := string(raw)
+	fixed := 0
+	for _, pair := range staleHookCalls {
+		n := strings.Count(text, pair[0])
+		if n == 0 {
+			continue
+		}
+		fixed += n
+		text = strings.ReplaceAll(text, pair[0], pair[1])
+	}
+	if fixed == 0 || dryRun {
+		return fixed, nil
+	}
+	return fixed, os.WriteFile(path, []byte(text), 0o644)
 }
 
 func isFile(path string) bool {

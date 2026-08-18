@@ -252,8 +252,12 @@ func syncGame(out, errOut *strings.Builder, root string, r *Rules, gameArg, vers
 			lints = append(lints, e.dst)
 		}
 	}
-	fmt.Fprintf(out, "[sync-agents] lint: %s\n", strings.Join(lints, " "))
-	fmt.Fprintln(out, "[sync-agents] checkd: bin/checkd + bin/fge hook-flix-touch / hook-flix-work")
+	// WhyNot: 空でも 1 行出す、をやめたのは、検査が全て bin/fge の中へ移って
+	// この一覧が常に空になったため。空の見出しは「配り漏れた」と読める。
+	if len(lints) > 0 {
+		fmt.Fprintf(out, "[sync-agents] lint: %s\n", strings.Join(lints, " "))
+	}
+	fmt.Fprintln(out, "[sync-agents] checkd: bin/fge checkd + bin/fge hook-flix-touch / hook-flix-work")
 	fmt.Fprintln(out, "[sync-agents] 呼び口: bin/fge (検査・要約はここへ委譲。一覧は bin/fge)")
 	fmt.Fprintln(out, "[sync-agents] ゲート: bin/fge precommit + bin/githooks/pre-commit (配線は make hooks)")
 	fmt.Fprintf(out, "[sync-agents] wrote %s/AGENTS.md + CLAUDE.md\n", game)
