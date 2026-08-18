@@ -1,5 +1,5 @@
 {
-  "note": "sync-agents（agents-pack をゲームのリポへ配る道具）の規約データ。source of truth は bin/sync-agents.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go sync-agents）はこれを読んで動くので、規約を変えるときは bin/sync-agents.py とこの 2 つを同時に直す。ずれると go/internal/syncagents の TestRulesMatchPython が落ちる。配る物の一覧そのものは agents-pack/manifest.json にあり、この JSON は持たない（二重に持つと片方が古くなる）。",
+  "note": "sync-agents（agents-pack をゲームのリポへ配る道具）の規約データ。この JSON が source of truth で、bin/fge sync-agents はこれを読んで動く。配る物の一覧そのものは agents-pack/manifest.json にあり、この JSON は持たない（二重に持つと片方が古くなる）。",
   "manifestPath": "agents-pack/manifest.json",
   "manifestKeys": ["copy", "copyIfAbsent", "copyDirs"],
   "skillsDir": "agents-pack/skills",

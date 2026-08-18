@@ -13,7 +13,7 @@ for p in \
   Makefile flix.toml \
   bin/flix bin/checkd bin/explain-error bin/gen-api-digest.py \
   bin/reference-update.sh bin/reference-check.sh bin/check-render-budget.py \
-  mk/game.mk bin/fge bin/img-digest.py bin/status.py \
+  mk/game.mk bin/fge bin/lint-rules/view.json bin/img-digest.py bin/status.py \
   bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py \
   bin/lint-audio.py bin/lint-images.py bin/lint-ui-overflow.py \
   bin/precommit.py bin/githooks/pre-commit bin/sync-agents.py bin/carve/carve.py \

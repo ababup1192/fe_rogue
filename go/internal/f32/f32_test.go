@@ -102,7 +102,7 @@ func TestSelfTest(t *testing.T) {
 }
 
 func TestUnknownFlagIsIgnored(t *testing.T) {
-	// Python 版は --check を黙って無視して通常の検査を走らせる。
+	// --check は黙って無視して通常の検査を走らせる。
 	var out, errOut strings.Builder
 	code, err := Run(&out, &errOut, repoRoot(), []string{"--check"}, Options{})
 	if err != nil {

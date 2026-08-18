@@ -1,7 +1,7 @@
 package jargon
 
 // 規約データ (bin/lint-rules/jargon.json) の読み込みと、
-// Python の後読み・先読みを Go の正規表現で表し直す言い換え。
+// そこに書かれた後読み・先読みを Go の正規表現で表し直す言い換え。
 
 import (
 	"encoding/json"
@@ -41,14 +41,14 @@ type Rule struct {
 // Search はその行にこの語が出るかを返す。
 func (r *Rule) Search(s string) bool { return r.match.Search(s) }
 
-// prevKanjiGuard は Python 側の「直前が漢字なら当てない」後読み。
+// prevKanjiGuard は規約データに書かれる「直前が漢字なら当てない」後読みの字面。
 const prevKanjiGuard = "(?<![一-龥])"
 
 // reMeta は先読みの中身・選択肢の字面をそのまま比べてよいかの判定に使う。
 const reMeta = `[]()|\^$.*+?{}`
 
-// matcher は Python の正規表現を「ゆるく当てて、前後の 1 文字を Go 側で見て捨てる」形に
-// 置き換えた物。
+// matcher は規約データの正規表現を「ゆるく当てて、前後の 1 文字を自分で見て捨てる」形に
+// 置き換えた物。Go の正規表現には先読み・後読みが無い。
 //
 // WhyNot: 先読みの文字までマッチに含めて消費する書き方にしないのは、隣り合って出る語を
 // 取りこぼすため（`札札幌` の 1 つ目の札が消える）。位置だけ見て捨てれば取りこぼさない。
@@ -62,10 +62,10 @@ type matcher struct {
 	notNextWhen string
 }
 
-// isCJKIdeograph は Python の文字範囲 [一-龥] と同じ判定。
+// isCJKIdeograph は文字が漢字の範囲 [一-龥] にあるかを返す。
 func isCJKIdeograph(r rune) bool { return r >= 0x4E00 && r <= 0x9FA5 }
 
-// compileGuarded は Python の正規表現をゆるい正規表現と前後 1 文字の判定に分ける。
+// compileGuarded は規約データの正規表現を、ゆるい正規表現と前後 1 文字の判定に分ける。
 func compileGuarded(pattern string) (*matcher, error) {
 	m := &matcher{}
 	src := pattern
@@ -115,7 +115,7 @@ func cutTrailingLookahead(src string) (head string, set map[rune]bool, when stri
 	return head, set, when, true
 }
 
-// Search は Python の re.search と同じ真偽を返す。
+// Search は行のどこかにこの語が出るかを返す。
 func (m *matcher) Search(s string) bool {
 	for pos := 0; pos <= len(s); {
 		start, end, found := m.re.FindIndexFrom(s, pos)
@@ -211,7 +211,7 @@ func newRule(word string, pattern *string, better, english, stage string) (*Rule
 	return &Rule{Word: word, Better: better, English: english, Stage: stage, match: m}, nil
 }
 
-// escapeLiteral は Python の re.escape と同じ字面を返す。
+// escapeLiteral は文字列を、正規表現の中で字面どおりに当たる形へ逃がす。
 func escapeLiteral(s string) string {
 	var b strings.Builder
 	for _, r := range s {

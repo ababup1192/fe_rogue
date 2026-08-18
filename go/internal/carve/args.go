@@ -2,9 +2,8 @@ package carve
 
 // 引数の読み取りと sprite.json の書き出し。
 //
-// WhyNot: 引数の間違い方 (未知のオプション等) までは写していない。Python 側は
-// argparse が実行ファイル名入りの使い方を stderr に出して 2 で終わるので、
-// 名前の違う実行ファイルでは字面をそろえられない。正しい引数だけが等価。
+// WhyNot: 引数が間違っているとき (未知のオプション等) の字面はそろえていない。
+// 使い方の案内には実行ファイル名が入るので、呼び口が変わると字面も変わる。
 
 import (
 	"encoding/json"
@@ -110,7 +109,7 @@ func applyProfile(profile *Profile, path string) error {
 	return nil
 }
 
-// writeSpriteDoc は sprite.json を Python の json.dump(indent=2) と同じ字面で書く。
+// writeSpriteDoc は sprite.json を字下げ 2 で書く。
 func writeSpriteDoc(path, id, note string, palette, legend *OMap[string, string],
 	sprites *OMap[string, *spriteEntry]) error {
 	var b strings.Builder

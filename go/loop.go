@@ -1,6 +1,6 @@
 package main
 
-// loop — ループ GIF の継ぎ目を機械で確かめる (bin/lint-loop.py と同じ出力)。
+// loop — ループ GIF の継ぎ目を機械で確かめる。
 // 見るのは 1 つだけ: 最終コマ → 先頭コマの差分画素率が、通常のコマ間から外れていないか。
 
 import (
@@ -83,7 +83,7 @@ func seamVerdict(rates []float64, seam float64) string {
 		seam*100, worst*100, formatRatio(loopRatio), ceiling*100)
 }
 
-// formatRatio は Python の f-string が float をそのまま埋める形にそろえる。
+// formatRatio は小数を余計な 0 を付けずに書く。
 func formatRatio(v float64) string {
 	return strconv.FormatFloat(v, 'g', -1, 64)
 }
@@ -195,7 +195,7 @@ func walkFrames(dir string, found *[]string) {
 	}
 }
 
-// runLoopSelfTest はこの検査自身を確かめる (Python 版の --self-test と同じ出力)。
+// runLoopSelfTest は --self-test の中身。この検査自身が当たり外れを正しく言うか確かめる。
 func runLoopSelfTest(out *strings.Builder) int {
 	var results []string
 	add := func(name string, hit bool) {

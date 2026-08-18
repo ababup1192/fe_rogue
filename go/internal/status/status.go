@@ -1,6 +1,6 @@
 package status
 
-// status — セッション開始の現状 1 画面 (bin/status.py と同じ出力)。
+// status — セッション開始の現状 1 画面。
 //
 //	fge-go status                 いまのカレントを見る
 //	fge-go status --root DIR      見に行く先を差し替える
@@ -29,11 +29,10 @@ import (
 	"github.com/ababup1192/flix_game_engine/go/internal/renderbudget"
 )
 
-// ctx は 1 回の組み立てが見る世界。root が Python 版のカレントに当たる。
+// ctx は 1 回の組み立てが見る世界。root がすべての相対パスの基準。
 type ctx struct {
 	rules *Rules
-	// root は見に行く先の絶対パス。Python の os.getcwd() と同じ字面になるよう、
-	// symlink をたどった実体の側にそろえる。
+	// root は見に行く先の絶対パス。symlink をたどった実体の側にそろえる。
 	root string
 	// now は「いま」。age と見出しの時刻がここから出る。
 	now time.Time
@@ -55,7 +54,7 @@ func (c *ctx) isFile(rel string) bool {
 
 func (c *ctx) glob(pattern string) []string { return pyGlob(c.root, pattern) }
 
-// mtime は os.path.getmtime。読めなければ ok=false（Python の OSError）。
+// mtime は最後に書かれた時刻。読めなければ ok=false。
 func (c *ctx) mtime(rel string) (float64, bool) {
 	info, err := os.Stat(c.abs(rel))
 	if err != nil {
@@ -202,13 +201,13 @@ func (c *ctx) referencePairs() []referencePair {
 }
 
 // checkReference は一致した枚数と食い違い一覧を返す。
-// err は Python の OSError に当たる（呼ぶ側はその組を飛ばす）。
+// err はファイルが読めなかったとき（呼ぶ側はその組を飛ばす）。
 func (c *ctx) checkReference(sums, gallery string) (int, []string, error) {
 	text, err := readTextPy(c.abs(sums))
 	if err != nil {
 		return 0, nil, err
 	}
-	// Python の dict は書いた順を保つので、名前の並びを別に持つ。
+	// WhyNot: map だけで持たないのは、書いた順に見ないと食い違い一覧の行順が変わるため。
 	var order []string
 	expected := map[string]string{}
 	for _, line := range pyFileLines(text) {
@@ -318,12 +317,6 @@ func sectionBudget(c *ctx, out *[]string) {
 	if engine == "" {
 		return
 	}
-	// WhyNot: Go に移した後も .py の有無を見るのは、Python 版が「engine が古くて
-	// 検査が無い」を黙って通す（fail-open）ため。判定の有無をそろえないと、
-	// 古い engine を指したゲームで片方だけが行を出す。
-	if _, err := os.Stat(filepath.Join(engine, "bin", "check-render-budget.py")); err != nil {
-		return
-	}
 	var body, errBody strings.Builder
 	code, err := renderbudget.Run(&body, &errBody, engine, []string{c.root, "--brief"})
 	if err != nil {
@@ -369,7 +362,7 @@ func sectionTickets(c *ctx, out *[]string) {
 		m, _ := c.mtime(d)
 		mtimes[d] = m
 	}
-	// reverse=True の Python の sort は同着の並びを崩さない。
+	// WhyNot: sort.Slice にしないのは、mtime が同着のとき並びが崩れるため。
 	sort.SliceStable(dirs, func(i, j int) bool { return mtimes[dirs[i]] > mtimes[dirs[j]] })
 	*out = append(*out, fmt.Sprintf("チケット 注釈 %d 件 (新しい順):", len(dirs)))
 	for i, d := range dirs {
@@ -592,7 +585,7 @@ func Run(out, errOut *strings.Builder, rulesRoot string, args []string, opts Opt
 	}
 	if len(lines) > rules.MaxLines {
 		lines = append(lines[:rules.MaxLines],
-			"  … (長すぎるので切った。python3 bin/status.py で全文)")
+			"  … (長すぎるので切った。bin/fge status で全文)")
 	}
 	out.WriteString(strings.Join(lines, "\n"))
 	out.WriteString("\n")
@@ -600,8 +593,8 @@ func Run(out, errOut *strings.Builder, rulesRoot string, args []string, opts Opt
 }
 
 // runSection は 1 つの節を走らせる。
-// WhyNot: panic を握るのは、Python 版が節ごとに try/except を張って
-// 「1 区画が転んでも残りは出す」を守っているため。ここで落とすと画面が丸ごと消える。
+// WhyNot: panic を握るのは、「1 区画が転んでも残りは出す」を守るため。
+// ここで落とすと画面が丸ごと消える。
 func runSection(c *ctx, name string, fn func(*ctx, *[]string), lines *[]string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -611,7 +604,7 @@ func runSection(c *ctx, name string, fn func(*ctx, *[]string), lines *[]string) 
 	fn(c, lines)
 }
 
-// resolveRoot は Python の os.getcwd() と同じ字面（絶対・symlink をたどった実体）にする。
+// resolveRoot は絶対・symlink をたどった実体の字面にそろえる。
 func resolveRoot(root string) string {
 	abs, err := filepath.Abs(root)
 	if err != nil {

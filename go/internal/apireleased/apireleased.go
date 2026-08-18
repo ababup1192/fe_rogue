@@ -1,7 +1,7 @@
 package apireleased
 
 // apireleased — api-digest に載っているのに、リリース済みの版には入っていない宣言を
-// 挙げるゲート (bin/check-api-released.py と同じ出力)。
+// 挙げるゲート。
 //
 //	fge-go check-api-released              未リリースの宣言を一覧する
 //	fge-go check-api-released <語>         その語に当たる宣言だけ見る
@@ -10,8 +10,8 @@ package apireleased
 // 作業ツリーの pub 宣言のうち、`v<VERSION>` のタグのソースに無い名前を挙げる。
 // タグが取れないとき（浅い clone など）は何も言わずに 0 で終わる。
 //
-// WhyNot: 宣言の抽出に flixdecl を使わないのは、Python 版がここだけ「1 行にかかる
-// 正規表現」で数えており、タグ側を `git grep` の行だけで組み直しているため。
+// WhyNot: 宣言の抽出に flixdecl を使わないのは、タグ側を `git grep` が返す行だけで
+// 組み直すため、こちら側も 1 行にかかる正規表現で数える必要があるから。
 // flixdecl（複数行の宣言まで解く）に寄せると、作業ツリー側とタグ側で拾う件数が
 // 食い違い、未リリース扱いになる名前が変わる。ファイルの並べ方だけ借りる。
 
@@ -28,7 +28,7 @@ import (
 	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
-// pySpace は Python の str の `\s` と同じ字の集合。pyNonSpace はその補集合（`\S`）。
+// pySpace は空白とみなす字の集合（Unicode の空白すべて）。pyNonSpace はその補集合。
 const (
 	pySpace    = `[\t\n\v\f\r \x{1c}-\x{1f}\x{85}\p{Z}]`
 	pyNonSpace = `[^\t\n\v\f\r \x{1c}-\x{1f}\x{85}\p{Z}]`
@@ -37,7 +37,7 @@ const (
 var (
 	versionRe = regexp.MustCompile(`(?m)^VERSION` + pySpace + `*:=` + pySpace + `*(` + pyNonSpace + `+)`)
 
-	// pub 宣言の名前だけを拾う（gen-api-digest.py と同じ範囲: def / enum / type alias / eff）。
+	// pub 宣言の名前だけを拾う（見る範囲は def / enum / type alias / eff）。
 	declBody = pySpace + `*pub` + pySpace + `+(?:def|eff|enum|type` + pySpace +
 		`+alias)` + pySpace + `+([A-Za-z_][A-Za-z0-9_]*)`
 	declRe = regexp.MustCompile(`(?m)^` + declBody)
@@ -65,8 +65,8 @@ func version(root string) (string, bool, error) {
 }
 
 // perModule は `mod <名前> {` ごとに、その中の pub 宣言の名前を返す。
-// WhyNot: mod の入れ子をたたまないのは、Python 版が re.split で平らに切っており、
-// 内側の mod の後ろに書かれた宣言は内側に属する扱いになるため。
+// WhyNot: mod の入れ子をたたまないのは、`mod ... {` の位置で平らに切るため。
+// 内側の mod の後ろに書かれた宣言は内側に属する扱いになる。
 func perModule(text string) []struct {
 	Mod   string
 	Names []string
@@ -78,7 +78,7 @@ func perModule(text string) []struct {
 	var out []entry
 	locs := modSplitRe.FindAllStringSubmatchIndex(text, -1)
 	prev := 0
-	// Python の re.split と同じ chunks（前置き, 名前, 本文, 名前, 本文, ...）を組む。
+	// chunks（前置き, 名前, 本文, 名前, 本文, ...）の形に切り分ける。
 	var chunks []string
 	for _, l := range locs {
 		chunks = append(chunks, text[prev:l[0]])
@@ -204,7 +204,7 @@ func Run(out, errOut *strings.Builder, root string, args []string, opts Options)
 		rules = loaded
 	}
 
-	// 語は 1 つ目の引数だけを見る（Python 版の sys.argv[1]）。
+	// 語は 1 つ目の引数だけを見る。
 	needle, hasNeedle := "", false
 	if len(args) > 0 {
 		needle, hasNeedle = strings.ToLower(args[0]), true

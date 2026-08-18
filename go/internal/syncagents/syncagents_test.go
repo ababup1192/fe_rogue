@@ -326,7 +326,7 @@ func TestPathHelpers(t *testing.T) {
 	if got := pyName("bin/lint-view.py"); got != "lint-view.py" {
 		t.Errorf("pyName が %s", got)
 	}
-	// WhyNot: filepath.Base と違って末尾が / でも親の名前を返す（Python の Path.name）。
+	// WhyNot: filepath.Base と違って、末尾が / でも親の名前を返す。
 	if got := pyName("bin/"); got != "bin" {
 		t.Errorf("pyName が %s", got)
 	}
@@ -347,7 +347,7 @@ func TestPathHelpers(t *testing.T) {
 	}
 }
 
-// WhyNot: 字面の比べ方にしないのは、Python の Path が要素ごとに比べるため。
+// WhyNot: 字面の比べ方にしないのは、パスの要素ごとに比べないと並びが変わるため。
 func TestMdFilesSortedLikePython(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "a/b.md", "x", 0o644)
@@ -358,5 +358,80 @@ func TestMdFilesSortedLikePython(t *testing.T) {
 	}
 	if strings.Join(files, ",") != "a/b.md,a-x/c.md" {
 		t.Errorf("並びが %v", files)
+	}
+}
+
+// copyDirs はミラー — 配り元に無い物は配り先から消える。
+func TestCopyDirsRemovesFilesGoneFromSource(t *testing.T) {
+	root := fixture(t)
+	game := t.TempDir()
+	run(t, root, "--game", game)
+	write(t, game, ".claude/skills/zzz-stale/SKILL.md", "x\n", 0o644)
+	write(t, game, ".claude/skills/alpha/stale-note.md", "x\n", 0o644)
+	out, _, _ := run(t, root, "--game", game)
+
+	for _, rel := range []string{".claude/skills/zzz-stale", ".claude/skills/alpha/stale-note.md"} {
+		if _, err := os.Stat(filepath.Join(game, filepath.FromSlash(rel))); err == nil {
+			t.Errorf("%s が消えていない", rel)
+		}
+	}
+	if !strings.Contains(out, "[sync-agents] 消しました: .claude/skills/zzz-stale (配り元にありません)\n") {
+		t.Errorf("消した物が報告に出ていない: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(game, ".claude", "skills", "alpha", "SKILL.md")); err != nil {
+		t.Error("配り元にある物まで消してしまった")
+	}
+}
+
+// ミラーにするのは copyDirs の配り先だけ。ゲームが自分で置いた物は消さない。
+func TestPruneLeavesGameOwnedFiles(t *testing.T) {
+	root := fixture(t)
+	game := t.TempDir()
+	write(t, game, "bin/my-tool.sh", "echo hi\n", 0o755)
+	write(t, game, ".claude/settings.local.json", "{}\n", 0o644)
+	run(t, root, "--game", game)
+	run(t, root, "--game", game)
+	for _, rel := range []string{"bin/my-tool.sh", ".claude/settings.local.json"} {
+		if _, err := os.Stat(filepath.Join(game, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("人のファイル %s を消してしまった", rel)
+		}
+	}
+}
+
+// 配り元が空のときは何も消さない (engine 側の取り違えでゲームを空にしないため)。
+func TestPruneSkippedWhenSourceEmpty(t *testing.T) {
+	root := fixture(t)
+	game := t.TempDir()
+	run(t, root, "--game", game)
+	src := filepath.Join(root, "agents-pack", "skills")
+	if err := os.RemoveAll(src); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run(t, root, "--game", game)
+	if _, err := os.Stat(filepath.Join(game, ".claude", "skills", "alpha", "SKILL.md")); err != nil {
+		t.Error("配り元が空なのに消してしまった")
+	}
+}
+
+// symlink は辿らない (辿ると配り先の外の木を消しに行く)。
+func TestPruneDoesNotFollowSymlinks(t *testing.T) {
+	root := fixture(t)
+	game := t.TempDir()
+	outside := t.TempDir()
+	write(t, outside, "keep.txt", "x\n", 0o644)
+	run(t, root, "--game", game)
+	link := filepath.Join(game, ".claude", "skills", "zzz-link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink を作れない環境: %v", err)
+	}
+	run(t, root, "--game", game)
+	if _, err := os.Lstat(link); err == nil {
+		t.Error("配り元に無い symlink が残っている")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep.txt")); err != nil {
+		t.Error("symlink の先の木まで消してしまった")
 	}
 }

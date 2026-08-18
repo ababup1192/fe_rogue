@@ -1,6 +1,6 @@
 package carve
 
-// bin/carve/carve.py の写し。3 面図から立体を彫り出し、3D で動かして 4 方向へ描き直す。
+// 3 面図から立体を彫り出し、3D で動かして 4 方向へ描き直す。
 //
 //	fge-go carve 三面図.png --id 名前 --size 32x48
 //
@@ -95,8 +95,8 @@ func Align(views *OMap[string, *Cells], size [2]int, rules *Rules) *OMap[string,
 
 // Carve は 3 枚のシルエットが同時に満たす所だけを残す。
 //
-// WhyNot: 背面図を読まないのは、Python 側が背面の行を組み立てた上で
-// 「消さない」と決めていて、彫る結果に効かないため。
+// WhyNot: 背面図を読まないのは、前面と側面の重なりだけで残る所が決まり、
+// 背面の行を足しても彫る結果が変わらないため。
 func Carve(front, side *Cells, size [2]int) *VoxSet {
 	height := size[1]
 	rowsFront := map[int]*PySet[int]{}
@@ -633,7 +633,7 @@ type spriteEntry struct {
 	frames           *OMap[string, []string]
 }
 
-// RunCarve は carve.py の入口。root は実行したディレクトリ。
+// RunCarve は carve の入口。root は実行したディレクトリ。
 func RunCarve(out *strings.Builder, root string, args []string, rules *Rules) (int, error) {
 	opts, err := parseArgs(args, map[string]bool{
 		"id": true, "size": true, "colors": true, "reach": true, "profile": true,

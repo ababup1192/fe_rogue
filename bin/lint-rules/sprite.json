@@ -1,5 +1,5 @@
 {
-  "note": "lint-sprite（ドット絵 *.sprite.json の画素の並び）の規約データ。source of truthは bin/lint-sprite.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go sprite）はこれを読んで動くので、規約を変えるときは bin/lint-sprite.py とこの 2 つを同時に直す。ずれると go/internal/sprite の TestRulesMatchPython が落ちる。メッセージの文面は規約データではないので Go 側（go/internal/sprite/sprite.go）にある。",
+  "note": "lint-sprite（ドット絵 *.sprite.json の画素の並び）の規約データ。この JSON が source of truth で、bin/fge sprite はこれを読んで動く。メッセージの文面は規約データではないので Go 側（go/internal/sprite/sprite.go）にある。",
   "rules": ["structure", "orphan", "connect", "palette", "jaggy", "banding", "corner", "silhouette"],
   "transparentChars": [".", " "],
   "excludedDirs": ["build", "lib", ".git", "gallery", ".devbox", "node_modules", "testdata"],

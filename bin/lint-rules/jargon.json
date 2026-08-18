@@ -1,5 +1,5 @@
 {
-  "note": "lint-jargon（独自の比喩語を止める検査）が使う 33 語。Go 版（go/internal/jargon）はこの JSON だけを読む。bin/lint-jargon.py は今も自分の WORDS を読んでいて、この JSON はそこに書いてある語を一字一句そのまま写した物。ずれていないかは go/internal/jargon/rules_test.go が機械で検査する。pattern が null の語は見つけ方が「語をそのまま探す」（正規表現は re.escape(word) と同じ）。stage は error（コミットを止める）/ warn（知らせるだけ）。Go の正規表現には後読みが無いので、(?<![一-龥]) と (?!…) は go/internal/jargon/rules.go がゆるく当ててから前後 1 文字を見て捨てる形に読み替える。",
+  "note": "lint-jargon（独自の比喩語を止める検査）が使う 33 語。この JSON が source of truth で、bin/fge jargon はこれだけを読む。pattern が null の語は見つけ方が「語をそのまま探す」（正規表現に食わせる前に記号を打ち消した物と同じ）。stage は error（コミットを止める）/ warn（知らせるだけ）。Go の正規表現には後読みが無いので、(?<![一-龥]) と (?!…) は go/internal/jargon/rules.go がゆるく当ててから前後 1 文字を見て捨てる形に読み替える。",
   "words": [
     { "word": "関所", "pattern": null, "better": "ゲート", "english": "gate", "stage": "error" },
     { "word": "祝福", "pattern": null, "better": "期待値の更新 / 正解として登録する", "english": "bless (approve as expected)", "stage": "error" },

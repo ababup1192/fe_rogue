@@ -1,0 +1,2 @@
+# エラーブロックが 1 つも無い失敗出力は要約せず素通し (未知の形式を黙って削らない)。
+bin/fge explain-error --status 1 --log .test-logs/check.log < testdata/lint/explain-error/unknown-passthrough/input.log

@@ -3,14 +3,14 @@
 ## 何が嬉しいか
 
 `flix check` は毎回 JVM とコンパイラをゼロから立ち上げるので、小さなパッケージでも
-5〜10 秒かかる。`bin/checkd` はパッケージごとに flix repl を裏で 1 つだけ温めて持ち、
-2 回目からの check を **0.3〜0.5 秒**で返す。
+5〜10 秒かかる。`bin/fge checkd` はパッケージごとに flix repl を裏で 1 つだけ温めて持ち、
+2 回目からの check を **0.5 秒前後**で返す。
 
 ```
-bin/checkd [パッケージdir]     # check する (省略時はカレント)。見た目と exit code は素の check と同じ
-bin/checkd --test [dir]        # test する (check と同じ常駐 repl を使う)
-bin/checkd --stop [dir]        # そのパッケージの常駐を止める
-bin/checkd --stop-all          # 常駐を全部止める (make checkd-stop と同じ)
+bin/fge checkd [パッケージdir]  # check する (省略時はカレント)。見た目と exit code は素の check と同じ
+bin/fge checkd --test [dir]     # test する (check と同じ常駐 repl を使う)
+bin/fge checkd --stop [dir]     # そのパッケージの常駐を止める
+bin/fge checkd --stop-all       # 常駐を全部止める (make checkd-stop と同じ)
 ```
 
 examples の `make check` / `make test` は自動でこれを通る。**素の経路に戻したい時は
@@ -19,7 +19,7 @@ examples の `make check` / `make test` は自動でこれを通る。**素の�
 ## どう動くか
 
 ```
-make check ──> bin/checkd (クライアント)
+make check ──> bin/fge checkd (クライアント)
                   │ TCP 127.0.0.1    常駐が無ければ自動で立てる。実ポートは
                   ▼                  ~/.cache/flix-checkd/<ハッシュ>/port に書いてある。
                   │                  会話に失敗したら素の bin/flix check に落ちる
@@ -41,7 +41,7 @@ check と test は 1 本の repl が両方受ける。温まった repl の `:te
 
 注意が 2 つ:
 
-- `:test` は 1 回ごとにメモリが数百 MB 増える (check より漏れが速い)。4GB の
+- `:test` は 1 回ごとにメモリが数百 MB 増える (check より漏れが速い)。メモリの
   上限に当たったら repl をその場で使い捨てるので、直後の 1 回だけ遅くなるのは仕様
 - repl には常に `-Djava.awt.headless=true` を付けて起動する。GLFW と AWT の初期化が
   ぶつかるとテストが固まるパッケージがあるため。checkd は run を
@@ -52,7 +52,7 @@ check と test は 1 本の repl が両方受ける。温まった repl の `:te
 ## Claude Code から自動で走る (Stop / SubagentStop hook)
 
 保存のたびではなく、**会話が止まる直前**（`Stop` / `SubagentStop`）に
-`.claude/hooks/after-flix-work.py` が走り、作業ツリーで変わった `.flix` を
+`bin/fge hook-flix-work` が走り、作業ツリーで変わった `.flix` を
 持つパッケージだけを検査する。かつては `PostToolUse`（保存のたび）で
 走らせていたが、サブエージェントを並列に走らせると保存が秒間何度も届き、
 常駐 (JVM) が増殖して機械が重くなった (2026-08-13 実測: load 183・空きメモリ
@@ -64,7 +64,7 @@ check と test は 1 本の repl が両方受ける。温まった repl の `:te
   エージェントが並行で走ると、作業ツリーには他セッションが編集中の（赤くて
   当然の）パッケージも混ざる。それを拾って無関係な赤で他人のターンを止めない
   よう、「触った」の印を PostToolUse（保存のたび、検査はせず印を置くだけの
-  軽い hook = `.claude/hooks/after-flix-touch.py`）が
+  軽い hook = `bin/fge hook-flix-touch`）が
   `~/.cache/flix-checkd/<パッケージのハッシュ>/touched-<session_id のハッシュ>`
   に残す。印の無いパッケージは検査もブロックもしない。**印を置くついでに、
   そのパッケージの常駐が居なければ起動だけ頼む**（CHECK は送らない）ので、
@@ -82,15 +82,21 @@ NG が出れば `decision:block`（exit 2）で Claude に差し戻し、緑と�
 - ブロックした後、同じ内容のまま再び Stop が来ても、差分ハッシュが変わって
   いなければ検査済み扱いで飛ばす
 
-常駐の起動予約には歯止めがある（`too_busy()`）: 同じパッケージへは 90 秒に
-1 回・load 平均が CPU 数の 2 倍を超えたら見送る・生きている常駐は
-**3 個まで**（`CHECKD_MAX_DAEMONS` で変えられる）。Flix を並行で触る
-エージェントが 3 人までなら全員が温かい repl を持てて、それ以上は
-素の CLI に落ちる（遅いだけで結果は同じ）。
+常駐の起動予約には歯止めがある（`tooBusy()`）: 同じパッケージへは 90 秒に
+1 回・load 平均が CPU 数を超えたら見送る・生きている常駐は機械の物理メモリから
+決まる数まで（16GB なら **3 個**。`CHECKD_MAX_DAEMONS` で変えられる）。
+Flix を並行で触るエージェントがその数までなら全員が温かい repl を持てて、
+それ以上は素の CLI に落ちる（遅いだけで結果は同じ）。
 
-常駐との通信そのもの（`find_pkg` / `ask` / `state_dir` / `reserve_daemon` 等）は
-`.claude/hooks/after-flix-edit.py` にまとまっていて、`after-flix-work.py` が
-import して使う（settings.json には直接登録されていない）。
+**数の上限の式は 1 か所**（`bin/lint-rules/hooks.json` の `checkd.maxDaemons`）に
+あり、起動予約の歯止めも常駐 1 本のメモリ予算もそこから引く。判定値は全部この
+JSON が source of truth で、読めなければ既定値へ倒さず止まる。
+
+中身は 2 つに分かれる。常駐そのもの（repl の起動・温め・使い捨て・TCP の口）は
+`go/internal/checkd/`。常駐との通信（パッケージの根探し・PING / CHECK・起動予約）は
+`go/internal/hooks/checkd.go` にまとまっていて、どのフックもここを通る。
+1 ファイル分のペイロードを手で流し込んで返事を確かめる口は
+`bin/fge hook-flix-edit`（settings.json には配線していない）。
 
 ## 常駐は勝手に片づく
 
@@ -100,7 +106,15 @@ import して使う（settings.json には直接登録されていない）。
   check / test しなければ自殺する
 - `flix.toml` や `lib/` の依存の実体 (symlink の先も見る) が変わったら、古い依存を
   握り続けないよう repl を作り直す (`make sync-engine` 後の check も安全)
-- メモリが 4GB を超えるか check / test 合計 200 回で repl を使い捨てて立て直す
+- repl 1 本のメモリが上限（機械の物理メモリの 33% を常駐の数で割った値。16GB なら
+  約 1.8GB）を超えるか、check / test 合計 200 回で使い捨てて立て直す
+  （`CHECKD_RSS_MB` で変えられる）
+- その上限に収まるよう、repl の JVM には `-Xmx`（上限からヒープの外に要る分を引いた
+  値）で蓋をして起こす。蓋が無いと JVM は物理メモリの 1/4 まで自由に太り、1 回検査
+  するたびに上限を超えて捨てられる = 常駐が 1 度も効かない。上限を上げても太る先が
+  上がるだけなので、上限の側でなく repl の側に蓋をしている。
+  蓋が足りずに JVM が `OutOfMemoryError` を出したときは、赤として持ち帰らず素の
+  `flix check` に投げ直す（ソースが悪いわけではないので、偽の赤を出さない）
 
 ## 困ったら
 

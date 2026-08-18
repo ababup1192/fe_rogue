@@ -1,0 +1,4 @@
+# 下限を満たす View では何も言わない (exit 0)。
+bin/fge hook-art-edit <<'JSON'
+{"tool_input":{"file_path":"testdata/lint/hooks/art-edit-quiet/View.flix"}}
+JSON

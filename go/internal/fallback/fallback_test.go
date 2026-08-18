@@ -118,7 +118,7 @@ func TestCommentBugIsNotACall(t *testing.T) {
 	}
 }
 
-// WhyNot: Go の \b をそのまま使うとここで Python と判定が分かれる (Go の語は ASCII 限定)。
+// WhyNot: Go の \b をそのまま使うと `あbug!` を拾ってしまう (Go の語は ASCII 限定)。
 func TestUnicodeWordBoundary(t *testing.T) {
 	cases := map[string]int{
 		"    あbug!(1)":  0,
@@ -149,7 +149,7 @@ func TestNestedDefTracksEnclosingFunction(t *testing.T) {
 	}
 }
 
-// WhyNot: バイトで切ると日本語の抜粋が Python と 1 バイトも合わない。
+// WhyNot: バイトで切ると日本語の抜粋が字の途中で切れて壊れる。
 func TestExcerptIsCutByRunes(t *testing.T) {
 	src := "    pub def f(): Unit = bug!(\"" + strings.Repeat("あ", 100) + "\")"
 	hits := scanFuncs(t, src)

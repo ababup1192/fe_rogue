@@ -1,7 +1,6 @@
 package fallback
 
-// fallback — 読み込みの途中で `bug!` して呼ぶ側から選ぶ機会を奪う書き方を止める検査
-// (bin/lint-fallback.py と同じ出力)。
+// fallback — 読み込みの途中で `bug!` して呼ぶ側から選ぶ機会を奪う書き方を止める検査。
 //
 //	fge-go fallback            ステージした差分の + 行だけ (コミット時と同じ)
 //	fge-go fallback --all      対象パッケージの src 配下ぜんぶ
@@ -41,8 +40,9 @@ func isPyWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
-// pyIsSpace は Python の str.isspace() と同じ判定。
-// WhyNot: unicode.IsSpace だけにしないのは、Python が U+001C〜U+001F も空白と数えるため。
+// pyIsSpace は空白か（Unicode の空白に U+001C〜U+001F を足した範囲）。
+// WhyNot: unicode.IsSpace だけにしないのは、その 4 文字が抜けて抜粋の前後が
+// そろわなくなるため。
 func pyIsSpace(r rune) bool {
 	return unicode.IsSpace(r) || (r >= 0x1c && r <= 0x1f)
 }
@@ -245,7 +245,7 @@ func (r *Rules) allPaths(root string) ([]string, error) {
 	return paths, nil
 }
 
-// pyAtoi は Python の int() と同じく桁あふれしない…ぶんを飽和で受ける。
+// pyAtoi は数字を読む。桁あふれは int の最大値で受ける。
 // WhyNot: あふれたら 0 に倒さないのは、行番号が小さい値へ化けて的外れな行を
 // 違反として数えるため。届かない大きさへ寄せて「当たらない」側で外す。
 func pyAtoi(s string) int {

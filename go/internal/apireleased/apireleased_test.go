@@ -39,7 +39,7 @@ func TestPerModuleCollectsDeclarations(t *testing.T) {
 	}
 }
 
-// Python 版は re.split で平らに切るので、内側の mod の後ろに書いた宣言は内側に属する。
+// mod は平らに切るので、内側の mod の後ろに書いた宣言は内側に属する。
 func TestPerModuleSplitsFlatOnNestedMod(t *testing.T) {
 	got := perModule("mod Outer {\nmod Inner {\n    pub def a(): Unit = ()\n}\n    pub def b(): Unit = ()\n}\n")
 	if len(got) != 2 || got[0].Mod != "Outer" || got[1].Mod != "Inner" {

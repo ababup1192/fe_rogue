@@ -1,0 +1,15 @@
+-- Type Error [E5252] ---- src/Foo.flix
+
+>> Unable to unify the types 'Int32' and 'Int64'.
+
+12 |     let x = foo(1i64);
+                     ^^^^
+
+-- Resolution Error [E3138] ---- test/TestBar.flix
+
+>> Undefined name 'Bar.baz'.
+
+40 |   Bar.baz(1)
+       ^^^^^^^
+
+Compilation failed with 2 error(s).

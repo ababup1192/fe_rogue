@@ -1,6 +1,6 @@
 package carve
 
-// bin/carve/adopt.py の写し。外から来た絵を取り込んで 4 方向 × 歩き 3 コマに仕立てる。
+// 外から来た絵を取り込んで 4 方向 × 歩き 3 コマに仕立てる。
 //
 //	fge-go adopt 三面図.png --id mechanic
 
@@ -605,7 +605,7 @@ func parseSize(s string) ([2]int, error) {
 	return [2]int{w, h}, nil
 }
 
-// RunAdopt は adopt.py の入口。root は Python 側の os.path.dirname(HERE) と同じ場所。
+// RunAdopt は adopt の入口。root は assets / gallery を置く根。
 func RunAdopt(out *strings.Builder, root string, args []string, rules *Rules) (int, error) {
 	opts, err := parseArgs(args, map[string]bool{
 		"id": true, "size": true, "order": true, "swing": true, "colors": true,

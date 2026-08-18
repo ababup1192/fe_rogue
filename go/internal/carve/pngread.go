@@ -1,6 +1,6 @@
 package carve
 
-// bin/carve/png_read.py の写し。PNG を読んで、色票つき (color type 3) や
+// PNG を読んで、色票つき (color type 3) や
 // RGB (2) も RGBA として取り出せる形にする。
 //
 //	fge-go carve-pngread 絵.png     # 大きさ・形式・色数を出す
@@ -44,7 +44,7 @@ func OpenImage(path string) (*Image, error) {
 	return &Image{im: im}, nil
 }
 
-// RunPNGRead は png_read.py の入口。
+// RunPNGRead は carve-pngread の入口。
 func RunPNGRead(out *strings.Builder, args []string) (int, error) {
 	for _, path := range args {
 		img, err := OpenImage(path)

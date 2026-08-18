@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// 何を見るか: bin/lint-style.py と同じ判定・同じ字面・同じ終了コードを出すこと。
+// 何を見るか: 画風の軸の判定・出す字面・終了コード。
 
 func run(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
@@ -68,7 +68,7 @@ func TestUnknownOption(t *testing.T) {
 }
 
 func TestHandValueAtTailIsUnknownOption(t *testing.T) {
-	// 値の無い --hand は「知らないオプション」に落ちる (Python と同じ)。
+	// 値の無い --hand は「知らないオプション」に落ちる。
 	out, _, code := run(t, "--hand")
 	if code != 1 || out != "知らないオプション: --hand\n" {
 		t.Errorf("出力が %q / 終了コード %d", out, code)

@@ -3,7 +3,6 @@ package flixdecl
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -79,7 +78,7 @@ func TestEffOpsAreListed(t *testing.T) {
 }
 
 // TestEffEndsAtBraceInsideString は eff の範囲だけ文字列リテラルの中の括弧も数える
-// ことを縛る (bin/gen-api-digest.py の extract_eff_block がそう書かれている)。
+// ことを縛る。
 func TestEffEndsAtBraceInsideString(t *testing.T) {
 	src := "mod M {\n    pub eff E {\n        def a(): Unit\n        def brace(): String = \"}\"\n        def c(): Unit\n    }\n}\n"
 	got := declsOf(t, src, "M")
@@ -150,29 +149,6 @@ func TestCollapseHandlesFullWidthSpace(t *testing.T) {
 func TestTruncateCountsRunes(t *testing.T) {
 	if got := Truncate("あいうえお", 3); got != "あいう" {
 		t.Fatalf("文字数でなくバイト数で切っている: %q", got)
-	}
-}
-
-// TestPackagesMatchPython は PACKAGES が bin/gen-api-digest.py とずれていないかを見る。
-// WhyNot: 目視の約束にしないのは、Python 側だけ直したとき Go 版が古い対象のまま
-// 緑を出すため。
-func TestPackagesMatchPython(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(), "bin", "gen-api-digest.py"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	block := regexp.MustCompile(`(?s)PACKAGES = \[(.*?)\n\]`).FindStringSubmatch(string(data))
-	if block == nil {
-		t.Fatal("bin/gen-api-digest.py に PACKAGES が無い")
-	}
-	pairs := regexp.MustCompile(`\("([^"]*)", "([^"]*)"\)`).FindAllStringSubmatch(block[1], -1)
-	if len(pairs) != len(Packages) {
-		t.Fatalf("パッケージの数が %d (Python は %d)", len(Packages), len(pairs))
-	}
-	for i, p := range pairs {
-		if Packages[i].Name != p[1] || Packages[i].Root != p[2] {
-			t.Errorf("%d 番目が %v (Python は %q %q)", i, Packages[i], p[1], p[2])
-		}
 	}
 }
 

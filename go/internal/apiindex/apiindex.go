@@ -1,7 +1,7 @@
 package apiindex
 
 // apiindex — pub def を持つモジュールが索引 (docs/*-module-index.md) に載っているかを
-// 検査するゲート (bin/check-api-index.py と同じ出力)。
+// 検査するゲート。
 //
 //	fge-go check-api-index              リポジトリ全体を検査
 //	fge-go check-api-index --root DIR   リポジトリの根を差し替える
@@ -11,9 +11,9 @@ package apiindex
 //     モジュール名で載っているか
 //  2. 索引が「Mod.関数」の形で挙げている関数が、ソースに pub def として実在するか
 //
-// WhyNot: 宣言の抽出に flixdecl を使わないのは、Python 版がここだけ独自の正規表現
-// （`^mod ` の 1 行と `^\s*pub def ` の 1 行）で数えており、複数行の宣言も eff の op も
-// 見ないため。flixdecl に寄せると拾う件数が変わり、「pub def N 本」の数字がずれる。
+// WhyNot: 宣言の抽出に flixdecl を使わないのは、ここが数えるのは 1 行で書かれた
+// `^mod ` と `^\s*pub def ` だけで、複数行にまたがる宣言も eff の op も数に入れないため。
+// flixdecl に寄せると拾う件数が変わり、「pub def N 本」の数字がずれる。
 // ファイルの並べ方だけは flixdecl.FlixFiles を借りる。
 
 import (
@@ -30,7 +30,7 @@ import (
 	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
-// pySpace は Python の str の `\s` と同じ字の集合。
+// pySpace は空白とみなす字の集合（Unicode の空白すべて）。
 // WhyNot: Go の `\s` を使わないのは ASCII だけしか見ないため（全角空白で切れ方が変わる）。
 const pySpace = `[\t\n\v\f\r \x{1c}-\x{1f}\x{85}\p{Z}]`
 
@@ -42,7 +42,7 @@ var (
 	docFuncBodyRe = regexp.MustCompile(`[A-Z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*`)
 )
 
-// isWordRune は Python の `\w` と同じ判定（Unicode の字・数字・アンダースコア）。
+// isWordRune は語を作る文字かを返す（Unicode の字・数字・アンダースコア）。
 func isWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
@@ -64,7 +64,7 @@ func isWordAt(s string, i int, before bool) bool {
 	return isWordRune(r)
 }
 
-// wordIn は name が語として独立して text に出るかを見る（Python の `\bname\b` の検索）。
+// wordIn は name が語として独立して text に出るかを見る（前後が語の文字でない位置）。
 func wordIn(name, text string) bool {
 	for i := 0; ; {
 		j := strings.Index(text[i:], name)
@@ -86,11 +86,11 @@ type funcRef struct {
 	Func string
 }
 
-// docFuncRefs は Python の DOC_FUNC_REF.findall と同じ並び・同じ件数を返す。
+// docFuncRefs は索引に出てくる「Mod.func」を、書かれた順に拾う。
 //
 // WhyNot: `\b(...)\.(...)\b` をそのまま Go の正規表現に渡さないのは、Go の `\b` が
-// ASCII しか語とみなさず、日本語に挟まれた位置で Python と判定が食い違うため。
-// 境界の判定だけを自分で行い、外れた所は 1 文字進めて Python の走査順に合わせる。
+// ASCII しか語とみなさず、日本語に挟まれた「Mod.func」を語の途中とみなして落とすため。
+// 境界の判定だけを自分で行い、外れた所は 1 文字進めて探し直す。
 func docFuncRefs(doc string) []funcRef {
 	var out []funcRef
 	for pos := 0; pos <= len(doc); {
@@ -99,7 +99,7 @@ func docFuncRefs(doc string) []funcRef {
 			break
 		}
 		start, end := pos+loc[0], pos+loc[1]
-		// 前後が語の文字なら Python 側は `\b` で落ちる。落ちた分は 1 バイト進めて探し直す。
+		// 前後が語の文字なら語の途中なので採らない。1 バイト進めて探し直す。
 		if isWordAt(doc, start, true) || isWordAt(doc, end, false) {
 			pos = start + 1
 			continue
@@ -222,12 +222,12 @@ func Run(out, errOut *strings.Builder, root string, args []string, opts Options)
 		}
 		rules = loaded
 	}
-	// WhyNot: 引数を弾かないのは、Python 版が引数を一切見ないため（余分な語を渡しても
+	// WhyNot: 引数を弾かないのは、この検査に引数が無いため（余分な語を渡しても
 	// 通常の検査が走る）。
 	_ = args
 
-	// WhyNot: 絶対パスに直すのは、SKIP_DIRS の判定が「親フォルダの名前ぜんぶ」を見る
-	// Python 版と同じ範囲を見るため（相対のままだと根より上の名前が見えない）。
+	// WhyNot: 絶対パスに直すのは、SKIP_DIRS の判定が「親フォルダの名前ぜんぶ」を
+	// 見るため（相対のままだと根より上の名前が見えない）。
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return 2, fmt.Errorf("根のパスを決められません: %v", err)
@@ -305,7 +305,7 @@ func Run(out, errOut *strings.Builder, root string, args []string, opts Options)
 	return 1, nil
 }
 
-// uniqueSorted は Python の sorted(set(...)) と同じ並び（モジュール名・関数名の順）。
+// uniqueSorted は重複を落として並べ替える（モジュール名・関数名の順）。
 func uniqueSorted(refs []funcRef) []funcRef {
 	seen := map[funcRef]bool{}
 	var out []funcRef

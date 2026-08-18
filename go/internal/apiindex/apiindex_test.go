@@ -1,6 +1,6 @@
 package apiindex
 
-// What: Python 版と判定が食い違いやすい所（語の境界・コメント行・legacy 配下・
+// What: 判定を間違えやすい所（語の境界・コメント行・legacy 配下・
 // ファイル名参照）と、出す口（stdout / stderr）と終了コードを縛る。
 
 import (
@@ -22,7 +22,7 @@ func TestWordInRejectsPartOfLongerName(t *testing.T) {
 	}
 }
 
-// Go の `\b` は ASCII しか語とみなさないので、日本語に挟まれた位置で Python と食い違う。
+// Go の `\b` は ASCII しか語とみなさないので、日本語に挟まれた名前を語として拾ってしまう。
 func TestWordInRejectsNameGluedToJapanese(t *testing.T) {
 	if wordIn("App", "モジュールApp配下") {
 		t.Error("前後が日本語の App を語として拾っている（Python は拾わない）")
@@ -36,7 +36,7 @@ func TestDocFuncRefsFindsPair(t *testing.T) {
 	}
 }
 
-// 末尾の `\b` は `_` の手前で落ちる（Python の挙動）。
+// `_` は語の文字なので、後ろに続く名前は参照として拾わない。
 func TestDocFuncRefsRejectsUnderscoreTail(t *testing.T) {
 	if refs := docFuncRefs("Board.make_thing"); len(refs) != 0 {
 		t.Errorf("拾ってはいけない参照を拾った: %v", refs)

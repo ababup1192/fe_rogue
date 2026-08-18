@@ -1,0 +1,6 @@
+-- Weird Error [E0001] ---- src/Odd.flix
+
+>> Something nobody has a tip for.
+
+7 |  odd
+     ^^^

@@ -44,7 +44,7 @@ func cmdF32(out, errOut *strings.Builder, rest []string, asJSON bool) int {
 }
 
 // declRootFlag は `--root DIR` を取り出す。無ければ既定の根。
-// WhyNot: 位置引数で受けないのは、Python 版が引数を全部ファイル名として扱うため。
+// WhyNot: 位置引数で受けないのは、位置引数を全部ファイル名として扱うため。
 // 見に行く先を差し替える口が無いと、見本 (testdata/lint/) から検査を呼べない。
 func declRootFlag(args []string) (string, []string) {
 	root, rest, ok := declValueFlag(args, "--root")

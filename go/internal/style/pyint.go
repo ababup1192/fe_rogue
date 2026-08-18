@@ -1,9 +1,9 @@
 package style
 
-// Python の int(文字列) の受け取り方を写す。
-// WhyNot: strconv.Atoi をそのまま使わないのは、Python が前後の空白と桁区切りの
-// アンダースコア ("1_0" = 10) を受け取り、Go が受け取らないため。受け取る形が
-// 違うと --unit の読み違いだけで出力がまるごとずれる。
+// コマンドラインの数値の受け取り方。前後の空白と桁区切りのアンダースコア
+// ("1_0" = 10) も受け取る。
+// WhyNot: strconv.Atoi をそのまま使わないのは、この 2 つを弾いてしまい、
+// 打ち間違いでない --unit まで「知らないオプション」に落ちるため。
 
 import (
 	"strconv"
@@ -11,7 +11,7 @@ import (
 	"unicode"
 )
 
-// pyInt は Python の int() と同じ物を受け取る。受け取れなければ false。
+// pyInt は 10 進の整数を読む。読めなければ false。
 func pyInt(s string) (int, bool) {
 	t := strings.TrimFunc(s, unicode.IsSpace)
 	sign := 1

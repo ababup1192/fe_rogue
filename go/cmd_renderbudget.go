@@ -19,7 +19,7 @@ type renderBudgetResult struct {
 
 func cmdRenderBudget(out, errOut *strings.Builder, rest []string, asJSON bool) int {
 	// --root は規約データ (bin/lint-rules/) を読む先。裁く相手のゲームの根は
-	// Python 版と同じく第 1 引数なので、この 2 つを混ぜない。
+	// 第 1 引数なので、この 2 つを混ぜない。
 	rulesRoot, rest := declRootFlag(rest)
 	var body, errBody strings.Builder
 	code, err := renderbudget.Run(&body, &errBody, rulesRoot, dropJSONFlag(rest))

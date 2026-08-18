@@ -1,6 +1,6 @@
 package uioverflow
 
-// この検査自身の検査 (bin/lint-ui-overflow.py の _self_test と同じ出力)。
+// この検査自身の検査。判定 1 つずつに見本を当て、出るはずの物が出るかを見る。
 
 import (
 	"fmt"

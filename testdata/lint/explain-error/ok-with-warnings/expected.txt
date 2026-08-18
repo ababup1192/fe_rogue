@@ -1,0 +1,2 @@
+[check] OK (警告 1 件 — 全文は .test-logs/check.log)
+[exit=0]

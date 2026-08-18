@@ -1,15 +1,11 @@
 package status
 
-// 規約データが Python 版 (bin/status.py) と同じ値かを見る。
-// 片方だけ直すとここで落ちる。
+// 規約データ (JSON) と実装が同じ節を持つかを見る。片方だけ直すとここで落ちる。
 
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -20,83 +16,6 @@ func repoRoot(t *testing.T) string {
 		t.Fatalf("リポジトリの根が分かりません: %v", err)
 	}
 	return root
-}
-
-func loadPython(t *testing.T) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "bin", "status.py"))
-	if err != nil {
-		t.Fatalf("bin/status.py を読めません: %v", err)
-	}
-	return string(data)
-}
-
-// pyInt は Python 側の 1 つの数を正規表現で抜く。
-func pyInt(t *testing.T, src, pattern string) int {
-	t.Helper()
-	m := regexp.MustCompile(pattern).FindStringSubmatch(src)
-	if m == nil {
-		t.Fatalf("bin/status.py に %s が見当たりません", pattern)
-	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil {
-		t.Fatalf("%s の数を読めません: %v", pattern, err)
-	}
-	return n
-}
-
-func TestRulesMatchPython(t *testing.T) {
-	rules, err := LoadRules(repoRoot(t))
-	if err != nil {
-		t.Fatalf("規約データを読めません: %v", err)
-	}
-	src := loadPython(t)
-
-	cases := []struct {
-		name    string
-		got     int
-		pattern string
-	}{
-		{"maxLines", rules.MaxLines, `MAX_LINES = (\d+)`},
-		{"buildWarnEntries", rules.BuildWarnEntries, `BUILD_WARN_ENTRIES = (\d+)`},
-		{"ageJustNowSeconds", int(rules.AgeJustNowSeconds), `if sec < (\d+):\n        return "たった今"`},
-		{"ageMinuteSeconds", int(rules.AgeMinuteSeconds), `if sec < (\d+):\n        return "%d分前"`},
-		{"ageHourSeconds", int(rules.AgeHourSeconds), `if sec < (\d+):\n        return "%d時間前"`},
-		{"gitLogCount", rules.GitLogCount, `git\("log", "--oneline", "-(\d+)"\)`},
-		{"greensShown", rules.GreensShown, `greens\[:(\d+)\]`},
-		{"referenceBadShown", rules.ReferenceBadShown, `bad\[:(\d+)\]`},
-		{"budgetDetailLines", rules.BudgetDetailLines, `startswith\("  "\)\]\[:(\d+)\]`},
-		{"ticketsShown", rules.TicketsShown, `dirs\[:(\d+)\]`},
-		{"ticketSummaryWidth", rules.TicketSummaryWidth, `summary\[:(\d+)\]`},
-		{"notesShown", rules.NotesShown, `shown >= (\d+)`},
-		{"notesWidth", rules.NotesWidth, `out\.append\("  " \+ s\[:(\d+)\]\)`},
-	}
-	for _, c := range cases {
-		if want := pyInt(t, src, c.pattern); c.got != want {
-			t.Errorf("%s が Python 版とずれています: Go %d / Python %d", c.name, c.got, want)
-		}
-	}
-}
-
-func TestSectionOrderMatchesPython(t *testing.T) {
-	rules, err := LoadRules(repoRoot(t))
-	if err != nil {
-		t.Fatalf("規約データを読めません: %v", err)
-	}
-	src := loadPython(t)
-	m := regexp.MustCompile(`(?s)for section in \((.*?)\):`).FindStringSubmatch(src)
-	if m == nil {
-		t.Fatal("bin/status.py の main() に節の並びが見当たりません")
-	}
-	var want []string
-	for _, part := range strings.Split(m[1], ",") {
-		if name := strings.TrimSpace(part); name != "" {
-			want = append(want, name)
-		}
-	}
-	if strings.Join(rules.Sections, ",") != strings.Join(want, ",") {
-		t.Errorf("節の並びが Python 版とずれています:\n  Go     %v\n  Python %v", rules.Sections, want)
-	}
 }
 
 func TestSectionNamesAreAllKnown(t *testing.T) {
@@ -110,35 +29,6 @@ func TestSectionNamesAreAllKnown(t *testing.T) {
 	for _, name := range rules.Sections {
 		if _, ok := sectionsByName[name]; !ok {
 			t.Errorf("実装に無い節が規約データにあります: %s", name)
-		}
-	}
-}
-
-func TestTestLogsDirMatchesPython(t *testing.T) {
-	rules, err := LoadRules(repoRoot(t))
-	if err != nil {
-		t.Fatalf("規約データを読めません: %v", err)
-	}
-	src := loadPython(t)
-	if !strings.Contains(src, `glob.glob(os.path.join("`+rules.TestLogsDir+`", "*.log"))`) {
-		t.Errorf("testLogsDir が Python 版とずれています: %s", rules.TestLogsDir)
-	}
-}
-
-func TestBuildDirsMatchPython(t *testing.T) {
-	rules, err := LoadRules(repoRoot(t))
-	if err != nil {
-		t.Fatalf("規約データを読めません: %v", err)
-	}
-	src := loadPython(t)
-	for _, g := range rules.BuildGlobs {
-		if !strings.Contains(src, `glob.glob("`+g+`")`) {
-			t.Errorf("buildGlobs に Python 版に無い物があります: %s", g)
-		}
-	}
-	for _, d := range rules.BuildDirs {
-		if !strings.Contains(src, `"`+d+`"`) {
-			t.Errorf("buildDirs に Python 版に無い物があります: %s", d)
 		}
 	}
 }

@@ -1,9 +1,10 @@
 package syncagents
 
-// Python の json モジュールと同じ字面のエラーを出す JSON 読みと、Python の repr。
+// manifest を読む JSON パーサと、値を画面へ出すときの字面づくり。
 //
-// bin/sync-agents.py は manifest が壊れていたときに str(e) をそのまま画面へ出すので、
-// エラーの文面（`Expecting ',' delimiter: line 1 column 8 (char 7)` など）も出力の一部になる。
+// WhyNot: encoding/json に任せないのは、manifest が壊れていたときの文面
+// （`Expecting ',' delimiter: line 1 column 8 (char 7)` など）と、値をそのまま出す
+// ときの字面（None / True / '...' の引用符）が、この道具の出力として決まっているため。
 
 import (
 	"fmt"
@@ -15,19 +16,19 @@ import (
 	"unicode/utf8"
 )
 
-// pyValue は Python 側の値。nil=None・bool・pyInt・pyFloat・string・pyList・*pyDict。
+// pyValue は manifest から読んだ値。nil・bool・pyInt・pyFloat・string・pyList・*pyDict のどれか。
 type pyValue interface{}
 
-// pyInt は Python の int。桁数に上限が無いので 10 進の字面のまま持つ。
+// pyInt は整数。桁数に上限を設けないので 10 進の字面のまま持つ。
 type pyInt string
 
-// pyFloat は Python の float。
+// pyFloat は小数。
 type pyFloat float64
 
-// pyList は Python の list。
+// pyList は配列。
 type pyList []pyValue
 
-// pyDict は Python の dict。入れた順を覚える（repr の並びが出力に出る）。
+// pyDict はオブジェクト。入れた順を覚える（画面へ出すときの並びになる）。
 type pyDict struct {
 	keys []string
 	vals map[string]pyValue
@@ -35,7 +36,7 @@ type pyDict struct {
 
 func newPyDict() *pyDict { return &pyDict{vals: map[string]pyValue{}} }
 
-// set は Python の d[k] = v。既にある鍵は並びを変えずに値だけ差し替える。
+// set は鍵へ値を入れる。既にある鍵は並びを変えずに値だけ差し替える。
 func (d *pyDict) set(k string, v pyValue) {
 	if _, ok := d.vals[k]; !ok {
 		d.keys = append(d.keys, k)
@@ -53,18 +54,18 @@ func (d *pyDict) has(k string) bool {
 	return ok
 }
 
-// pyErr は Python 側が str(e) として出す文字列を持つ。
+// pyErr は画面へそのまま出す文面を持つエラー。
 type pyErr struct{ text string }
 
 func (e *pyErr) Error() string { return e.text }
 
-// jsonWS は Python の json が読み飛ばす空白（この 4 文字だけ）。
+// jsonWS は読み飛ばす空白（この 4 文字だけ）。
 const jsonWS = " \t\n\r"
 
 type pyScanner struct{ s []rune }
 
-// fail は JSONDecodeError と同じ字面のエラーを作る。
-// 行と桁は Python と同じくコードポイントで数える。
+// fail は読みそこねた場所を添えたエラーを作る。
+// WhyNot: 行と桁をバイトで数えないのは、日本語の入った manifest で位置がずれるため。
 func (p *pyScanner) fail(msg string, pos int) error {
 	line, col := 1, pos+1
 	for i := 0; i < pos && i < len(p.s); i++ {
@@ -149,7 +150,7 @@ func (p *pyScanner) scanNumber(i int) (pyValue, int) {
 	return pyFloat(f), j
 }
 
-// scanString は Python の c_scanstring と同じ位置・同じ文面でしくじる。
+// scanString は "..." を読む。しくじった位置は開き引用符側を指す。
 func (p *pyScanner) scanString(begin int) (string, int, error) {
 	var b strings.Builder
 	i := begin + 1
@@ -327,7 +328,7 @@ func (p *pyScanner) scanArray(i int) (pyValue, int, error) {
 	}
 }
 
-// pyJSONLoads は Python の json.loads と同じ値・同じエラー文面を返す。
+// pyJSONLoads は JSON の字面を pyValue に変える。
 func pyJSONLoads(text string) (pyValue, error) {
 	p := &pyScanner{s: []rune(text)}
 	if len(p.s) > 0 && p.s[0] == '\uFEFF' {
@@ -345,7 +346,7 @@ func pyJSONLoads(text string) (pyValue, error) {
 	return v, nil
 }
 
-// pyRepr は Python の repr() と同じ字面を返す。
+// pyRepr は値を画面へ出すときの字面（文字列は引用符が付く）。
 func pyRepr(v pyValue) string {
 	switch t := v.(type) {
 	case nil:
@@ -377,7 +378,7 @@ func pyRepr(v pyValue) string {
 	return fmt.Sprintf("%v", v)
 }
 
-// pyReprString は Python の repr(str)。' を含み " を含まないときだけ二重引用符で挟む。
+// pyReprString は文字列の字面。' を含み " を含まないときだけ二重引用符で挟む。
 func pyReprString(s string) string {
 	quote := byte('\'')
 	if strings.ContainsRune(s, '\'') && !strings.ContainsRune(s, '"') {
@@ -412,7 +413,7 @@ func pyReprString(s string) string {
 	return b.String()
 }
 
-// pyIsPrintable は Python の str.isprintable()（空白は半角スペースだけが印字可能）。
+// pyIsPrintable はそのまま出せる文字か（空白は半角スペースだけがそのまま出せる）。
 func pyIsPrintable(r rune) bool {
 	if r == ' ' {
 		return true
@@ -423,7 +424,8 @@ func pyIsPrintable(r rune) bool {
 	return !unicode.In(r, unicode.C, unicode.Zs, unicode.Zl, unicode.Zp)
 }
 
-// pyFloatRepr は Python の repr(float)。指数へ切り替える境目が Go の %g と違う。
+// pyFloatRepr は小数の字面。
+// WhyNot: %g を使わないのは、指数へ切り替える境目が違うため（10^16 以上と 10^-5 未満だけ指数）。
 func pyFloatRepr(f float64) string {
 	switch {
 	case math.IsNaN(f):

@@ -1,7 +1,6 @@
 package anim
 
-// anim — コマ列と 4 方向のそろい方を機械で確かめるゲート
-// (bin/lint-anim.py と同じ出力)。
+// anim — コマ列と 4 方向のそろい方を機械で確かめるゲート。
 //
 //	fge-go anim [a.sprite.json ...] [--strict] [--self-test]
 //
@@ -29,7 +28,7 @@ import (
 
 // obj は書かれた順を覚えている JSON オブジェクト。
 //
-// WhyNot: map[string]any に落とさないのは、Python 版が dict の挿入順のまま
+// WhyNot: map[string]any に落とさないのは、書かれた順のまま
 // {'front': 5, 'side': 7} と出力に混ぜるため。順を捨てると字面が変わる。
 type obj struct {
 	keys []string
@@ -121,9 +120,9 @@ func rowsOf(v any) []string {
 	return rows
 }
 
-// --- Python の字面 --------------------------------------------------------
+// --- 出力の字面 -----------------------------------------------------------
 
-// pyRepr は Python の repr(str) と同じ字面を返す。
+// pyRepr は文字列を引用符で囲んだ字面を返す。' を含み " を含まないときだけ " で囲む。
 func pyRepr(s string) string {
 	quote := byte('\'')
 	if strings.Contains(s, "'") && !strings.Contains(s, "\"") {
@@ -156,7 +155,7 @@ func pyRepr(s string) string {
 	return b.String()
 }
 
-// pyStrList は Python の repr(list[str]) と同じ字面を返す。
+// pyStrList は文字列の並びを ['a', 'b'] の字面にする。
 func pyStrList(items []string) string {
 	parts := make([]string, 0, len(items))
 	for _, s := range items {
@@ -165,7 +164,7 @@ func pyStrList(items []string) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// pyIntDict は Python の repr(dict[str, int]) と同じ字面を返す (書かれた順のまま)。
+// pyIntDict は名前と数の組を {'a': 1, 'b': 2} の字面にする (書かれた順のまま)。
 func pyIntDict(keys []string, values map[string]int) string {
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
@@ -174,7 +173,7 @@ func pyIntDict(keys []string, values map[string]int) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-// pyFloat は Python の str(float) と同じ字面を返す。
+// pyFloat は小数を最短の字面にする (整数に見える値には .0 を足す)。
 func pyFloat(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
@@ -183,10 +182,10 @@ func pyFloat(v float64) string {
 	return s
 }
 
-// pyPercent は Python の f"{v:.0%}" と同じ字面を返す。
+// pyPercent は割合を小数点以下なしの N% にする。
 func pyPercent(v float64) string { return fmt.Sprintf("%.0f%%", v*100) }
 
-// pySignedPercent は Python の f"{v:+.0%}" と同じ字面を返す。
+// pySignedPercent は割合を符号付きの +N% / -N% にする。
 func pySignedPercent(v float64) string { return fmt.Sprintf("%+.0f%%", v*100) }
 
 // --- 画素 -----------------------------------------------------------------
@@ -432,8 +431,8 @@ func (r *Rules) checkFrames(spriteName string, frames []frame, skip map[string]b
 			if gap < 0 {
 				gap = -gap
 			}
-			// WhyNot: 符号を戻して出さないのは Python 版が絶対値をそのまま +N% と
-			// 書くため。減った側も + と出るが、直すと字面が変わる。
+			// WhyNot: 符号を戻して出さないのは、ずれの大きさだけを見せたいため。
+			// 減った側も + と出るが、直すと字面が変わって golden が落ちる。
 			drift := float64(gap) / float64(baseArea)
 			if drift > r.MaxAreaDrift {
 				notes = append(notes, fmt.Sprintf(
@@ -624,8 +623,8 @@ func (r *Rules) checkViews(base string, v *views, skip map[string]bool) []string
 				base, iou, pyFloat(r.MinBackIoU)))
 		}
 	}
-	// WhyNot: ここだけ masks でなく views を見るのは Python 版がそうしているため
-	// (空のコマでも組として扱う)。揃えると判定が変わる。
+	// WhyNot: ここだけ masks でなく views を見るのは、画素が 1 つも無いコマでも
+	// 左右の組として扱うため。masks に揃えると空のコマが黙って外れる。
 	_, hasEast := v.rows["side"]
 	_, hasWest := v.rows["side_w"]
 	if hasEast && hasWest {
@@ -749,7 +748,7 @@ func sequences(frames *obj) map[string][]string {
 	return out
 }
 
-// compareDigits は Python の int(digits) どうしの大小を、桁あふれ無しで比べる。
+// compareDigits は数字だけの文字列どうしの大小を、桁あふれ無しで比べる。
 func compareDigits(a, b string) int {
 	a, b = strings.TrimLeft(a, "0"), strings.TrimLeft(b, "0")
 	if len(a) != len(b) {
@@ -915,7 +914,7 @@ func (r *Rules) discover(root string) []string {
 	return found
 }
 
-// relTo は Python の os.path.relpath(path, root) と同じ字面を返す。
+// relTo は root から見た path の相対パスの字面を返す。
 func relTo(path, root string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -1012,7 +1011,7 @@ func skipSet(names ...string) map[string]bool {
 	return s
 }
 
-// selfTest はこの検査自身が鳴るかを見る (bin/lint-anim.py の --self-test と同じ)。
+// selfTest はわざと悪いコマ列を通して、この検査自身が鳴るかを見る (--self-test)。
 func (r *Rules) selfTest(out *strings.Builder) int {
 	var lines []string
 	bad := 0

@@ -1,7 +1,8 @@
 package pxlib
 
-// Python 版 (bin/*.py) と出力をバイト単位でそろえるための小物。
-// 文字列・パス・正規表現・ディレクトリ走査で Go と Python の既定が食い違う所だけを置く。
+// 検査の出力を左右する細かい振る舞いを 1 か所へ寄せた小物。
+// 文字列・パス・正規表現・ディレクトリ走査のうち、標準の既定のままだと
+// 出力の行や字面が変わってしまう所だけを置く。
 
 import (
 	"os"
@@ -12,9 +13,9 @@ import (
 	"unicode/utf8"
 )
 
-// SplitLines は Python の str.splitlines() と同じ切り方をする。
+// SplitLines は \n のほか \r\n・\v・\f・U+2028 等でも行を切る。
 // WhyNot: strings.Split(s, "\n") にしないのは、CRLF の行末に \r が残って
-// 行頭判定や連結後の本文が Python とずれるため。
+// 行頭の判定や、つなぎ直した本文がずれるため。
 func SplitLines(s string) []string {
 	var lines []string
 	start := 0
@@ -39,7 +40,7 @@ func SplitLines(s string) []string {
 }
 
 // DecodeReplace は不正なバイトを U+FFFD に置き換える。
-// Python の read_text(encoding="utf-8", errors="replace") に合わせる。
+// WhyNot: 不正なバイトで失敗にしないのは、壊れたファイル 1 つで検査を止めないため。
 func DecodeReplace(data []byte) string {
 	if utf8.Valid(data) {
 		return string(data)
@@ -67,7 +68,7 @@ func ReadTextReplace(path string) (string, error) {
 	return DecodeReplace(data), nil
 }
 
-// PosixPath は Python の Path(s).as_posix() と同じ字面を返す。
+// PosixPath はパスを / 区切りの字面にする。
 // 空の要素と "." を落とし、".." は残す。
 func PosixPath(s string) string {
 	s = filepath.ToSlash(s)
@@ -134,9 +135,9 @@ func InTestdata(path string) bool {
 	return false
 }
 
-// Rglob は Python の Path(dir).rglob("*"+suffix) と同じ並びでパスを返す。
-// WhyNot: filepath.WalkDir を使わないのは、Go が名前順に並べ替えるのに対し
-// Python は readdir の並びのまま返すため。並べ替えると出力の行順がずれる。
+// Rglob は dir 以下から suffix で終わるファイルを、ディレクトリが返す並びのまま返す。
+// WhyNot: filepath.WalkDir を使わないのは、名前順に並べ替えられて
+// 検査の出力の行順が変わってしまうため。
 func Rglob(dir, suffix string) []string {
 	var found []string
 	var rec func(d string)
@@ -173,18 +174,18 @@ func Rglob(dir, suffix string) []string {
 	return found
 }
 
-// PyRegexp は Python の re と同じ数え方をする正規表現。
+// PyRegexp は語の区切りを Unicode で見る正規表現。
 type PyRegexp struct {
 	re      *regexp.Regexp
 	trailWB bool
 }
 
-// CompilePy は Python の正規表現ソースを Go で使える形にして包む。
+// CompilePy は正規表現を語の区切りが Unicode で効く形にして包む。
 //
-// WhyNot: regexp.Compile をそのまま呼ばないのは 2 点で意味が違うため。
-//   - Go の \w と \b は ASCII だけを語とみなす。Python は Unicode 全体を見るので、
-//     直後が漢字の位置で Go だけがマッチしてしまう。
-//   - そのため \w は Unicode の字類に置き換え、末尾の \b は数える側で見直す。
+// WhyNot: regexp.Compile をそのまま呼ばないのは、語の見方が狭いため。
+//   - Go の \w と \b は ASCII だけを語とみなすので、直後が漢字の位置でも
+//     語の切れ目とみなして当たってしまう。
+//   - そこで \w は Unicode の字類に置き換え、末尾の \b は数える側で見直す。
 func CompilePy(pattern string) (*PyRegexp, error) {
 	src := strings.ReplaceAll(pattern, `\w`, `[\p{L}\p{N}_]`)
 	re, err := regexp.Compile(src)
@@ -194,7 +195,7 @@ func CompilePy(pattern string) (*PyRegexp, error) {
 	return &PyRegexp{re: re, trailWB: strings.HasSuffix(pattern, `\b`)}, nil
 }
 
-// FindAll は Python の finditer と同じ順・同じ個数のマッチ文字列を返す。
+// FindAll は当たった所を前から順に全部返す。
 func (p *PyRegexp) FindAll(s string) []string {
 	var found []string
 	for pos := 0; pos <= len(s); {
@@ -237,7 +238,7 @@ func (p *PyRegexp) FindIndexFrom(s string, from int) (int, int, bool) {
 	return 0, 0, false
 }
 
-// MatchString は Python の re.search と同じ真偽を返す。
+// MatchString はどこかに当たれば真を返す。
 func (p *PyRegexp) MatchString(s string) bool {
 	if !p.trailWB {
 		return p.re.MatchString(s)

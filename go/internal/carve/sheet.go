@@ -1,6 +1,6 @@
 package carve
 
-// bin/carve/sheet.py の写し。工程の絵を 4 方向 × コマの一覧に並べる。
+// 工程の絵を 4 方向 × コマの一覧に並べる。
 //
 //	fge-go carve-sheet 2_陰影
 
@@ -107,7 +107,7 @@ func absInt(v int) int {
 	return v
 }
 
-// RunSheet は sheet.py の入口。
+// RunSheet は carve-sheet の入口。root は assets / gallery を置く根。
 func RunSheet(out *strings.Builder, root string, args []string, rules *Rules) (int, error) {
 	stage := "2_陰影"
 	if len(args) > 0 {

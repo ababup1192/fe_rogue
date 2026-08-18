@@ -19,8 +19,10 @@ func repoRoot(t *testing.T) string {
 	return abs
 }
 
-// fakeRepo は規約データと検査の .py を持つ使い捨ての根を作る。
-func fakeRepo(t *testing.T, tools ...string) string {
+// fakeRepo は規約データだけを持つ使い捨ての根を作る。bin/ に何も置かないのは、
+// 検査の中身がこのバイナリ自身の中にあり、外の道具の実在に左右されないことを
+// テストの形でも押さえるため。
+func fakeRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	rules := filepath.Join(root, "bin", "lint-rules")
@@ -34,25 +36,7 @@ func fakeRepo(t *testing.T, tools ...string) string {
 	if err := os.WriteFile(filepath.Join(rules, "precommit.json"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range tools {
-		if err := os.WriteFile(filepath.Join(root, "bin", name), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 	return root
-}
-
-func allTools(t *testing.T) []string {
-	t.Helper()
-	rules, err := LoadRules(repoRoot(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := []string{rules.StagedImages.Tool}
-	for _, c := range rules.Checks {
-		names = append(names, c.Tool)
-	}
-	return names
 }
 
 // gateRun は 1 回ゲートを走らせて「親の知らせ・子の stdout・子の stderr・終了コード」を返す。
@@ -84,7 +68,7 @@ func okLints(t *testing.T) map[string]Lint {
 }
 
 func TestStagedNothingSaysNothing(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	parent, _, _, code := gateRun(t, root, []string{"--files", "notes.txt"}, okLints(t), nil)
 	if parent != "" || code != 0 {
 		t.Errorf("何も鳴らないはずが parent=%q code=%d", parent, code)
@@ -92,7 +76,7 @@ func TestStagedNothingSaysNothing(t *testing.T) {
 }
 
 func TestChecksRunInRulesOrder(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	var order []string
 	lints := map[string]Lint{}
 	rules, err := LoadRules(repoRoot(t))
@@ -117,7 +101,7 @@ func TestChecksRunInRulesOrder(t *testing.T) {
 }
 
 func TestUIOverflowGetsStrictAndOnlyUIFiles(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	var got []string
 	lints := okLints(t)
 	lints["ui-overflow"] = func(out, errOut *strings.Builder, args []string) int {
@@ -131,7 +115,7 @@ func TestUIOverflowGetsStrictAndOnlyUIFiles(t *testing.T) {
 }
 
 func TestViewGetsEveryFlixFile(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	var got []string
 	lints := okLints(t)
 	lints["view"] = func(out, errOut *strings.Builder, args []string) int {
@@ -145,7 +129,7 @@ func TestViewGetsEveryFlixFile(t *testing.T) {
 }
 
 func TestF32OnlyForEngineSources(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	called := 0
 	lints := okLints(t)
 	lints["f32"] = func(out, errOut *strings.Builder, args []string) int {
@@ -163,7 +147,7 @@ func TestF32OnlyForEngineSources(t *testing.T) {
 }
 
 func TestFailingLintStopsWithFinalNotice(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	// WhyNot: .flix でなく .ui.json を裁かせるのは、.flix が配線検査 (make) も
 	// 引き当ててしまい、make の有無でテストが揺れるため。
 	lints := okLints(t)
@@ -185,30 +169,21 @@ func TestFailingLintStopsWithFinalNotice(t *testing.T) {
 	}
 }
 
-func TestMissingToolIsFailOpen(t *testing.T) {
-	tools := allTools(t)
-	var kept []string
-	for _, name := range tools {
-		if name != "lint-ui-overflow.py" {
-			kept = append(kept, name)
-		}
-	}
-	root := fakeRepo(t, kept...)
+// TestChecksRunWithEmptyBin は bin/ に規約データしか無くても検査が走って止まることを見る。
+// WhyNot: 通る側でなく止まる側を見るのは、関所が黙って開いても終了コード 0 は
+// 「問題なし」と見分けが付かないため。実際にこの形で全検査が素通りしていた。
+func TestChecksRunWithEmptyBin(t *testing.T) {
+	root := fakeRepo(t)
 	lints := okLints(t)
 	lints["ui-overflow"] = func(out, errOut *strings.Builder, args []string) int { return 1 }
-	parent, _, _, code := gateRun(t, root, []string{"--files", "a.ui.json"}, lints, nil)
-	if code != 0 {
-		t.Fatalf("飛ばして通るはずが code=%d", code)
-	}
-	want := "[pre-commit] bin/lint-ui-overflow.py が無いのでその検査は飛ばします" +
-		" (engine の make sync-agents GAME=... で配り直せます)\n"
-	if parent != want {
-		t.Errorf("知らせが違う: %q", parent)
+	_, _, _, code := gateRun(t, root, []string{"--files", "a.ui.json"}, lints, nil)
+	if code != 1 {
+		t.Fatalf("止まるはずが code=%d", code)
 	}
 }
 
 func TestImageOutsideAllowedPlaceStops(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	parent, _, _, code := gateRun(t, root, []string{"--files", "gallery/town.png"}, okLints(t), nil)
 	if code != 1 {
 		t.Fatalf("止まるはずが code=%d", code)
@@ -223,7 +198,7 @@ func TestImageOutsideAllowedPlaceStops(t *testing.T) {
 }
 
 func TestTopLevelAssetsIsNotAllowed(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	parent, _, _, _ := gateRun(t, root, []string{"--files", "assets/tiles.png"}, okLints(t), nil)
 	if !strings.Contains(parent, "assets/tiles.png — 追跡してよい置き場ではありません") {
 		t.Errorf("リポ直下の assets/ が通ってしまった: %q", parent)
@@ -235,7 +210,7 @@ func TestTopLevelAssetsIsNotAllowed(t *testing.T) {
 }
 
 func TestGalleryImageOverLimitStops(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	big := filepath.Join(root, "docs", "gallery")
 	if err := os.MkdirAll(big, 0o755); err != nil {
 		t.Fatal(err)
@@ -254,21 +229,21 @@ func TestGalleryImageOverLimitStops(t *testing.T) {
 }
 
 func TestLegacyImageViolationIsNoticeOnly(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	parent, _, _, code := gateRun(t, root, []string{"--files", "docs/gallery/new.png"}, okLints(t),
 		func(string) int { return 1 })
 	if code != 0 {
 		t.Fatalf("止めないはずが code=%d", code)
 	}
 	want := "[pre-commit] 注意: 過去から追跡されている絵に違反が残っています" +
-		" (このコミットは止めません): python3 bin/fge images で一覧\n"
+		" (このコミットは止めません): bin/fge images で一覧\n"
 	if parent != want {
 		t.Errorf("文面が違う: %q", parent)
 	}
 }
 
 func TestUppercaseExtensionIsStillAnImage(t *testing.T) {
-	root := fakeRepo(t, allTools(t)...)
+	root := fakeRepo(t)
 	parent, _, _, _ := gateRun(t, root, []string{"--files", "gallery/TOWN.PNG"}, okLints(t), nil)
 	if !strings.Contains(parent, "gallery/TOWN.PNG — 追跡してよい置き場ではありません") {
 		t.Errorf("大文字の拡張子を見落とした: %q", parent)
@@ -276,8 +251,8 @@ func TestUppercaseExtensionIsStillAnImage(t *testing.T) {
 }
 
 func TestFilesFlagAloneReadsStage(t *testing.T) {
-	// Python 版は len(sys.argv) > 2 を見るので、--files だけならステージを読みに行く。
-	root := fakeRepo(t, allTools(t)...)
+	// --files の後ろが空なら「対象なし」ではなく、ステージを読みに行く。
+	root := fakeRepo(t)
 	var parent strings.Builder
 	_, err := Run(&parent, Options{Root: root, Args: []string{"--files"},
 		Stdout: &strings.Builder{}, Stderr: &strings.Builder{}, Lints: okLints(t)})

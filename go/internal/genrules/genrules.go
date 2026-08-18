@@ -1,7 +1,6 @@
 package genrules
 
-// genrules — docs/ の規約から .claude/rules/*.md を作る
-// (bin/gen-rules.py と同じ出力)。
+// genrules — docs/ の規約から .claude/rules/*.md を作る。
 //
 //	fge-go gen-rules              生成する
 //	fge-go gen-rules --check      ずれていないか検査する（書かない）
@@ -17,9 +16,9 @@ import (
 	"strings"
 )
 
-// universalNewlines は Python の read_text（newline=None）と同じ行末の均し方。
-// WhyNot: 生バイトのまま比べないのは、CRLF で置かれた rules を Python は
-// 一致と見て書き直さないため。ここで均さないと Go だけが毎回書き直す。
+// universalNewlines は行末（\r\n・\r）を \n に均す。
+// WhyNot: 生バイトのまま比べないのは、CRLF で置かれた rules を中身が同じでも
+// 違うと見てしまい、毎回書き直しになるため。
 func universalNewlines(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	return strings.ReplaceAll(s, "\r", "\n")
@@ -33,8 +32,8 @@ func (r *Rules) render(root string, spec RuleSpec) (string, error) {
 	}
 	head := []string{"---", "paths:"}
 	for _, g := range spec.Globs {
-		// WhyNot: %q を使わないのは、Python 側が中身をそのまま二重引用符で挟むだけで
-		// エスケープしないため。glob に \ や " が入ったとき字面が変わる。
+		// WhyNot: %q を使わないのは、中身をそのまま二重引用符で挟むだけにするため。
+		// エスケープすると glob に \ や " が入ったとき字面が変わる。
 		head = append(head, `  - "`+g+`"`)
 	}
 	head = append(head, "---", "", strings.ReplaceAll(r.Banner, "{src}", spec.Src), "")

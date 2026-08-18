@@ -139,7 +139,7 @@ func TestBrokenJSONFallsBackToLines(t *testing.T) {
 	}
 }
 
-// Python の text[:70] は文字数。バイト数で切ると日本語が途中で割れる。
+// 抜き書きは 70 文字で切る。バイト数で切ると日本語が途中で割れる。
 func TestExcerptIsCountedInRunes(t *testing.T) {
 	long := "  " + strings.Repeat("あ", 100) + "  "
 	got := excerptOf(long)

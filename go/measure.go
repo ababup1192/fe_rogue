@@ -1,6 +1,6 @@
 package main
 
-// 1 枚の絵を数値にする測り (bin/lint-style.py の measure と同じ計算)。
+// 1 枚の絵を数値にする測り。
 // img-digest の --stats がこれを借りる。
 
 import (
@@ -304,8 +304,8 @@ func findRegions(q []uint32, w, h, minArea int) []rawRegion {
 	return out
 }
 
-// WhyNot: 幅優先の探索順は Python の deque と同じにしてある。順が変わると
-// cells の並びが変わり、楕円の重なり具合の丸め誤差がずれる。
+// WhyNot: 塊を拾う探索を幅優先で固定しているのは、順が変わると cells の並びが変わり、
+// 楕円の重なり具合の丸め誤差がずれるため。
 func regionEllipseIOU(cells []int32, w int) float64 {
 	n := float64(len(cells))
 	var mx, my float64

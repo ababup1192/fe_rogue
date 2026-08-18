@@ -1,6 +1,6 @@
 package main
 
-// images — git に入れる絵が増えすぎていないか見張るゲート (bin/lint-images.py と同じ出力)。
+// images — git に入れる絵が増えすぎていないか見張るゲート。
 
 import (
 	"fmt"

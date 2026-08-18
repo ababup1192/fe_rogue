@@ -2,9 +2,11 @@ package status
 
 // engine の場所とバージョンの解決。
 //
-// bin/status.py の read_engine_dir / read_engine_version と bin/fge の同名関数は
-// 同じ解決順（環境変数 ENGINE → local.mk）を持っている。Go 側では 1 か所にまとめて、
-// 呼ぶ側が置き場（local.mk を探すディレクトリ）だけを渡す。
+// 解決順は 環境変数 ENGINE → local.mk。呼ぶ側は置き場（local.mk を探すディレクトリ）
+// だけを渡す。
+//
+// WhyNot: 呼ぶ側ごとに解決を書かないのは、同じ順で読まないと fge と status で
+// 見ている engine が食い違うため。
 
 import (
 	"os"
@@ -17,7 +19,7 @@ var engineLineRe = compilePySpace(`^\s*ENGINE\s*[?:]*=\s*(.+?)\s*$`)
 // Makefile の「VERSION := 値」。
 var versionLineRe = compilePySpace(`^VERSION\s*:=\s*(\S+)`)
 
-// ReadEngineDir は base（Python 版のカレントに当たる）から見た engine の場所。
+// ReadEngineDir は base（ゲームのリポの根）から見た engine の場所。
 // 環境変数 ENGINE → base/local.mk の順で読む。見つからなければ空文字。
 func ReadEngineDir(base string) string {
 	if v := os.Getenv("ENGINE"); v != "" {

@@ -1,0 +1,69 @@
+package main
+
+// エージェントのフックの入口。配線は .claude/settings.json（ゲームへ配る形は
+// agents-pack/settings.json と agents-pack/codex-hooks.json）。
+//
+// WhyNot: どのフックも 0 か 2 しか返さないのは、それ以外の終了コードが
+// エージェント側で「フックが壊れた」扱いになり、フックの都合で作業を止めるため。
+// 2 は「stderr を Claude へ返す」の意味で、作業そのものは進む。
+
+import (
+	"os"
+	"strings"
+
+	"github.com/ababup1192/flix_game_engine/go/internal/hooks"
+	"github.com/ababup1192/flix_game_engine/go/internal/uioverflow"
+	"github.com/ababup1192/flix_game_engine/go/internal/view"
+)
+
+func init() {
+	register("hook-art-edit", "絵に関わるファイルを書いた直後の検査 (PostToolUse)", cmdHookArtEdit)
+	register("hook-flix-touch", "このセッションが .flix を触った印を置く (PostToolUse)", cmdHookFlixTouch)
+	register("hook-flix-work", "作業の区切りで Flix を型検査する (Stop / SubagentStop)", cmdHookFlixWork)
+	register("hook-flix-edit", "保存 1 回ぶんを常駐へ投げて型検査する (手動確認用)", cmdHookFlixEdit)
+	register("hook-session-diet", "文脈が太ったら /clear を促す (PostToolUse)", cmdHookSessionDiet)
+}
+
+// hookRoot はフックが規約データ・bin/checkd を探す根。
+// WhyNot: repoRoot() をそのまま使わないのは、ゲームのリポジトリで走るとき
+// バイナリの置き場ではなくエージェントが開いているリポジトリを見たいため。
+func hookRoot() string {
+	if v := os.Getenv("CLAUDE_PROJECT_DIR"); v != "" {
+		return v
+	}
+	return repoRoot()
+}
+
+func cmdHookArtEdit(_, errOut *strings.Builder, _ []string, _ bool) int {
+	root := hookRoot()
+	lints := map[string]hooks.Lint{
+		"view": func(o, e *strings.Builder, args []string) int {
+			code, err := view.Run(o, e, root, args)
+			return orAbort(e, code, err)
+		},
+		"ui-overflow": func(o, e *strings.Builder, args []string) int {
+			code, err := uioverflow.Run(o, e, root, args)
+			return orAbort(e, code, err)
+		},
+		"palette": func(o, _ *strings.Builder, _ []string) int {
+			return runPalette(o, root, false)
+		},
+	}
+	return hooks.RunArtEdit(errOut, root, os.Stdin, lints)
+}
+
+func cmdHookFlixTouch(_, errOut *strings.Builder, _ []string, _ bool) int {
+	return hooks.RunFlixTouch(errOut, hookRoot(), os.Stdin)
+}
+
+func cmdHookFlixWork(_, errOut *strings.Builder, _ []string, _ bool) int {
+	return hooks.RunFlixWork(errOut, hookRoot(), os.Stdin)
+}
+
+func cmdHookFlixEdit(_, errOut *strings.Builder, _ []string, _ bool) int {
+	return hooks.RunFlixEdit(errOut, hookRoot(), os.Stdin)
+}
+
+func cmdHookSessionDiet(_, errOut *strings.Builder, _ []string, _ bool) int {
+	return hooks.RunSessionDiet(errOut, hookRoot(), os.Stdin)
+}

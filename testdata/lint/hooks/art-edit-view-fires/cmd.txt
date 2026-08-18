@@ -1,0 +1,4 @@
+# 絵のファイルを書いた直後、矩形だけの View なら書いたファイルだけを見て鳴る (exit 2)。
+bin/fge hook-art-edit <<'JSON'
+{"tool_input":{"file_path":"testdata/lint/hooks/art-edit-view-fires/View.flix"}}
+JSON

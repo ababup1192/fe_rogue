@@ -18,10 +18,10 @@ import (
 // RulesPath は規約データの置き場（リポジトリの根からの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "fallback.json")
 
-// pySpaceClass は Python の `\s` (Unicode) と同じ文字集合。
+// pySpaceClass は規約データの `\s` が指す広い文字集合 (Unicode の空白すべて)。
 //
 // WhyNot: Go の `\s` をそのまま使わないのは、Go が [\t\n\f\r ] だけを空白とみなし、
-// 全角空白や NBSP でインデントを書いた行で Python と判定が分かれるため。
+// 全角空白や NBSP でインデントを書いた行を見落とすため。
 const pySpaceClass = `[\t\n\v\f\r \x{1c}-\x{1f}\x{85}\p{Z}]`
 
 type rulesFile struct {
@@ -36,7 +36,7 @@ type rulesFile struct {
 type Rules struct {
 	SrcRoots   []string
 	Exempt     map[string]string
-	ExemptKeys []string // 出力に使う並び (Python の sorted(EXEMPT) と同じ)
+	ExemptKeys []string // 出力に使う並び (Exempt のキーを名前順に並べた物)
 	Bug        *pyWordRe
 	Def        *regexp.Regexp
 	String     *regexp.Regexp
@@ -45,7 +45,7 @@ type Rules struct {
 // pyWordRe は先頭の `\b` を Unicode の語境界として扱う正規表現。
 //
 // WhyNot: Go の `\b` をそのまま使わないのは、Go の語が ASCII 限定なため。
-// `あbug!` は Python では語の途中なのでマッチせず、Go だけがマッチしてしまう。
+// `あbug!` は語の途中なのに、Go の `\b` は語の始まりと数えて拾ってしまう。
 type pyWordRe struct {
 	re     *pxlib.PyRegexp
 	leadWB bool
@@ -63,7 +63,7 @@ func compilePyWord(pattern string) (*pyWordRe, error) {
 	return &pyWordRe{re: re, leadWB: leadWB}, nil
 }
 
-// Search は Python の re.search と同じ真偽を返す。
+// Search は文字列のどこかに当たりがあるか。
 func (p *pyWordRe) Search(s string) bool {
 	for pos := 0; pos <= len(s); {
 		start, _, ok := p.re.FindIndexFrom(s, pos)
@@ -87,7 +87,7 @@ func isPyWordBefore(s string, i int) bool {
 	return isPyWordRune(r)
 }
 
-// compilePyRaw は Python の正規表現ソースを Go で使える形にして素の regexp を返す。
+// compilePyRaw は規約データの正規表現の \s \w を Unicode の広い範囲へ書き換えて組み立てる。
 func compilePyRaw(pattern string) (*regexp.Regexp, error) {
 	src := strings.ReplaceAll(pattern, `\s`, pySpaceClass)
 	src = strings.ReplaceAll(src, `\w`, `[\p{L}\p{N}_]`)

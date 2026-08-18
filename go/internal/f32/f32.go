@@ -1,7 +1,6 @@
 package f32
 
-// f32 — エンジンの公開 API に `Float32` が出ていないかを検査するゲート
-// (bin/lint-f32.py と同じ出力)。
+// f32 — エンジンの公開 API に `Float32` が出ていないかを検査するゲート。
 //
 //	fge-go f32                       pub 面ぜんぶを検査
 //	fge-go f32 --self-test           抽出が複数行の宣言と eff の op を拾えるかだけ見る
@@ -41,7 +40,7 @@ func (h hit) key() string { return h.mod + "." + h.name }
 
 // hasFloat32 は語として独立した Float32 が含まれるかを見る。
 // WhyNot: `\bFloat32\b` の正規表現をそのまま使わないのは、Go の `\b` が ASCII しか
-// 語とみなさず、直前が漢字のときに Python と判定が食い違うため。
+// 語とみなさず、直前が漢字の Float32 を語として拾ってしまうため。
 func hasFloat32(s string) bool {
 	const word = "Float32"
 	for i := 0; ; {
@@ -223,7 +222,7 @@ func Run(out, errOut *strings.Builder, root string, args []string, opts Options)
 		case a == "--self-test":
 			selfTestMode = true
 		case strings.HasPrefix(a, "--"):
-			// WhyNot: 知らない旗を弾かないのは、Python 版が --check を黙って無視して
+			// WhyNot: 知らない旗を弾かないのは、--check を付けた呼び方でも黙って
 			// 通常の検査を走らせるため（make check-docs-sync がそう呼ぶ）。
 		default:
 			files = append(files, a)

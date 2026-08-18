@@ -1,0 +1,59 @@
+{
+  "note": "explain-error（flix check / test の出力の要約に添える処方箋）の規約データ。この JSON が source of truth で、bin/fge explain-error と bin/fge hook-flix-work / hook-flix-edit はこれを読んで動く。中身の由来は compile-fix スキル (.claude/skills/compile-fix/SKILL.md) の「既知の落とし穴リスト」で、落とし穴を足したら両方を直す。prescriptions は上から順に、エラー本文に key が最初に当たった 1 件だけを出す（具体的なエラー番号を先、言い回しだけの広い key を後に置く）。",
+  "prescriptions": [
+    {
+      "key": "Expected ',' before '='",
+      "tip": "予約語をレコードのフィールド名に使っている疑い (spawn/run/project 等)。別名へ逃がす"
+    },
+    {
+      "key": "E5252",
+      "tip": "レコードは Eq/Order を持てない。比較したい値は名前付き 1 フィールド enum で包む"
+    },
+    {
+      "key": "E6217",
+      "tip": "checked_ecast は不要。dispatch を単一の match に束ねる"
+    },
+    {
+      "key": "E3138",
+      "tip": "定義が見つからない。ファイル移動で test 側だけ取り残されていないか"
+    },
+    {
+      "key": "E5410",
+      "tip": "同名モジュールを別ファイルで開き直している。モジュールの再オープンは不可"
+    },
+    {
+      "key": "Non-exhaustive",
+      "tip": "enum の全ケースを網羅していない。足りない case か case _ を足す"
+    },
+    {
+      "key": "Expected Float32",
+      "tip": "Float32 は GL / OpenAL / STB の境界の内側だけ。engine の pub 面へ渡す値は Float64 のままでよい"
+    },
+    {
+      "key": "Unable to unify",
+      "tip": "型が合っていない。Int32/Int64 の混在・エフェクト注釈の不足をまず疑う"
+    },
+    {
+      "key": "Unexpected type",
+      "tip": "型が合っていない。Int32/Int64 の混在・Float64/Int32 の取り違えをまず疑う"
+    },
+    {
+      "key": "Unresolved type",
+      "tip": "Java の import は関数の中でなくモジュール直下に置く。例外型の ## 前置きは外す"
+    },
+    {
+      "key": "Undefined name",
+      "tip": "名前の打ち間違いか、モジュール名の付け忘れ (Module.name)。engine の docs/api-digest.md (make api Q=名前) で正しい名を引く"
+    },
+    {
+      "key": "Unexpected token",
+      "tip": "予約語 (handler/do/run/spawn/region/project 等) を識別子に使っていないか"
+    }
+  ],
+  "tipFormat": "処方箋: %s (詳細は /compile-fix)",
+  "errorCountMark": "error(s)",
+  "headPattern": "^-- (.+?) -+ (\\S+)\\s*$",
+  "linenoPattern": "^\\s*(\\d+) \\|",
+  "ansiPattern": "\\x1b\\[[0-9;?]*[a-zA-Z]|\\x1b\\][^\\x07]*\\x07|\\x1b[=>]",
+  "headLookahead": 12
+}

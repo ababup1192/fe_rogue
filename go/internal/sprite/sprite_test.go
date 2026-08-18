@@ -1,6 +1,6 @@
 package sprite
 
-// 判定 1 つずつを最小の格子で縛る。文面は Python 版 (bin/lint-sprite.py) が正本なので、
+// 判定 1 つずつを最小の格子で縛る。文面は見本 (testdata) が縛るので、
 // ここでは「鳴る / 鳴らない」と座標・個数だけを見る。
 
 import (
@@ -217,7 +217,7 @@ func TestPaletteColorCountCap(t *testing.T) {
 	}
 }
 
-// TestSelfTestMatchesPython は --self-test の例の数が正本と同じかを見る。
+// TestSelfTestPasses は --self-test が全例通り、例の数が変わっていないかを見る。
 func TestSelfTestPasses(t *testing.T) {
 	var out, errOut strings.Builder
 	if code := loadedRules(t).selfTest(&out, &errOut); code != 0 {
@@ -229,8 +229,8 @@ func TestSelfTestPasses(t *testing.T) {
 }
 
 // TestFixturesMatchExpected は testdata/lint/sprite/ の見本を Go だけで通す。
-// WhyNot: Python との突き合わせを go/compare.sh に任せきりにしないのは、
-// Python の無い機械でも退行を捕まえられるようにするため。
+// WhyNot: 見本の突き合わせを外の道具に任せないのは、go test だけで
+// 出力の退行を捕まえられるようにするため。
 func TestFixturesMatchExpected(t *testing.T) {
 	root := repoRoot(t)
 	// 見本の expected.txt は「リポジトリの根から相対パスで呼ぶ」形で記録されている。

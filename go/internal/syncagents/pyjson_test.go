@@ -2,8 +2,6 @@ package syncagents
 
 import "testing"
 
-// 期待値は python3 -c 'import json; json.loads(...)' で実際に出た文面。
-
 func TestPyJSONErrorText(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"", "Expecting value: line 1 column 1 (char 0)"},
@@ -42,7 +40,7 @@ func TestPyJSONErrorText(t *testing.T) {
 	}
 }
 
-// 桁は Python と同じくコードポイントで数える（バイトで数えると日本語で狂う）。
+// 桁はコードポイントで数える（バイトで数えると日本語で狂う）。
 func TestPyJSONColumnCountsRunes(t *testing.T) {
 	_, err := pyJSONLoads(`{"あいう":1 "b":2}`)
 	if err == nil {

@@ -4,36 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// 正本は bin/lint-jargon.py の WORDS。JSON がそこからずれていないかを機械で見る。
-// WhyNot: 目視の約束にしないのは、語を Python 側だけ直したときに Go 版だけが
+// 正本は bin/lint-rules/jargon.json の words。読み込みがそこからずれていないかを機械で見る。
+// WhyNot: 目視の約束にしないのは、語を JSON 側だけ直したときにコードが
 // 古い語彙のまま緑を出すため。
 
 // repoRoot はテストから見たリポジトリの根 (go/internal/jargon の 3 つ上)。
 func repoRoot() string { return filepath.Join("..", "..", "..") }
-
-// pythonWords は bin/lint-jargon.py の WORDS = [ ... ] の中身を返す。
-func pythonWords(t *testing.T) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(), "bin", "lint-jargon.py"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := string(data)
-	head := strings.Index(src, "WORDS = [")
-	if head < 0 {
-		t.Fatal("bin/lint-jargon.py に WORDS が無い")
-	}
-	rest := src[head:]
-	tail := strings.Index(rest, "\n]")
-	if tail < 0 {
-		t.Fatal("bin/lint-jargon.py の WORDS の閉じ括弧が見つからない")
-	}
-	return rest[:tail]
-}
 
 func loadJSONWords(t *testing.T) rulesFile {
 	t.Helper()
@@ -46,29 +25,6 @@ func loadJSONWords(t *testing.T) rulesFile {
 		t.Fatal(err)
 	}
 	return f
-}
-
-func TestRulesMatchPython(t *testing.T) {
-	block := pythonWords(t)
-	f := loadJSONWords(t)
-	entries := strings.Count(block, `, "error"),`) + strings.Count(block, `, "warn"),`)
-	if len(f.Words) != entries {
-		t.Fatalf("語の数が %d (bin/lint-jargon.py は %d)", len(f.Words), entries)
-	}
-	for _, w := range f.Words {
-		head := `("` + *w.Word + `", None,`
-		if w.Pattern != nil {
-			head = `("` + *w.Word + `", r"` + *w.Pattern + `",`
-		}
-		if !strings.Contains(block, head) {
-			t.Errorf("bin/lint-jargon.py に無い語か見つけ方: %s", head)
-		}
-		for _, lit := range []string{*w.Better, *w.English, *w.Stage} {
-			if !strings.Contains(block, `"`+lit+`"`) {
-				t.Errorf("「%s」の %q が bin/lint-jargon.py に無い", *w.Word, lit)
-			}
-		}
-	}
 }
 
 func TestLoadRulesFromRepo(t *testing.T) {

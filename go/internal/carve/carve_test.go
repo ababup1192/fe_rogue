@@ -1,6 +1,6 @@
 package carve
 
-// 期待値はすべて python3.7 で Python 版を呼んで取った実測。
+// 期待値はすべて具体値で pin する。ここがずれると彫って描き直した絵が変わる。
 
 import (
 	"encoding/hex"
@@ -184,7 +184,7 @@ func TestJSONStringEscapesLikePython(t *testing.T) {
 	}
 }
 
-// pythonGif は python3.7 の gifs.gif_of(2,2,[[0,1,2,1],[1,1,0,2]],...) の頭とお尻。
+// 2×2・2 コマの GIF の頭とお尻のバイト列を pin する。
 func TestGifOfMatchesPython(t *testing.T) {
 	got := GifOf(2, 2, [][]int{{0, 1, 2, 1}, {1, 1, 0, 2}},
 		[]RGB{{0, 0, 0}, {255, 0, 0}, {0, 128, 255}}, 14, 0)

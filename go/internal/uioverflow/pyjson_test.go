@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// 期待値は python3 の json モジュールに同じ入力を食わせて写した物。
-// WhyNot: encoding/json のエラーで代用しないのは、読めない JSON のとき Python 版が
-// 例外の文面をそのまま出力へ流すため。位置は文字数え (バイト数えではない)。
+// 読めない JSON のときの文面と位置を 1 件ずつ具体値で pin する。
+// WhyNot: encoding/json のエラーで代用しないのは、検査の出力に載る文面が
+// この形に決まっているため。位置は文字数え (バイト数えではない)。
 func TestPyJSONErrorsMatchPython(t *testing.T) {
 	cases := map[string]string{
 		"":                "Expecting value: line 1 column 1 (char 0)",

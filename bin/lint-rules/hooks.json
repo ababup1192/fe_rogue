@@ -1,0 +1,95 @@
+{
+  "note": "エージェントのフック（bin/fge hook-*）の判定値。この JSON が source of truth で、bin/fge hook-art-edit / hook-flix-touch / hook-flix-work / hook-flix-edit / hook-session-diet はこれを読んで動く。呼び出しの配線は .claude/settings.json と agents-pack/settings.json・agents-pack/codex-hooks.json にある。",
+  "sessionDiet": {
+    "note": "文脈が太ったら NOTES.md 3 行 + /clear を促す。130000 は実測から: 短いセッションは 100k 未満で終わり、長丁場はここを超えて伸び続ける。",
+    "thresholdTokens": 130000,
+    "stepTokens": 30000,
+    "tailBytes": 65536,
+    "usageMark": "cache_read_input_tokens",
+    "markerPrefix": "claude-session-diet-"
+  },
+  "checkd": {
+    "note": "常駐 (bin/fge checkd) との話し方と、起動予約の歯止め。maxDaemons は常駐の数の上限で、クライアント側 (起動予約) と常駐側の両方がこの 1 か所を読む。",
+    "cacheDir": "~/.cache/flix-checkd",
+    "stateHashLen": 16,
+    "pkgSearchDepth": 8,
+    "pingTimeoutSec": 0.5,
+    "checkTimeoutSec": 30,
+    "gitTimeoutSec": 15,
+    "reserveIntervalSec": 90,
+    "markerTtlSec": 86400,
+    "errorBlockMaxLines": 15,
+    "tailLinesWhenNoBlock": 10,
+    "maxDaemons": {
+      "gbPerDaemon": 5,
+      "cap": 4,
+      "fallback": 3,
+      "envVar": "CHECKD_MAX_DAEMONS"
+    },
+    "daemon": {
+      "note": "常駐そのものの寿命と使い捨ての条件。rssLimit は「常駐が全部太りきっても物理メモリの memoryShare まで」の 1 つの約束から、maxDaemons と一緒に決まる (台数が 1 でも 2 で割るのは、1 台しか立てない小さい機械でその 1 本に予算を丸ごと渡さないため)。",
+      "heapHeadroomMB": 500,
+      "heapMinMB": 768,
+      "idleSec": 600,
+      "idleEnvVar": "CHECKD_IDLE_SEC",
+      "maxChecks": 200,
+      "settleSec": 1.0,
+      "workTimeoutSec": 900,
+      "spawnWaitSec": 30,
+      "connectTimeoutSec": 5,
+      "convTimeoutSec": 30,
+      "rssLimit": {
+        "memoryShare": 0.33,
+        "minMB": 1024,
+        "maxMB": 4096,
+        "fallbackMB": 2048,
+        "floorMB": 512,
+        "envVar": "CHECKD_RSS_MB"
+      },
+      "skipDirs": ["lib", "build", ".git", "gallery", "snapshot", "assets", "node_modules"],
+      "depSuffixes": [".fpkg", ".toml", ".jar"]
+    },
+    "patchFilePrefixes": [
+      "*** Add File: ",
+      "*** Update File: ",
+      "*** Delete File: ",
+      "*** Move to: "
+    ],
+    "commentOnlyPrefixes": [
+      "diff --git",
+      "index ",
+      "@@",
+      "new file mode",
+      "deleted file mode",
+      "similarity index",
+      "rename from",
+      "rename to",
+      "old mode",
+      "new mode"
+    ],
+    "commentMark": "//"
+  },
+  "artEdit": {
+    "note": "絵に関わるファイルを書いた直後に、書いたファイルだけを見る。suffix に当たったら sub の検査を走らせ、失敗したら prefix + 出力を Claude へ返す。args の {file} は書かれたファイルのパスに置き換わる。",
+    "checks": [
+      {
+        "suffix": ".sprite.json",
+        "sub": "palette",
+        "args": [],
+        "prefix": "lint-palette が失敗しました。意味色キーが色票に無いと Studio が仮色で塗り、編集画面と実機で配色が食い違います。"
+      },
+      {
+        "suffix": ".ui.json",
+        "sub": "ui-overflow",
+        "args": ["--strict", "{file}"],
+        "prefix": "lint-ui-overflow が失敗しました。固定幅の枠内の text に wrap/fit が無いと、実行時の長い文言が枠からはみ出します。"
+      },
+      {
+        "suffix": ".flix",
+        "sub": "view",
+        "args": ["{file}"],
+        "prefix": ""
+      }
+    ]
+  }
+}

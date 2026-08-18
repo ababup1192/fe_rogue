@@ -7,7 +7,7 @@ import (
 )
 
 // 何を見るか: 測りの 4 つの数（格子適合・面の切り出し・楕円・覆う色数）が
-// Python 版と同じ定義で出ること。
+// 決めた定義どおりに出ること。
 
 // solid は 1 色ずつ塗り分けた絵を組む（col は x, y から色を返す）。
 func solid(w, h int, col func(x, y int) (byte, byte, byte)) *pxlib.Image {
@@ -56,8 +56,8 @@ func TestCoverCountStopsAtNinetyPercent(t *testing.T) {
 	}
 }
 
-// 正方形は Python 版でも「楕円そのもの」に数えられる (IoU 0.8915920840735931)。
-// 判定の甘さごと写す。
+// 正方形も「楕円そのもの」に数えられる (IoU 0.8915920840735931)。
+// この判定の甘さを値で固定しておく。
 func TestEllipseIOUOfSquareMatchesPython(t *testing.T) {
 	var square []int32
 	for y := 0; y < 10; y++ {

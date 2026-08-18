@@ -1,5 +1,5 @@
 [check-refs] バンドル欠損 2 件 (bundle):
-  bin/checkd
+  bin/flix
   docs/glossary.md
 同梱リスト (Studio の stage-engine) に cp を足してください。必須一覧は bin/check-refs.py の BUNDLE_REQUIRED。
 [exit=1]

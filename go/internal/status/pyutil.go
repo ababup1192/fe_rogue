@@ -1,9 +1,9 @@
 package status
 
-// Python 版 (bin/status.py) と字面をそろえるための小物。
-// 文字列・パス・ファイル走査で Go と Python の既定が食い違う所だけを置く。
+// 出力の字面をそろえるための小物。文字列・パス・ファイル走査で、Go の標準の既定が
+// この道具に要る規則と食い違う所だけを置く。
 //
-// WhyNot: pxlib へ足さないのは、同じ土台を別の人が同時に移植中で、共有ファイルを
+// WhyNot: pxlib へ足さないのは、同じ土台を別の人が同時に触っていて、共有ファイルを
 // 触ると衝突するため。ここに置いた物が 2 本目の客を得たら pxlib へ寄せてよい。
 
 import (
@@ -15,8 +15,8 @@ import (
 	"unicode/utf8"
 )
 
-// isPySpace は Python の str.strip() / str.split(None) が空白とみなす範囲。
-// WhyNot: unicode.IsSpace だけに任せないのは、Python が \x1c〜\x1f も落とすため。
+// isPySpace は前後を削るとき・空白で切るときに空白とみなす範囲。
+// WhyNot: unicode.IsSpace だけに任せないのは、\x1c〜\x1f も空白として落とす必要があるため。
 func isPySpace(r rune) bool {
 	switch r {
 	case 0x1c, 0x1d, 0x1e, 0x1f:
@@ -25,16 +25,17 @@ func isPySpace(r rune) bool {
 	return unicode.IsSpace(r)
 }
 
-// pyStrip は Python の str.strip()（引数なし）と同じ範囲を落とす。
+// pyStrip は前後の空白（isPySpace の範囲）を落とす。
 func pyStrip(s string) string { return strings.TrimFunc(s, isPySpace) }
 
-// pyRStrip は Python の str.rstrip()（引数なし）と同じ範囲を落とす。
+// pyRStrip は末尾の空白（isPySpace の範囲）を落とす。
 func pyRStrip(s string) string { return strings.TrimRightFunc(s, isPySpace) }
 
-// pyLStripHash は Python の str.lstrip("#")。先頭の "#" をすべて落とす。
+// pyLStripHash は先頭の "#" をすべて落とす。
 func pyLStripHash(s string) string { return strings.TrimLeft(s, "#") }
 
-// pySplitWS1 は Python の str.split(None, 1)。
+// pySplitWS1 は先頭の空白を飛ばし、次の空白で 2 つに切る。後ろ側の先頭の空白も落とす。
+// 空白しか無ければ nil。
 func pySplitWS1(s string) []string {
 	r := []rune(s)
 	i := 0
@@ -58,7 +59,7 @@ func pySplitWS1(s string) []string {
 	return []string{first, string(r[i:])}
 }
 
-// pyHead は Python の s[:n]（コードポイント数で切る）。
+// pyHead は先頭 n コードポイントを返す。
 // WhyNot: s[:n] のバイト切りにしないのは、日本語 1 文字が 3 バイトになって
 // 切る位置がまるごとずれるため。
 func pyHead(s string, n int) string {
@@ -75,7 +76,7 @@ func pyHead(s string, n int) string {
 	return string(r[:n])
 }
 
-// pyDropTail は Python の s[:-n]（末尾 n コードポイントを落とす）。
+// pyDropTail は末尾 n コードポイントを落とす。
 func pyDropTail(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -84,7 +85,8 @@ func pyDropTail(s string, n int) string {
 	return string(r[:len(r)-n])
 }
 
-// pySplitLines は Python の str.splitlines()。
+// pySplitLines は行末とみなす文字が広い方の行分け
+// (\n \v \f \r \r\n \x1c \x1d \x1e U+0085 U+2028 U+2029)。
 func pySplitLines(s string) []string {
 	var lines []string
 	start := 0
@@ -108,7 +110,7 @@ func pySplitLines(s string) []string {
 	return lines
 }
 
-// pyFileLines は `for line in fh` の切り方（\n / \r\n / \r の 3 つだけ）。
+// pyFileLines はファイルを 1 行ずつ読むときの切り方（\n / \r\n / \r の 3 つだけ）。
 // WhyNot: pySplitLines を使わないのは、あちらが \v \f \x1c なども行末に数えるため。
 func pyFileLines(s string) []string {
 	var lines []string
@@ -151,9 +153,9 @@ func decodeReplace(data []byte) string {
 	return b.String()
 }
 
-// universalNewlines は Python のテキスト読み（newline=None）が行う行末の均し。
-// WhyNot: 均さずに読むと read() した本文に \r が残り、`in` 検査や read(400) の
-// 文字数が Python とずれる。
+// universalNewlines はテキストとして読むときの行末の均し（\r\n と \r を \n にする）。
+// WhyNot: 均さずに読むと本文に \r が残り、字面の照合や先頭 400 文字の切り出しで
+// 位置がずれる。
 func universalNewlines(s string) string {
 	if !strings.ContainsRune(s, '\r') {
 		return s
@@ -162,7 +164,7 @@ func universalNewlines(s string) string {
 	return strings.ReplaceAll(s, "\r", "\n")
 }
 
-// readTextPy は open(path, encoding="utf-8", errors="replace").read() と同じ文字列。
+// readTextPy は UTF-8 として読み、壊れたバイトを U+FFFD へ替え、行末を均した文字列を返す。
 func readTextPy(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -171,8 +173,8 @@ func readTextPy(path string) (string, error) {
 	return universalNewlines(decodeReplace(data)), nil
 }
 
-// pyBasename は Python の os.path.basename。
-// WhyNot: filepath.Base を使わないのは、末尾が "/" のとき Python は空文字を返し、
+// pyBasename は最後の "/" より後ろの部分。
+// WhyNot: filepath.Base を使わないのは、末尾が "/" のときに空文字が欲しいのに、
 // Go は 1 つ手前の要素を返すため。
 func pyBasename(p string) string {
 	i := strings.LastIndex(p, "/")
@@ -182,7 +184,7 @@ func pyBasename(p string) string {
 	return p[i+1:]
 }
 
-// pyDirname は Python の os.path.dirname。
+// pyDirname は最後の "/" より前の部分（"/" が無ければ空文字・先頭の "/" だけなら "/"）。
 func pyDirname(p string) string {
 	i := strings.LastIndex(p, "/")
 	if i < 0 {
@@ -194,12 +196,12 @@ func pyDirname(p string) string {
 	return p[:i]
 }
 
-// pySpaceClass は Python の正規表現 \s（Unicode の空白）に当たる文字クラス。
+// pySpaceClass は Unicode の空白すべてに当たる文字クラス。
 // WhyNot: Go の \s は ASCII の 5 種類だけなので、そのままでは全角空白を含む行で
 // 判定が食い違う。
 const pySpaceClass = `[\t\n\v\f\r\x{1c}-\x{1f} \x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]`
 
-// pyNonSpaceClass は Python の正規表現 \S。
+// pyNonSpaceClass は pySpaceClass の裏返し（空白以外に当たる）。
 const pyNonSpaceClass = `[^\t\n\v\f\r\x{1c}-\x{1f} \x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]`
 
 // compilePySpace は \s と \S を Unicode 版に差し替えてから組む。
@@ -213,7 +215,7 @@ func compilePySpace(src string) *regexp.Regexp {
 
 func hasMagic(s string) bool { return strings.ContainsAny(s, "*?[") }
 
-// fnmatchName は Python の fnmatch（1 つの名前と 1 つのパターン）。
+// fnmatchName はシェル風のワイルドカード（* ? [...]）で 1 つの名前を照合する。
 func fnmatchName(pattern, name string) bool {
 	return fnmatchRunes([]rune(pattern), []rune(name))
 }
@@ -259,7 +261,7 @@ func fnmatchRunes(pat, name []rune) bool {
 }
 
 // matchBracket は pat[i] の '[' から始まる集合が c に当たれば集合の次の位置を返す。
-// 当たらなければ -1。閉じない '[' はただの文字として扱う（Python と同じ）。
+// 当たらなければ -1。閉じない '[' はただの文字として扱う。
 func matchBracket(pat []rune, i int, c rune) int {
 	j := i + 1
 	neg := false
@@ -302,13 +304,13 @@ func matchBracket(pat []rune, i int, c rune) int {
 	return -1
 }
 
-// pyGlob は Python の glob.glob(pattern) と同じ並びの相対パスを返す。
-// base は Python のカレントに当たるディレクトリ。
+// pyGlob は pattern に当たる相対パスを、ディレクトリを読んだ並びのまま返す。
+// base は照合の基準になるディレクトリ。
 //
 // WhyNot: filepath.Glob を使わないのは 2 点で意味が違うため。
-//   - Go は名前順に並べ替える。Python は readdir の並びのまま返すので、
-//     並べ替えると mtime 順に落とす前の並びが変わり、同着の行順がずれる。
-//   - Go は "." で始まる名前も "*" に当てる。Python は当てない。
+//   - Go は名前順に並べ替える。並べ替えると mtime 順に落とす前の並びが変わり、
+//     同着の行順がずれる。
+//   - Go は "." で始まる名前も "*" に当てる。ここでは当てない。
 func pyGlob(base, pattern string) []string {
 	comps := strings.Split(pattern, "/")
 	var out []string
@@ -355,7 +357,7 @@ func joinRel(prefix, name string) string {
 	return prefix + "/" + name
 }
 
-// iterdir は os.scandir と同じ並びの名前。dironly ならディレクトリだけ。
+// iterdir はディレクトリを読んだ並びのままの名前。dironly ならディレクトリだけ。
 func iterdir(dir string, dironly bool) []string {
 	f, err := os.Open(dir)
 	if err != nil {

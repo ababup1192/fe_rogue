@@ -1,7 +1,6 @@
 {
-  "note": "precommit（git commit の直前に走るゲート）の規約データ。source of truth は bin/precommit.py と bin/lint-images.py で、この JSON はそこに書いてある値と並びを一字一句そのまま写した物。Go 版（bin/fge-go precommit）はこれを読んで動くので、規約を変えるときは Python 側とこの JSON を同時に直す。ずれると go/internal/precommit の TestRulesMatchPython が落ちる。checks の並びはそのまま出力の並びになるので配列で持つ。",
+  "note": "precommit（git commit の直前に走るゲート）の規約データ。この JSON が source of truth で、bin/fge precommit はこれを読んで動く。checks の並びはそのまま出力の並びになるので配列で持つ。",
   "stagedImages": {
-    "tool": "lint-images.py",
     "sub": "images",
     "imageExts": [".png", ".gif", ".jpg", ".jpeg", ".webp", ".bmp"],
     "galleryPrefix": "docs/gallery/",
@@ -14,7 +13,6 @@
   "checks": [
     {
       "id": "view",
-      "tool": "lint-view.py",
       "sub": "view",
       "flags": [],
       "pass": "matched",
@@ -22,7 +20,6 @@
     },
     {
       "id": "palette",
-      "tool": "lint-palette.py",
       "sub": "palette",
       "flags": [],
       "pass": "none",
@@ -33,7 +30,6 @@
     },
     {
       "id": "ui-overflow",
-      "tool": "lint-ui-overflow.py",
       "sub": "ui-overflow",
       "flags": ["--strict"],
       "pass": "matched",
@@ -41,7 +37,6 @@
     },
     {
       "id": "fallback",
-      "tool": "lint-fallback.py",
       "sub": "fallback",
       "flags": [],
       "pass": "none",
@@ -49,7 +44,6 @@
     },
     {
       "id": "f32",
-      "tool": "lint-f32.py",
       "sub": "f32",
       "flags": [],
       "pass": "none",
@@ -60,7 +54,6 @@
     },
     {
       "id": "jargon",
-      "tool": "lint-jargon.py",
       "sub": "jargon",
       "flags": [],
       "pass": "none",
@@ -76,14 +69,13 @@
       {"basenames": ["Makefile"]},
       {"prefixes": [
         ".claude/", "agents-pack/", "templates/",
-        "bin/gen-rules.py", "bin/gen-api-digest.py", "bin/check-api-index.py",
-        "bin/check-refs.py"
+        "go/internal/genrules/", "go/internal/apidigest/",
+        "go/internal/apiindex/", "go/internal/checkrefs/"
       ]},
       {"suffixes": [".md", ".flix"]}
     ]}
   },
   "failOpen": {
-    "toolMissing": "[pre-commit] bin/{name} が無いのでその検査は飛ばします (engine の make sync-agents GAME=... で配り直せます)",
     "makeMissing": "[pre-commit] make が見つからないので配線検査 (check-docs-sync) は飛ばします",
     "targetMissing": "[pre-commit] make check-docs-sync が無いので配線検査は飛ばします",
     "targetMissingExitCode": 2

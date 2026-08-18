@@ -106,7 +106,7 @@ func TestChangeShareSlackBoundary(t *testing.T) {
 	}
 }
 
-// TestAreaDriftAlwaysSigned は Python 版が縮んだコマも +N% と書く癖を写せているか見る。
+// TestAreaDriftAlwaysSigned は縮んだコマも +N% と書くことを見る。
 func TestAreaDriftAlwaysSigned(t *testing.T) {
 	r := rulesForTest(t)
 	notes := r.checkFrames("s",

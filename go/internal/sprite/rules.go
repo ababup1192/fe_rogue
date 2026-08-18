@@ -54,11 +54,10 @@ type Rules struct {
 	exemptParen *regexp.Regexp
 }
 
-// pyWhitespace は Python の str パターンでの \s。
+// pyWhitespace は Unicode の空白すべてに当たる文字クラス。
 //
-// WhyNot: Go の \s をそのまま使えないのは、Go が ASCII の 5 文字しか見ないのに対し
-// Python は Unicode の空白すべてを見るため。全角空白を挟んだ「対象外　(orphan)」が
-// Python では読めて Go では読めない、という食い違いになる。
+// WhyNot: Go の \s をそのまま使えないのは、ASCII の 5 文字しか見ないため。
+// 全角空白を挟んだ「対象外　(orphan)」を除外記法として読めなくなる。
 const pyWhitespace = `[\t\n\v\f\r\x{1c}-\x{1f}\x{85}\p{Z}]`
 
 func compilePyWS(pattern string) (*regexp.Regexp, error) {

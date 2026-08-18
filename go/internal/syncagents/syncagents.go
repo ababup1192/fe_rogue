@@ -1,6 +1,6 @@
 package syncagents
 
-// syncagents — agents-pack をゲームのリポへ配る (bin/sync-agents.py と同じ出力)。
+// syncagents — agents-pack をゲームのリポへ配る。
 //
 //	fge-go sync-agents --game DIR [--version V]
 //	fge-go sync-agents --check-manifest
@@ -22,7 +22,7 @@ import (
 	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
-// manifestKeys の並びは bin/sync-agents.py の for key in (...) と同じ。
+// manifest を読む順。並びが配る順になる。
 const (
 	keyCopy = iota
 	keyCopyIfAbsent
@@ -33,7 +33,7 @@ const (
 type manifestEntry struct{ src, dst string }
 
 // Run は配り (または --check-manifest) を走らせて終了コードを返す。
-// err が返ったとき呼ぶ側は必ず止まる（Python 版がその場で落ちる所）。
+// err が返ったとき呼ぶ側は必ず止まる（配りかけで先へ進ませない）。
 func Run(out, errOut *strings.Builder, root string, args []string) (int, error) {
 	opts, code, done := parseArgs(out, errOut, args)
 	if done {
@@ -43,8 +43,7 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 	if err != nil {
 		return 2, err
 	}
-	// WhyNot: 渡された根をそのまま使わないのは、Python 側の ROOT が
-	// Path(__file__).resolve() で symlink を辿った絶対パスになっていて、
+	// WhyNot: 渡された根をそのまま使わないのは、symlink を辿った絶対パスにそろえないと
 	// 読めなかったファイルの名前を出すときに字面が変わるため。
 	root = pyResolve(root)
 	if opts.checkManifest {
@@ -58,7 +57,7 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 }
 
 // loadManifest は manifest を読んで 3 つのキーぶんの項目を返す。
-// 返るエラーが *pyErr なら Python 版が画面へ出す側・そうでなければ Python 版が落ちる側。
+// 返るエラーが *pyErr なら画面へ出して続ける側・そうでなければ止まる側。
 func loadManifest(root string, r *Rules) (map[int][]manifestEntry, error) {
 	path := pyJoin(root, r.ManifestPath)
 	data, err := os.ReadFile(fsPath(path))
@@ -204,11 +203,16 @@ func syncGame(out, errOut *strings.Builder, root string, r *Rules, gameArg, vers
 	}
 
 	for _, e := range m[keyCopyDirs] {
-		dst := pyJoin(game, e.dst)
+		src, dst := pyJoin(root, e.src), pyJoin(game, e.dst)
 		if err := os.MkdirAll(fsPath(dst), 0o777); err != nil {
 			return 2, err
 		}
-		if err := copyDir(pyJoin(root, e.src), dst); err != nil {
+		if canPrune(game, src, dst) {
+			if err := pruneDir(out, game, src, dst); err != nil {
+				return 2, err
+			}
+		}
+		if err := copyDir(src, dst); err != nil {
 			return 2, err
 		}
 	}
@@ -249,9 +253,9 @@ func syncGame(out, errOut *strings.Builder, root string, r *Rules, gameArg, vers
 		}
 	}
 	fmt.Fprintf(out, "[sync-agents] lint: %s\n", strings.Join(lints, " "))
-	fmt.Fprintln(out, "[sync-agents] checkd: bin/checkd + .claude/hooks/after-flix-edit.py")
+	fmt.Fprintln(out, "[sync-agents] checkd: bin/checkd + bin/fge hook-flix-touch / hook-flix-work")
 	fmt.Fprintln(out, "[sync-agents] 呼び口: bin/fge (検査・要約はここへ委譲。一覧は bin/fge)")
-	fmt.Fprintln(out, "[sync-agents] ゲート: bin/precommit.py + bin/githooks/pre-commit (配線は make hooks)")
+	fmt.Fprintln(out, "[sync-agents] ゲート: bin/fge precommit + bin/githooks/pre-commit (配線は make hooks)")
 	fmt.Fprintf(out, "[sync-agents] wrote %s/AGENTS.md + CLAUDE.md\n", game)
 	return 0, nil
 }
@@ -268,8 +272,8 @@ func buildAgentsMD(root string, r *Rules, game, version string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	// WhyNot: TrimSuffix ではなく TrimRight なのは、Python の rstrip("\n") が
-	// 末尾の改行を 1 つではなく全部落とすため。
+	// WhyNot: TrimSuffix ではなく TrimRight なのは、末尾の改行を 1 つだけでなく
+	// 全部落とすため。
 	parts = append(parts, strings.TrimRight(core, "\n"), "",
 		"## 配られているスキル一覧（sync-agents が自動生成。手で編集しない）", "")
 	skills, err := skillDirNames(root, r)
@@ -375,7 +379,7 @@ func dirEntryNames(dir string) ([]string, error) {
 	return names, nil
 }
 
-// mdFilesSorted は dir の下の *.md を Python の sorted(rglob) と同じ並びで返す。
+// mdFilesSorted は dir の下の *.md をパスの要素ごとに比べた並びで返す。
 // 返るのは dir からの相対パス。
 func mdFilesSorted(dir string) ([]string, error) {
 	var found []string
@@ -387,7 +391,7 @@ func mdFilesSorted(dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// WhyNot: sort.Strings で字面を比べないのは、Python の Path が要素ごとに比べるため
+	// WhyNot: sort.Strings で字面を比べないのは、要素ごとに比べないと並びが変わるため
 	// （"a-x/c.md" と "a/b.md" の順が字面比べだと入れ替わる）。
 	sort.Slice(found, func(i, j int) bool {
 		return partsLess(strings.Split(found[i], "/"), strings.Split(found[j], "/"))
@@ -404,7 +408,7 @@ func partsLess(a, b []string) bool {
 	return len(a) < len(b)
 }
 
-// walkRel は Python の rglob("*") と同じ範囲を歩く（symlink のフォルダへは入らない）。
+// walkRel は root の下を再帰で歩く（symlink のフォルダへは入らない）。
 func walkRel(root, rel string, visit func(rel string, isDir bool)) error {
 	dir := root
 	if rel != "" {
@@ -433,6 +437,79 @@ func walkRel(root, rel string, visit func(rel string, isDir bool)) error {
 		if err := walkRel(root, childRel, visit); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// canPrune は copyDirs の配り先を消し込んでよいかを見る。
+//
+// WhyNot: 配り元が無い / 空のときに消しへ行かないのは、engine 側の取り違え 1 つで
+// ゲームのフォルダを空にできてしまうため。配り先が symlink のときも辿らずに残す。
+func canPrune(game, src, dst string) bool {
+	if !pyIsDir(src) {
+		return false
+	}
+	names, err := dirEntryNames(src)
+	if err != nil || len(names) == 0 {
+		return false
+	}
+	if isSymlink(dst) || !pyIsDir(dst) {
+		return false
+	}
+	return isUnder(game, dst)
+}
+
+// isUnder は p が base の下にあるか（p 自身は含まない）。
+func isUnder(base, p string) bool {
+	baseAnchor, baseParts := pxlib.PathParts(base)
+	pAnchor, pParts := pxlib.PathParts(p)
+	if baseAnchor != pAnchor || len(baseParts) >= len(pParts) {
+		return false
+	}
+	for i := range baseParts {
+		if baseParts[i] != pParts[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// pruneDir は配り元に無い物を配り先から消す (copyDirs をミラーにする)。
+func pruneDir(out *strings.Builder, game, src, dst string) error {
+	names, err := dirEntryNames(dst)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		d, s := pyJoin(dst, name), pyJoin(src, name)
+		switch {
+		case isSymlink(d):
+			if pyExists(s) {
+				continue
+			}
+			if err := os.Remove(fsPath(d)); err != nil {
+				return err
+			}
+		case pyIsDir(d):
+			if pyIsDir(s) {
+				if err := pruneDir(out, game, s, d); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := os.RemoveAll(fsPath(d)); err != nil {
+				return err
+			}
+		default:
+			if pyIsFile(s) {
+				continue
+			}
+			if err := os.Remove(fsPath(d)); err != nil {
+				return err
+			}
+		}
+		fmt.Fprintf(out, "[sync-agents] 消しました: %s (配り元にありません)\n",
+			strings.TrimPrefix(d, game+"/"))
 	}
 	return nil
 }
@@ -480,7 +557,7 @@ func writeTextLF(path, text string) error {
 	return os.WriteFile(fsPath(path), []byte(text), 0o666)
 }
 
-// readTextStrict は Python の read_bytes().decode("utf-8") と同じ厳しさで読む。
+// readTextStrict は UTF-8 として読む。壊れたバイトがあれば置き換えずにエラーにする。
 func readTextStrict(path string) (string, error) {
 	data, err := os.ReadFile(fsPath(path))
 	if err != nil {
@@ -492,10 +569,10 @@ func readTextStrict(path string) (string, error) {
 	return string(data), nil
 }
 
-// pyPath は Python の str(Path(s))。
+// pyPath は区切りを "/" にそろえたパスの字面。
 func pyPath(s string) string { return pxlib.PosixPath(s) }
 
-// pyResolve は Python の Path(s).resolve()。
+// pyResolve は絶対・symlink をたどった実体の字面にそろえる。
 func pyResolve(s string) string {
 	if abs, err := filepath.Abs(fsPath(s)); err == nil {
 		s = abs
@@ -506,7 +583,7 @@ func pyResolve(s string) string {
 	return pyPath(s)
 }
 
-// pyJoin は Python の Path(base) / rel。rel が絶対なら rel が勝つ。
+// pyJoin は base の下に rel をつなぐ。rel が絶対なら rel が勝つ。
 func pyJoin(base, rel string) string {
 	if strings.HasPrefix(rel, "/") {
 		return pyPath(rel)
@@ -514,8 +591,8 @@ func pyJoin(base, rel string) string {
 	return pyPath(base + "/" + rel)
 }
 
-// pyName は Python の Path(p).name。
-// WhyNot: filepath.Base を使わないのは、末尾が / のとき Python が親の名前を返すのに対し
+// pyName は最後の要素の名前。
+// WhyNot: filepath.Base を使わないのは、末尾が / のときに親の名前が欲しいのに
 // Go は "/" を返すなど食い違うため。
 func pyName(p string) string {
 	_, parts := pxlib.PathParts(p)
@@ -525,7 +602,7 @@ func pyName(p string) string {
 	return parts[len(parts)-1]
 }
 
-// pyParent は Python の Path(p).parent。
+// pyParent は 1 つ上のディレクトリ。
 func pyParent(p string) string {
 	anchor, parts := pxlib.PathParts(p)
 	if len(parts) > 0 {
@@ -563,9 +640,9 @@ func isSymlink(p string) bool {
 	return err == nil && info.Mode()&os.ModeSymlink != 0
 }
 
-// pyOSErrorText は Python の str(OSError)。
-// WhyNot: Go の err.Error() をそのまま出せないのは、strerror の頭が Python では
-// 大文字・Go では小文字で、パスの囲み方も違うため。
+// pyOSErrorText はファイルを開けなかったときに画面へ出す文面。
+// WhyNot: Go の err.Error() をそのまま出せないのは、出す字面が "[Errno 2] No such file
+// or directory: 'path'" に決まっていて、頭の大文字とパスの囲みが Go と違うため。
 func pyOSErrorText(err error, path string) string {
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
@@ -578,7 +655,7 @@ func pyOSErrorText(err error, path string) string {
 	return err.Error()
 }
 
-// pyStr は Python の str(v)。文字列だけは repr と違って囲みが付かない。
+// pyStr は値を画面へ出す字面。文字列だけは pyRepr と違って引用符が付かない。
 func pyStr(v pyValue) string {
 	if s, ok := v.(string); ok {
 		return s
@@ -586,8 +663,8 @@ func pyStr(v pyValue) string {
 	return pyRepr(v)
 }
 
-// pyIsSpace は Python の str.isspace()。
-// WhyNot: unicode.IsSpace をそのまま使わないのは、Python が 0x1c〜0x1f も空白と数えるため。
+// pyIsSpace は空白とみなす範囲。
+// WhyNot: unicode.IsSpace をそのまま使わないのは、0x1c〜0x1f も空白と数える必要があるため。
 func pyIsSpace(r rune) bool {
 	if r >= 0x1c && r <= 0x1f {
 		return true

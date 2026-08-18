@@ -4,6 +4,6 @@
 # cwd: $WORK / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
 sh "$ENGINE/testdata/lint/check-refs/_base/build.sh" "$WORK/bundle"
 [ -d overlay ] && cp -R overlay/. "$WORK"/
-rm "$WORK/bundle/bin/checkd" "$WORK/bundle/docs/glossary.md"
+rm "$WORK/bundle/bin/flix" "$WORK/bundle/docs/glossary.md"
 cd "$WORK"
 "$ENGINE/bin/fge" check-refs --root "$ENGINE" --bundle bundle 

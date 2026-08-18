@@ -1,13 +1,13 @@
 package checkrefs
 
-// check-refs — 参照の存在検査（bin/check-refs.py と同じ出力）。
+// check-refs — 文書やスクリプトが名指ししているパスが実在するかの検査。
 //
 //	fge-go check-refs                    リポ自身を検査
 //	fge-go check-refs --root DIR         見に行く先を差し替える（見本から呼ぶため）
 //	fge-go check-refs --bundle DIR       ステージ済みバンドルに必須物が揃っているか
 //	fge-go check-refs --bundle DIR --windows
 //
-// 語彙と一覧は bin/lint-rules/check-refs.json、source of truth は bin/check-refs.py。
+// 語彙と一覧は bin/lint-rules/check-refs.json が持つ。
 
 import (
 	"encoding/json"
@@ -28,7 +28,7 @@ type checker struct {
 
 // ------------------------------------------------------------ パスの小物
 
-// joinPath は Python の Path(base) / rel と同じ字面を返す。
+// joinPath は base の下の rel を / 区切りの字面でつなぐ。
 func joinPath(base, rel string) string {
 	if base == "" {
 		return pxlib.PosixPath(rel)
@@ -40,7 +40,7 @@ func joinPath(base, rel string) string {
 	return pxlib.PosixPath(b + "/" + rel)
 }
 
-// parentsOf は Python の Path(p).parents と同じ並びを返す。
+// parentsOf は p の親を、近い方から根へ向かって並べて返す。
 func parentsOf(p string) []string {
 	anchor, parts := pxlib.PathParts(p)
 	var out []string
@@ -56,7 +56,7 @@ func parentsOf(p string) []string {
 	return out
 }
 
-// pathLess は Python の Path どうしの大小と同じ並べ方（要素ごとに比べる）。
+// pathLess はパスどうしの大小（/ で切った要素ごとに比べる）。
 //
 // WhyNot: 文字列そのものを比べないのは、区切りの / (0x2f) より小さい字が名前に入ると
 // 並びが入れ替わるため（rpg/Makefile と rpg-starter/Makefile）。
@@ -276,7 +276,7 @@ func (c *checker) stripMkComments(text string) string {
 	return strings.Join(out, "\n")
 }
 
-// subEcho は echo/printf の文字列を空文字に置き換える（Python の re.sub と同じ結果）。
+// subEcho は echo/printf が画面へ出す文字列を空文字に置き換える。
 func (c *checker) subEcho(ln string) string {
 	spans := c.rules.Echo.FindAll(ln)
 	if len(spans) == 0 {

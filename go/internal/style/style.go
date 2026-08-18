@@ -1,5 +1,4 @@
-// Package style は焼いた PNG を測って「画風の軸がズレていないか」を言う検査
-// (bin/lint-style.py の Go 版)。
+// Package style は焼いた PNG を測って「画風の軸がズレていないか」を言う検査。
 package style
 
 import (
@@ -9,12 +8,12 @@ import (
 	"strings"
 )
 
-// docHead は Python 版の docstring の 1 行目（引数が無いときに出す）。
+// docHead は引数が無いときに出す 1 行の説明。
 const docHead = "焼いた PNG を測って「画風の軸がズレていないか」を言う。"
 
-// baseName は Python の os.path.basename と同じ切り方。
-// WhyNot: filepath.Base を使わないのは、末尾が区切りのときに "." や親を返して
-// Python の空文字と食い違うため。
+// baseName は最後の / より後ろを返す（区切りで終わるなら空文字）。
+// WhyNot: filepath.Base を使わないのは、末尾が区切りのときに "." や親の名前を返し、
+// ディレクトリを絵のファイルと取り違えるため。
 func baseName(path string) string {
 	if i := strings.LastIndex(path, "/"); i >= 0 {
 		return path[i+1:]
@@ -188,7 +187,7 @@ func absFloat(v float64) float64 {
 	return v
 }
 
-// parseArgs は Python 版 main の引数の読み方をそのまま写す。
+// parsed はコマンドラインから読み取った指定。
 type parsed struct {
 	strict      bool
 	doCompare   bool
@@ -259,8 +258,8 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 	}
 	if len(p.files) == 0 {
 		fmt.Fprintln(out, docHead)
-		fmt.Fprintln(out, "使い方: python3 bin/lint-style.py --hand fine --unit 2 debug/style/*.png")
-		fmt.Fprintln(out, "        python3 bin/lint-style.py --compare a.png b.png")
+		fmt.Fprintln(out, "使い方: bin/fge style --hand fine --unit 2 debug/style/*.png")
+		fmt.Fprintln(out, "        bin/fge style --compare a.png b.png")
 		return 1, nil
 	}
 	if p.hand != "" && !rules.isHandName(p.hand) {

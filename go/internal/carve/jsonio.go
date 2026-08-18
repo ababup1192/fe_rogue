@@ -1,6 +1,6 @@
 package carve
 
-// JSON を Python の json と同じ並び・同じ字面で読み書きする。
+// JSON を、鍵の並びと字面を保ったまま読み書きする。
 //
 // WhyNot: encoding/json の map[string]any で読まないのは、Go の map が
 // 鍵の順を落とすため。sprite.json は書いた順がそのまま絵の順になる。
@@ -83,7 +83,7 @@ func decodeOrderedFrom(dec *json.Decoder, tok json.Token) (any, error) {
 	}
 }
 
-// jsonString は Python の json.dumps(ensure_ascii=False) と同じ字面にする。
+// jsonString は文字列を JSON の字面にする。非 ASCII は逃がさずそのまま出す。
 func jsonString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')

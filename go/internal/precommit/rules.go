@@ -75,9 +75,9 @@ func anySubstring(path string, list []string) bool {
 	return false
 }
 
-// anyBasename は Python 側の `p == "Makefile" or p.endswith("/Makefile")` と同じ。
-// WhyNot: filepath.Base を使わないのは、末尾が / のパスで Python の
-// os.path.basename が空文字を返す食い違いを持ち込まないため。
+// anyBasename はパスの末尾の名前が一覧のどれかか。
+// WhyNot: filepath.Base を使わないのは、末尾が / のパスで手前の名前を拾ってしまい、
+// ディレクトリを同名のファイルと取り違えるため。
 func anyBasename(path string, list []string) bool {
 	for _, s := range list {
 		if path == s || strings.HasSuffix(path, "/"+s) {
@@ -90,16 +90,14 @@ func anyBasename(path string, list []string) bool {
 // Check は 1 本の検査の呼び方。
 type Check struct {
 	ID    string   `json:"id"`
-	Tool  string   `json:"tool"`
 	Sub   string   `json:"sub"`
 	Flags []string `json:"flags"`
 	Pass  string   `json:"pass"`
 	When  Matcher  `json:"when"`
 }
 
-// StagedImages は今回ステージした画像を裁くときの決まり（bin/lint-images.py から写した物）。
+// StagedImages は今回ステージした画像を裁くときの決まり。
 type StagedImages struct {
-	Tool                string   `json:"tool"`
 	Sub                 string   `json:"sub"`
 	ImageExts           []string `json:"imageExts"`
 	GalleryPrefix       string   `json:"galleryPrefix"`
@@ -110,7 +108,7 @@ type StagedImages struct {
 	AllowedExact        []string `json:"allowedExact"`
 }
 
-// Allowed は追跡してよい置き場か。bin/lint-images.py の allowed と同じ順序で見る。
+// Allowed は追跡してよい置き場か。
 func (s StagedImages) Allowed(path string) bool {
 	if anyPrefix(path, s.AllowedPrefixes) {
 		return true
@@ -126,7 +124,7 @@ func (s StagedImages) Allowed(path string) bool {
 	return anySubstring(path, s.AllowedSubstrings)
 }
 
-// IsImage は拡張子が画像か（Python は p.lower().endswith(IMAGE_EXTS)）。
+// IsImage は拡張子が画像か（大文字小文字は区別しない）。
 func (s StagedImages) IsImage(path string) bool {
 	return anySuffix(strings.ToLower(path), s.ImageExts)
 }
@@ -137,9 +135,8 @@ type DocsSync struct {
 	When   Matcher `json:"when"`
 }
 
-// FailOpen は道具が無いときに飛ばす旨を知らせる文面。
+// FailOpen は make が使えないときに飛ばす旨を知らせる文面。
 type FailOpen struct {
-	ToolMissing           string `json:"toolMissing"`
 	MakeMissing           string `json:"makeMissing"`
 	TargetMissing         string `json:"targetMissing"`
 	TargetMissingExitCode int    `json:"targetMissingExitCode"`
@@ -176,8 +173,8 @@ func LoadRules(root string) (*Rules, error) {
 		missing = "stagedImages.galleryMaxFileBytes"
 	case r.DocsSync.Target == "":
 		missing = "docsSync.target"
-	case r.FailOpen.ToolMissing == "":
-		missing = "failOpen.toolMissing"
+	case r.FailOpen.MakeMissing == "":
+		missing = "failOpen.makeMissing"
 	}
 	if missing != "" {
 		return nil, fmt.Errorf("規約ファイルに %s がありません (%s)", missing, path)

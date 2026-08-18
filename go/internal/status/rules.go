@@ -34,8 +34,8 @@ type rulesFile struct {
 
 // Rules は 1 画面の組み立てが使う規約。すべて JSON から来る。
 //
-// WhyNot: 節の並びを map にしないのは、Python の dict が書いた順を保つのに対し
-// Go の map は並びを持たないため。並びが意味を持つ物は配列で受ける。
+// WhyNot: 節の並びを map にしないのは、Go の map が並びを持たず、画面に出る節の順が
+// 走らせるたびに変わってしまうため。並びが意味を持つ物は配列で受ける。
 type Rules struct {
 	MaxLines           int
 	BuildWarnEntries   int

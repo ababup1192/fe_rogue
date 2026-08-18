@@ -1,10 +1,10 @@
 package uioverflow
 
-// Python の例外・値を print したときの字面を作る小物。
+// エラーと値を検査の出力へ載せる字面にする小物。
 //
-// WhyNot: Go の error をそのまま出さないのは、Python 版が str(OSError) を
-// 出力へ流すため (`[Errno 2] No such file or directory: 'a.ui.json'`)。
-// errno 番号・英語の説明・ファイル名のクォートまで写さないとバイト一致しない。
+// WhyNot: Go の error をそのまま出さないのは、読めないファイルの行が
+// この形に決まっているため (`[Errno 2] No such file or directory: 'a.ui.json'`)。
+// errno 番号・英語の説明・ファイル名のクォートまで組み立てないとこの形にならない。
 
 import (
 	"errors"
@@ -15,7 +15,7 @@ import (
 	"unicode"
 )
 
-// pyOSError は Python の str(OSError) と同じ字面を返す。
+// pyOSError は errno 番号・説明・パスを並べた 1 行を返す。
 func pyOSError(err error, path string) string {
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
@@ -33,7 +33,7 @@ func capitalize(s string) string {
 	return string(r)
 }
 
-// pyRepr は Python の repr(str) と同じクォート選び・同じ逃がし方をする。
+// pyRepr は文字列をクォートで囲む。単引用符を含み二重引用符を含まないときだけ " で囲む。
 func pyRepr(s string) string {
 	quote := byte('\'')
 	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
@@ -62,7 +62,7 @@ func pyRepr(s string) string {
 	return b.String()
 }
 
-// pyReprList は Python の repr(list[str]) と同じ字面を返す。
+// pyReprList は文字列の並びを [ ] で囲んだ 1 行にする。
 func pyReprList(v []string) string {
 	parts := make([]string, 0, len(v))
 	for _, s := range v {

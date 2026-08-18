@@ -3,8 +3,8 @@ package pxlib
 
 // PNG を RGBA のバイト列にする入口。
 // WhyNot: 手書きのデコーダを持たないのは image/png で足りるため。ただし
-// 受け付ける範囲 (8bit・インターレース無し) は Python 版と同じに絞る。
-// 絞らないと、Python が「ダイジェスト不可」と言う絵に対してだけ出力がずれる。
+// 受け付ける範囲は 8bit・インターレース無しに絞る。広げると、検査が
+// 「ダイジェスト不可」と断るはずの絵まで読めてしまい、出力が変わる。
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ type Image struct {
 
 var PNGMagic = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
-// checkPNGHeader は IHDR を見て、Python 版が受け付けない絵を同じ理由で弾く。
+// checkPNGHeader は IHDR を見て、受け付けない形式の絵を弾く。
 func checkPNGHeader(data []byte) error {
 	if len(data) < 8 || !bytes.Equal(data[:8], PNGMagic) {
 		return errors.New("PNG ではない")

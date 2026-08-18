@@ -111,7 +111,6 @@ help:
 	@echo "  bin/fge digest A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make go-build             go/ を bin/fge-go と、配る先ごとの 5 種にビルド"
 	@echo "  make go-test              go/ のテスト (CIEDE2000 の参照 34 組・外部依存ゼロの検査を含む)"
-	@echo "  make go-compare           Python 版と Go 版の出力をバイト比較"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make render-all           render-all ターゲットを持つ全 template の生成物を描き出し直す"
 	@echo "  make render-par           同上を並列実行"
@@ -126,7 +125,7 @@ help:
 	@echo "  make sync-engine-tools    engine_tools だけ build-pkg & 配布 (依存する各パッケージへ)"
 	@echo "  make sync-root-src        コミュニティビルド用にルート src/ の symlink 集を再生成"
 	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
-	@echo "  make checkd-stop          flix check 常駐 (bin/checkd) を全部止める (詳細は docs/checkd.md)"
+	@echo "  make checkd-stop          flix check 常駐 (bin/fge checkd) を全部止める (詳細は docs/checkd.md)"
 	@echo "  make clean-game-builds    templates/*/build/ と bench/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 	@echo "  make sync-engine-full     engine_full だけ src 集約 & build-pkg & 配布 (templates / bench へ)"
 	@echo "  make release              sync→test-par→gl-parity→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
@@ -143,9 +142,9 @@ LOCK_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_D
 clean-locks:
 	@find $(LOCK_DIRS) -type d -name build -prune -o \( -path "*/lib/cache/*" -name "*.lock" -print -exec rm -f {} + \) 2>/dev/null | awk 'END { print NR " lock(s) removed" }'
 
-# flix check の常駐 (bin/checkd) を全部止める。挙動が怪しい時・メモリを空けたい時の逃げ道。
+# flix check の常駐 (bin/fge checkd) を全部止める。挙動が怪しい時・メモリを空けたい時の逃げ道。
 checkd-stop:
-	@bin/checkd --stop-all
+	@bin/fge checkd --stop-all
 
 # IDE でゲームのプロジェクトを開くと ProjectLoader.findSceneFiles の Fs.Glob が
 # build/class 配下の数十万コンパイル成果物を stat してしまい、プロジェクト読み込みに
@@ -374,11 +373,6 @@ go-build:
 go-test:
 	@cd go && CGO_ENABLED=0 go test ./...
 
-# Python 版と Go 版の出力を突き合わせる (バイト一致で挙動不変を証明する)。
-.PHONY: go-compare
-go-compare: go-build
-	@sh go/compare.sh
-
 # ── ゲート: bug! を置く場所 ──────────────────────────────────
 # 読み込みの途中で bug! すると、既定値で続けてよいかを呼ぶ側が選べない
 # (docs/error-handling.md の決まり 2)。*OrBug という名前の関数の中だけを許す。
@@ -434,8 +428,8 @@ sync-engine-full:
 	# 固める前に型検査する。build-pkg はソースを zip にするだけで、コンパイルが通るかを
 	# 見ない。ここで検査しないと、壊れたエンジンが fpkg → Studio 同梱 → /Applications まで
 	# 全部 exit 0 で運ばれ、誰かが新しいゲームを産んだ時に初めて落ちる。
-	# WhyNot: bin/checkd は使わない。symlink で束ねたこのパッケージでは常駐が偽の緑を
-	# 返す (checkd 自身がこの形を見つけたら素の CLI へ落ちるようにしてある)。
+	# WhyNot: 常駐 (bin/fge checkd) は使わない。symlink で束ねたこのパッケージでは常駐が
+	# 偽の緑を返す (checkd 自身がこの形を見つけたら素の CLI へ落ちるようにしてある)。
 	@echo "[sync-engine-full] 固める前に型検査"
 	cd $(ENGINE_FULL_DIR) && "$(FLIX)" check
 	cd $(ENGINE_FULL_DIR) && "$(FLIX)" build-pkg
@@ -614,6 +608,17 @@ sync-agents:
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make sync-agents GAME=/path/to/game)"; exit 1; fi
 	@bin/fge sync-agents --game "$(GAME)" --version "$(VERSION)"
 	@$(MAKE) --no-print-directory sync-fge-go GAME="$(GAME)"
+
+# Go 移行で役目を終えた Python の道具を、配った先のゲームから消す (一度きりの後始末)。
+# copyDirs (skills・rules・lint-rules) と違って bin/ はゲームが自分の道具も置く場所なので、
+# ミラーにはせず名指しの一覧だけを消す。engine 側にまだある道具は消さない。
+# 素振りは DRY_RUN=1。一覧は go/internal/prunetools の StaleTools。
+# WhyNot: manifest.json に載せないのは、これが恒久の配布規約ではなく一度きりの後始末で、
+# 載せると Studio の Flix にも同じ実装と parity 検査が要るため。
+.PHONY: prune-stale-tools
+prune-stale-tools:
+	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make prune-stale-tools GAME=/path/to/game)"; exit 1; fi
+	@bin/fge prune-stale-tools --game "$(GAME)" $(if $(DRY_RUN),--dry-run,)
 
 # 検査の中身は bin/fge-go (Go のバイナリ)。配る先の OS/CPU に合う 1 つだけを置く。
 # WhyNot: manifest.json の copy に並べないのは、あそこが「どの OS でも同じ物を配る」表で、

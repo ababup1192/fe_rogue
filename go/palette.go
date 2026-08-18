@@ -1,7 +1,7 @@
 package main
 
 // palette — ドット絵 (*.sprite.json) の legend の意味色キーが Studio から解けるか検査する
-// ゲート (bin/lint-palette.py と同じ出力)。
+// ゲート。
 
 import (
 	"fmt"

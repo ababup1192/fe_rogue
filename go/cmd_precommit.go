@@ -18,7 +18,6 @@ func init() {
 
 // lintOf は「(out, errOut, root, 引数) -> (終了コード, エラー)」の検査を precommit へ渡す形にする。
 // WhyNot: エラーを握って 0 にしないのは、検査が死んだことを緑と見分けられなくなるため。
-// Python 側では子が traceback を出して 0 以外で終わる位置。
 func lintOf(fn func(out, errOut *strings.Builder, root string, args []string) (int, error), root string) precommit.Lint {
 	return func(out, errOut *strings.Builder, args []string) int {
 		code, err := fn(out, errOut, root, args)
@@ -26,14 +25,14 @@ func lintOf(fn func(out, errOut *strings.Builder, root string, args []string) (i
 	}
 }
 
-// cmdPrecommit は Python 版 bin/precommit.py と同じ裁き方をする。
+// cmdPrecommit はコミット直前のゲート。検査の入口を集めて precommit へ渡す。
 //
 // WhyNot: 子プロセス (bin/fge-go <サブコマンド>) を起こさないのは、配布先で
 // バイナリの置き場を当てにすることになり、fail-open の条件が 1 つ増えるため。
-// 出力の並びは precommit 側が Python の書き口 (子は即・親は最後) に合わせている。
+// 出力の並びは precommit 側が決める (検査の出力が先・ゲートの知らせが最後)。
 //
-// WhyNot: --json を持たないのは、Python 版に無い口だからで、出力を 1 バイトも
-// 変えないことが先。
+// WhyNot: --json を持たないのは、読み手が人 (コミットを止められた人) だけで、
+// 機械可読の出力を要る場面が無いため。
 func cmdPrecommit(out, errOut *strings.Builder, rest []string, _ bool) int {
 	root, rest := declRootFlag(rest)
 	abs, err := precommit.ResolveRoot(root)

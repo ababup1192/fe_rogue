@@ -1,7 +1,7 @@
 package pxlib
 
 // CIEDE2000 の検証。Sharma, Wu, Dalal (2005) の参照データ 34 組。
-// bin/lint-sprite.py の delta_e_lab はこの 34 組で最大誤差 4.95e-05 と分かっている。
+// この 34 組では参照値との差が 1e-4 に収まる。
 
 import (
 	"math"

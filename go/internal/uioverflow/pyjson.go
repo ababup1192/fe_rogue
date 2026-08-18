@@ -1,10 +1,10 @@
 package uioverflow
 
-// Python の json モジュールと同じ読み方・同じ失敗の字面を出す JSON パーサ。
+// 読めない JSON のときの文面まで決まっている JSON パーサ。
 //
-// WhyNot: encoding/json を使わないのは、読めない JSON のときに Python 版が
-// 例外の文面をそのまま出力へ流すため (`(読めない JSON: Expecting ',' delimiter:
-// line 1 column 8 (char 7))`)。位置と文面まで含めて写さないとバイト一致しない。
+// WhyNot: encoding/json を使わないのは、読めない JSON のときに検査が出す文面が
+// この形に決まっているため (`(読めない JSON: Expecting ',' delimiter:
+// line 1 column 8 (char 7))`)。位置と文面を自分で作れないとこの形にならない。
 // 位置は「文字」で数える (Go の既定のバイト位置ではない)。
 
 import (
@@ -15,7 +15,7 @@ import (
 	"unicode/utf16"
 )
 
-// decodeError は Python の json.JSONDecodeError と同じ字面を出す。
+// decodeError は読めなかった所を line / column / char で指す。
 type decodeError struct {
 	msg string
 	pos int
@@ -39,7 +39,7 @@ func (d *decoder) err(msg string, pos int) error {
 	return &decodeError{msg: msg, pos: pos, doc: d.r}
 }
 
-// skipWS は Python の json が読み飛ばす空白 (空白・タブ・改行・復帰) だけを飛ばす。
+// skipWS は空白・タブ・改行・復帰だけを飛ばす。
 func (d *decoder) skipWS(i int) int {
 	for i < len(d.r) {
 		switch d.r[i] {
@@ -66,7 +66,7 @@ func (d *decoder) literal(i int, word string) bool {
 	return string(d.r[i:i+len(word)]) == word
 }
 
-// LoadsPyJSON は Python の json.loads と同じ値・同じエラーを返す。
+// LoadsPyJSON は JSON を読む。読めなければ位置つきのエラーを返す。
 func LoadsPyJSON(s string) (any, error) {
 	d := &decoder{r: []rune(s)}
 	i := d.skipWS(0)
@@ -112,7 +112,7 @@ func (d *decoder) scanOnce(i int) (any, int, error) {
 	return nil, 0, d.err("Expecting value", i)
 }
 
-// scanNumber は Python の NUMBER_RE と同じ形だけを数として読む。
+// scanNumber は JSON の数の形だけを数として読む。
 func (d *decoder) scanNumber(i int) (float64, int, bool) {
 	start := i
 	if d.at(i) == '-' {
@@ -148,8 +148,8 @@ func (d *decoder) scanNumber(i int) (float64, int, bool) {
 	}
 	v, err := strconv.ParseFloat(string(d.r[start:i]), 64)
 	if err != nil {
-		// WhyNot: 桁あふれを失敗にしないのは、Python の float() が inf を返して
-		// 読み込み自体は成功するため。
+		// WhyNot: 桁あふれを失敗にしないのは、大きすぎる数 1 つで Doc 全体を
+		// 「読めない JSON」にしないため。値は inf になる。
 		if strings.Contains(err.Error(), "value out of range") {
 			return v, i, true
 		}

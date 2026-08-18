@@ -1,6 +1,6 @@
 package status
 
-// Python 版の細かい意味づけ（切る位置・並び・空白の範囲）を縛る。
+// 細かい意味づけ（切る位置・並び・空白の範囲）を縛る。
 
 import (
 	"os"
@@ -231,8 +231,8 @@ func TestPackStampReportsOldVersion(t *testing.T) {
 	}
 }
 
-// WhyNot: read(400) を「先頭 400 バイト」にしないのは、Python が文字数で切るため。
-// 日本語が並ぶ AGENTS.md では 3 倍ずれて、刻印を読み落とす。
+// WhyNot: 先頭 400 を「バイト」で切らないのは、日本語が並ぶ AGENTS.md では
+// 3 倍ずれて、刻印を読み落とすため。
 func TestPackStampCutIsCountedInRunes(t *testing.T) {
 	root := t.TempDir()
 	engine := filepath.Join(t.TempDir(), "engine")
@@ -304,7 +304,7 @@ func TestTooLongIsCut(t *testing.T) {
 	if len(lines) != rules.MaxLines+1 {
 		t.Fatalf("切った後は %d 行になります: %d", rules.MaxLines+1, len(lines))
 	}
-	if lines[len(lines)-1] != "  … (長すぎるので切った。python3 bin/status.py で全文)" {
+	if lines[len(lines)-1] != "  … (長すぎるので切った。bin/fge status で全文)" {
 		t.Errorf("末尾が切った印になりません: %s", lines[len(lines)-1])
 	}
 }
@@ -337,7 +337,7 @@ func TestUnknownSectionIsAnError(t *testing.T) {
 // ---- pyutil ---------------------------------------------------------------
 
 func TestPyBasenameOnTrailingSlash(t *testing.T) {
-	// WhyNot: filepath.Base だと "b" が返る。Python は空文字。
+	// WhyNot: filepath.Base だと "b" が返る。ここでは空文字が要る。
 	if got := pyBasename("a/b/"); got != "" {
 		t.Errorf("末尾が / のときは空文字です: %q", got)
 	}
@@ -394,7 +394,7 @@ func TestEngineDirPrefersEnv(t *testing.T) {
 func TestEngineDirAcceptsWideSpace(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("ENGINE", "")
-	// WhyNot: Go の \s は ASCII だけ。Python の \s は全角空白も落とす。
+	// WhyNot: Go の \s は ASCII だけなので使えない。全角空白も落とす必要がある。
 	write(t, filepath.Join(root, "local.mk"), "ENGINE ?= /a/b　\n")
 	if got := ReadEngineDir(root); got != "/a/b" {
 		t.Errorf("全角空白を落とせていません: %q", got)

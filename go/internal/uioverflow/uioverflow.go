@@ -1,7 +1,6 @@
 package uioverflow
 
-// uioverflow — ui.json の text が「折り返し宣言の漏れ」ではみ出さないかを見る検査
-// (bin/lint-ui-overflow.py と同じ出力)。
+// uioverflow — ui.json の text が「折り返し宣言の漏れ」ではみ出さないかを見る検査。
 //
 //	fge-go ui-overflow                 templates/ の *.ui.json を全部
 //	fge-go ui-overflow a.ui.json       指定ファイルだけ
@@ -35,7 +34,7 @@ func asObject(v any) (map[string]any, bool) {
 	return m, ok
 }
 
-// pyG は Python の format(x, "g") と同じ字面を返す。
+// pyG は数を有効数字 6 桁の短い字面にする (nan / inf も字にする)。
 func pyG(v float64) string {
 	switch {
 	case math.IsNaN(v):
@@ -230,7 +229,7 @@ func (r *Rules) discover(root string) []string {
 	return found
 }
 
-// walkTree は Python の os.walk (上から順・シンボリックリンクは辿らない) と同じ歩き方をする。
+// walkTree は上から順に降りる。シンボリックリンクは辿らない。
 func (r *Rules) walkTree(dir string, found *[]string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -299,7 +298,7 @@ func readDirNames(dir string) ([]string, error) {
 	return names, nil
 }
 
-// relPath は Python の os.path.relpath と同じ字面を返す。
+// relPath は root から見た相対パスの字面を返す。
 func relPath(path, root string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {

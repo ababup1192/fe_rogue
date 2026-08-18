@@ -1,6 +1,6 @@
 package main
 
-// sil — ドット絵 (*.sprite.json) を目視用の PNG に描き出す (bin/sil-png.py と同じ絵)。
+// sil — ドット絵 (*.sprite.json) を目視用の PNG に描き出す。
 //   sil  … 全 legend を黒 1 色に潰す
 //   gray … 明度だけのグレーにする
 //   bg   … 明背景と暗背景に並べて置く

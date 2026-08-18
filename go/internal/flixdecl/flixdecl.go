@@ -2,12 +2,11 @@ package flixdecl
 
 // flixdecl — Flix のソースから `pub` 宣言だけを抜き出す層。
 //
-// bin/gen-api-digest.py の scan_file と同じ結果を返す。api-digest（ダイジェストの
-// 生成）と f32（pub 面の Float32 検査）が同じ抽出を使う。
+// api-digest（ダイジェストの生成）と f32（pub 面の Float32 検査）が同じ抽出を使う。
 //
 // WhyNot: 正規表現 1 本で書き直さないのは、宣言が複数行にまたがり、括弧とブレースの
 // 深さを数えないと本体の開始が決められないため（`==` `=>` を代入と読み違える）。
-// Python 側と同じく 1 文字ずつ追う。
+// 1 文字ずつ追う。
 
 import (
 	"path/filepath"
@@ -26,7 +25,7 @@ type Package struct {
 	Root string
 }
 
-// Packages は bin/gen-api-digest.py の PACKAGES と同じ 3 つ。
+// Packages はダイジェストに載せる 3 つ。
 var Packages = []Package{
 	{Name: "engine", Root: "engine/src"},
 	{Name: "engine_world", Root: "engine_world/src"},
@@ -52,7 +51,7 @@ type FileDecls struct {
 	Mods []ModDecls
 }
 
-// pySpace は Python の str の `\s` と同じ字の集合。
+// pySpace は空白とみなす字の集合（Unicode の空白すべて）。
 // WhyNot: Go の `\s` を使わないのは ASCII だけしか見ないため（全角空白で切れ方が変わる）。
 const pySpace = `[\t\n\v\f\r \x{1c}-\x{1f}\x{85}\p{Z}]`
 
@@ -65,7 +64,7 @@ var (
 	effOpNameRe = regexp.MustCompile(`^pub` + pySpace + `+eff` + pySpace + `+([A-Za-z][A-Za-z0-9_]*)` + pySpace + `*\{` + pySpace + `*def` + pySpace + `+([A-Za-z][A-Za-z0-9_]*)`)
 )
 
-// IsSpace は Python の str.isspace() と同じ判定。
+// IsSpace は空白とみなす字かを返す（pySpace と同じ範囲）。
 func IsSpace(r rune) bool {
 	if r >= 0x1c && r <= 0x1f {
 		return true
@@ -73,10 +72,10 @@ func IsSpace(r rune) bool {
 	return unicode.IsSpace(r)
 }
 
-// Strip は Python の str.strip() と同じ削り方をする。
+// Strip は前後の空白を削る。
 func Strip(s string) string { return strings.TrimFunc(s, IsSpace) }
 
-// Collapse は続く空白を 1 個の空白に潰して前後を削る（Python の re.sub(r"\s+", " ").strip()）。
+// Collapse は続く空白を 1 個の空白に潰して前後を削る。
 func Collapse(text string) string {
 	var b strings.Builder
 	pendingSpace := false
@@ -94,7 +93,7 @@ func Collapse(text string) string {
 	return b.String()
 }
 
-// Truncate は先頭 n 文字を返す（Python の s[:n] と同じで、バイトでなく文字で数える）。
+// Truncate は先頭 n 文字を返す（バイトでなく文字で数える）。
 func Truncate(s string, n int) string {
 	count := 0
 	for i := range s {
@@ -175,8 +174,8 @@ func depthDelta(raw string) int {
 }
 
 // depthDeltaRaw は文字列リテラルの中の括弧も数えた深さの増減を返す。
-// WhyNot: depthDelta と一本化しないのは、eff の範囲を測る所だけ Python 側が
-// 文字列リテラルを見ていないため（そろえないと eff の終わりがずれる）。
+// WhyNot: depthDelta と一本化しないのは、eff の範囲を測る所だけは文字列リテラルの
+// 中も数えるため（一本化すると eff の終わりがずれる）。
 func depthDeltaRaw(raw string) int {
 	delta := 0
 	for i := 0; i < len(raw); i++ {
@@ -451,7 +450,7 @@ func ScanFile(path string) ([]ModDecls, error) {
 	return ScanText(text), nil
 }
 
-// FlixFiles は pkgRoot 配下の *.flix を名前順で返す（Python の sorted(rglob) と同じ並び）。
+// FlixFiles は pkgRoot 配下の *.flix をパスの名前順で返す。
 func FlixFiles(root, pkgRoot string) []string {
 	dir := filepath.Join(root, filepath.FromSlash(pkgRoot))
 	if !pxlib.HasDir(dir) {
@@ -463,7 +462,7 @@ func FlixFiles(root, pkgRoot string) []string {
 }
 
 // ScanPackage は 1 パッケージ分のファイルを名前順に走査する。
-// 読めなかったファイルは飛ばす（Python の errors="replace" 相当の後、なお開けない物）。
+// 読めなかったファイルは飛ばす（壊れた字は置き換えて読むので、残るのは開けない物だけ）。
 func ScanPackage(root string, pkg Package) []FileDecls {
 	var out []FileDecls
 	for _, path := range FlixFiles(root, pkg.Root) {

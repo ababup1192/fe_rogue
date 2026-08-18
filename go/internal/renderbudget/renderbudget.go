@@ -1,14 +1,13 @@
 package renderbudget
 
-// renderbudget — 絵の値段（1 場面が組んだ描き物の数）を裁くゲート
-// (bin/check-render-budget.py と同じ出力)。
+// renderbudget — 絵の値段（1 場面が組んだ描き物の数）を裁くゲート。
 //
 //	fge-go check-render-budget <ゲームのルート>              gallery を裁く
 //	fge-go check-render-budget <ルート> --gate <旧ITEMS.tsv>  基準の更新を裁く
 //	fge-go check-render-budget <ルート> --brief              直し方の助言を出さない
 //	fge-go check-render-budget --root DIR ...               規約データを読む先を差し替える
 //
-// ゲームのルートは Python 版と同じく第 1 引数（`--` で始まらない物）。無ければ "."。
+// ゲームのルートは第 1 引数（`--` で始まらない物）。無ければ "."。
 
 import (
 	"fmt"
@@ -21,16 +20,16 @@ import (
 	"github.com/ababup1192/flix_game_engine/go/internal/pxlib"
 )
 
-// kvLine は `k=v\tk=v` 1 行のサイドカーの中身。ok=false は読めなかった印（Python の None）。
+// kvLine は `k=v\tk=v` 1 行のサイドカーの中身。ok=false は読めなかった印。
 type kvLine struct {
 	fields map[string]string
 	ok     bool
 }
 
-// truthy は Python の `if d:`（空の dict は偽）にあたる。
+// truthy は「読めて、かつ中身がある」を返す（中身が空なら残骸として扱わない）。
 func (k kvLine) truthy() bool { return k.ok && len(k.fields) > 0 }
 
-// pyStrip は Python の str.strip()（引数なし）と同じ範囲を落とす。
+// pyStrip は前後の空白を落とす（isPySpace の範囲）。
 func pyStrip(s string) string {
 	return strings.TrimFunc(s, isPySpace)
 }
@@ -38,16 +37,16 @@ func pyStrip(s string) string {
 func isPySpace(r rune) bool {
 	switch r {
 	case 0x1c, 0x1d, 0x1e, 0x1f:
-		// WhyNot: unicode.IsSpace に任せないのは、Python がこの 4 つも空白として
-		// 落とすため（str.strip の判定は unicodedata の空白より広い）。
+		// WhyNot: unicode.IsSpace に任せないのは、この 4 つ（区切りの制御文字）も
+		// 空白として落とすため。残すと k=v の値に紛れ込む。
 		return true
 	}
 	return unicode.IsSpace(r)
 }
 
 // pyFileLines はテキストモードで開いたファイルの行の切り方（\n / \r\n / \r）に合わせる。
-// WhyNot: pxlib.SplitLines を使わないのは、あちらが str.splitlines() 相当で
-// \v \f \x1c なども行末に数えるため。ファイルの反復はこの 3 つだけで切る。
+// WhyNot: pxlib.SplitLines を使わないのは、あちらが \v \f \x1c なども行末に
+// 数えるため。ファイルの反復はこの 3 つだけで切る。
 func pyFileLines(s string) []string {
 	var lines []string
 	start := 0
@@ -71,7 +70,7 @@ func pyFileLines(s string) []string {
 }
 
 // digitValue は Unicode の 10 進数字の値。10 進数字でなければ -1。
-// WhyNot: ASCII だけにしないのは、Python の int() が全角数字なども受けるため。
+// WhyNot: ASCII だけにしないのは、全角数字で書かれた値も数として受けるため。
 func digitValue(r rune) int {
 	if r >= '0' && r <= '9' {
 		return int(r - '0')
@@ -92,7 +91,7 @@ func digitValue(r rune) int {
 	return -1
 }
 
-// pyParseInt は Python の int(文字列) と同じ受け方をする（前後の空白・符号・桁の下線）。
+// pyParseInt は文字列を整数として読む（前後の空白・符号・桁の下線を許す）。
 func pyParseInt(s string) (int64, bool) {
 	s = pyStrip(s)
 	neg := false
@@ -151,7 +150,7 @@ func readKV(path string) kvLine {
 	return kvLine{out, true}
 }
 
-// table は `名前\tk=v...` の表。Python の dict と同じ並び（最初に出た順）を持つ。
+// table は `名前\tk=v...` の表。並びは最初に出た順を保つ。
 type table struct {
 	order []string
 	rows  map[string]map[string]string
@@ -233,7 +232,7 @@ func sceneNames(gallery string) []string {
 	return names
 }
 
-// stat は 1 場面の計測結果。dynamic が無い（Python の None）ときは hasDynamic=false。
+// stat は 1 場面の計測結果。dynamic が書かれていないときは hasDynamic=false。
 type stat struct {
 	dynamic    int64
 	hasDynamic bool

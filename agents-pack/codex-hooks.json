@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/after-flix-touch.py",
+            "command": "bin/fge hook-flix-touch",
             "timeout": 10
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/after-flix-work.py",
+            "command": "bin/fge hook-flix-work",
             "timeout": 40
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/after-flix-work.py",
+            "command": "bin/fge hook-flix-work",
             "timeout": 40
           }
         ]

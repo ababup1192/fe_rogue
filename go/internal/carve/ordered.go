@@ -1,14 +1,14 @@
 package carve
 
-// Python の dict と Counter を、並びまで含めて同じに動かす小物。
+// 入れた順を覚える Map と Counter。
 //
-// WhyNot: 標準の map で置き換えられないのは、この道具の出力が並びに依存するため。
-// dict は入れた順に回り、その順が「同点のときどれを選ぶか」を決めている
-// (Counter.most_common の同点・min/max の同点・投票の先着)。map で写すと絵が変わる。
+// WhyNot: 標準の map で置き換えられないのは、出力が回る順に依存するため。
+// 入れた順が「同点のときどれを選ぶか」を決めている (MostCommon の同点・
+// min/max の同点・投票の先着)。map にすると順が散って絵が変わる。
 
 import "sort"
 
-// OMap は Python の dict。入れた順に回り、上書きは場所を動かさない。
+// OMap は入れた順に回る Map。上書きは場所を動かさない。
 type OMap[K comparable, V any] struct {
 	idx  map[K]int
 	keys []K
@@ -94,7 +94,7 @@ func (m *OMap[K, V]) Items() ([]K, []V) {
 	return keys, vals
 }
 
-// Counter は Python の collections.Counter。
+// Counter は鍵ごとの回数を、入れた順を保って数える。
 type Counter[K comparable] struct {
 	idx    map[K]int
 	keys   []K
@@ -130,9 +130,8 @@ func (c *Counter[K]) Len() int { return len(c.keys) }
 
 // MostCommon は多い順。同点は先に入れた方が先。
 //
-// WhyNot: 同点を鍵の大小で決めないのは、Python 側が heapq.nlargest / sorted(reverse=True)
-// のどちらの道でも「先に入れた方が先」になるため (どちらも安定で、順位付けに
-// 入れた順の通し番号を使っている)。
+// WhyNot: 同点を鍵の大小で決めないのは、この順が色への legend 文字の割り当てを
+// 決めるため。入れた順の通し番号で並べ替えれば、同点でも先に入れた方が必ず勝つ。
 func (c *Counter[K]) MostCommon() ([]K, []int) {
 	order := make([]int, len(c.keys))
 	for i := range order {

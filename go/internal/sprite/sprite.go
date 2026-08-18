@@ -1,7 +1,6 @@
 package sprite
 
-// sprite — ドット絵 (*.sprite.json) の画素の並びを検査するゲート
-// (bin/lint-sprite.py と同じ出力)。
+// sprite — ドット絵 (*.sprite.json) の画素の並びを検査するゲート。
 //
 //	fge-go sprite [a.sprite.json ...] [--strict]
 //	fge-go sprite --self-test
@@ -42,8 +41,9 @@ type exclusion struct {
 
 // ---------------------------------------------------------------- 小物
 
-// isPySpace は Python の str.isspace() と同じ判定。
-// WhyNot: unicode.IsSpace にしないのは U+001C〜U+001F を Go が空白に数えないため。
+// isPySpace は空白かどうかを見る。
+// WhyNot: unicode.IsSpace にしないのは U+001C〜U+001F を Go が空白に数えず、
+// それらが挟まった行を空行と見なせなくなるため。
 func isPySpace(r rune) bool {
 	switch r {
 	case '\t', '\n', '\v', '\f', '\r', 0x1c, 0x1d, 0x1e, 0x1f, 0x85:
@@ -56,8 +56,8 @@ func pyStrip(s string) string     { return strings.TrimFunc(s, isPySpace) }
 func pyLStripSet(s string) string { return strings.TrimLeft(s, exemptTrim) }
 
 // keyText は legend の値を色キーの字面にする。
-// WhyNot: 文字列以外も受けるのは、legend に数値を書いた Doc でも Python 側が
-// そのまま色キーとして扱い、色数の勘定に混ざるため。
+// WhyNot: 文字列以外も受けるのは、legend に数値や真偽値を書いた Doc でも
+// それを色キーとして数え、色数の勘定から漏らさないため。
 func keyText(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -79,7 +79,7 @@ func keyText(v any) string {
 	}
 }
 
-// numText は anchor の座標を Python が表示するのと同じ字面にする。
+// numText は anchor の座標を字面にする。整数値は小数点を付けない。
 func numText(v any, missing int) string {
 	f, ok := numOf(v, missing)
 	if !ok {
@@ -112,8 +112,7 @@ func hexMapOf(v any) map[string]string {
 			found[name] = got
 		}
 	}
-	// WhyNot: colors を後に回すのは、同じ名前があれば入れ子の方が勝つ Python の
-	// 更新順をそのまま保つため。
+	// WhyNot: colors を後に回すのは、同じ名前があれば入れ子の colors を勝たせるため。
 	if nested, ok := pxlib.AsObject(m["colors"]); ok {
 		for name, value := range nested {
 			if got := pxlib.HexOfValue(value); got != "" {
@@ -923,7 +922,7 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 
 // ---------------------------------------------------------------- 自己検査
 
-// pyListRepr は Python の list[str] の repr と同じ字面を返す。
+// pyListRepr は文字列の並びを [ ] で囲んだ 1 行にする。
 func pyListRepr(items []string) string {
 	parts := make([]string, 0, len(items))
 	for _, s := range items {
@@ -1116,7 +1115,7 @@ func (r *Rules) selfTest(out, errOut *strings.Builder) int {
 	return 0
 }
 
-// pyFloat は Python の str(float) と同じ字面を返す。
+// pyFloat は小数を字面にする。整数値でも小数点以下 1 桁を残す。
 func pyFloat(v float64) string {
 	if v == math.Trunc(v) && math.Abs(v) < 1e16 {
 		return strconv.FormatFloat(v, 'f', 1, 64)

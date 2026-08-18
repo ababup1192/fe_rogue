@@ -1,6 +1,6 @@
 package main
 
-// digest — 絵の変化を、画像を開かずに数値で掴むダイジェスト (bin/img-digest.py と同じ出力)。
+// digest — 絵の変化を、画像を開かずに数値で掴むダイジェスト。
 
 import (
 	"bytes"

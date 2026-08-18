@@ -1,6 +1,6 @@
 package syncagents
 
-// Python の argparse と同じ受け取り方・同じ断り方をする引数の読み。
+// 引数の読み。
 //
 // WhyNot: Go の flag へ寄せないのは、使い方を間違えたときに出る 3 行
 // （usage 2 行 + `sync-agents.py: error: ...`）まで出力の一部だから。
@@ -11,14 +11,14 @@ import (
 	"strings"
 )
 
-// usageText は argparse が組む使い方の 2 行（画面幅 80 のときの折り返し）。
+// usageText は使い方の 2 行（画面幅 80 で折り返した形）。
 const usageText = "usage: sync-agents.py [-h] [--game GAME] [--version VERSION]\n" +
 	"                      [--check-manifest]\n"
 
 // helpText は -h / --help の全文。
 //
-// WhyNot: Go だけが持つ --root をここへ足さないのは、Python 版と 1 バイトも
-// 違わない字面を出すため。--root は突き合わせ用の口で、配る先の決まりではない。
+// WhyNot: Go だけが持つ --root をここへ足さないのは、この字面がそのまま出力として
+// 決まっているため。--root は突き合わせ用の口で、配る先の決まりではない。
 const helpText = usageText + `
 optional arguments:
   -h, --help         show this help message and exit
@@ -39,7 +39,7 @@ type optionSpec struct {
 	takesValue bool
 }
 
-// optionSpecs は bin/sync-agents.py の add_argument と同じ並び。
+// optionSpecs は受け取る option。並びは前を省いた書き方を解く順でもある。
 var optionSpecs = []optionSpec{
 	{"--help", false},
 	{"--game", true},
@@ -47,10 +47,10 @@ var optionSpecs = []optionSpec{
 	{"--check-manifest", false},
 }
 
-// negativeNumber は argparse が「値」とみなす負の数の形。
+// negativeNumber は option ではなく「値」とみなす負の数の形。
 var negativeNumber = regexp.MustCompile(`^-\d+$|^-\d*\.\d+$`)
 
-// looksLikeValue は argparse の _get_values と同じく、次の引数を値として食べてよいかを見る。
+// looksLikeValue は次の引数を値として食べてよいかを見る。
 func looksLikeValue(s string) bool {
 	if s == "" || !strings.HasPrefix(s, "-") {
 		return true
@@ -80,7 +80,7 @@ func matchOption(name string) (optionSpec, []string) {
 	return optionSpec{}, names
 }
 
-// parseArgs は argparse と同じ結果を返す。done が true なら呼ぶ側はその終了コードで止まる。
+// parseArgs は引数を読む。done が true なら呼ぶ側はその終了コードで止まる。
 func parseArgs(out, errOut *strings.Builder, argv []string) (parsedArgs, int, bool) {
 	res := parsedArgs{version: "unknown"}
 	var extras []string

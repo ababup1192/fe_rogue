@@ -13,14 +13,14 @@ import (
 	"strings"
 )
 
-// PaletteExcludedDirs は lint-palette.py の EXCLUDED_DIRS。
+// PaletteExcludedDirs は色票の検査が降りないディレクトリ。
 var PaletteExcludedDirs = map[string]bool{
 	"build": true, "lib": true, ".git": true, "gallery": true,
 	".devbox": true, "node_modules": true, "archive": true,
 	"testdata": true,
 }
 
-// SpriteExcludedDirs は lint-sprite.py の EXCLUDED_DIRS (archive を含まない)。
+// SpriteExcludedDirs はスプライトの検査が降りないディレクトリ (archive は見る)。
 var SpriteExcludedDirs = map[string]bool{
 	"build": true, "lib": true, ".git": true, "gallery": true,
 	".devbox": true, "node_modules": true, "testdata": true,
@@ -230,8 +230,8 @@ func rgbaOfHex(hex string) RGBA {
 func RGBAOfFloats(v [3]float64) RGBA {
 	var out RGBA
 	for i := 0; i < 3; i++ {
-		// WhyNot: math.Round ではなく RoundToEven。Python の round() は
-		// ちょうど半分を偶数側へ寄せるので、ここを変えると色が 1 段ずれる。
+		// WhyNot: math.Round ではなく RoundToEven。ちょうど半分を偶数側へ寄せる
+		// 丸めが色の段を決めるので、ここを変えると色が 1 段ずれる。
 		n := math.RoundToEven(v[i] * 255)
 		if n < 0 {
 			n = 0

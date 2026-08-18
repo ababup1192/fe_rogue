@@ -1,7 +1,7 @@
 package checkrefs
 
-// 規約データ (bin/lint-rules/check-refs.json) の読み込みと、
-// Python の後読み・先読み・Unicode の \s \b \w を Go の正規表現で表し直す言い換え。
+// 規約データ (bin/lint-rules/check-refs.json) の読み込みと、そこに書かれた
+// 後読み・先読み・Unicode を広く見る \s \b \w を Go の正規表現で表し直す言い換え。
 
 import (
 	"encoding/json"
@@ -19,15 +19,15 @@ import (
 // RulesPath は規約データの置き場（リポジトリの根からの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "check-refs.json")
 
-// pySpaceClass は Python の \s と同じ範囲。
-// Go の \s は [\t\n\f\r ] しか含まないので、Python が足している
-// \v (0x0b)・\x1c-\x1f・\x85・Unicode の Z 類を書き足す。
+// pySpaceClass は規約データの \s が指す広い範囲。
+// Go の \s は [\t\n\f\r ] しか含まないので、\v (0x0b)・\x1c-\x1f・\x85・
+// Unicode の Z 類を書き足す。全角空白でインデントした行を空白と数えるために要る。
 const pySpaceClass = `[\s\v\x{1c}-\x{1f}\x{85}\p{Z}]`
 
 // reMeta は後読みの中身を字面として読んでよいかの判定に使う。
 const reMeta = `[]()|\^$*+?{}`
 
-// matcher は Python の正規表現を「ゆるく当てて、前後の 1 文字を Go 側で見て捨てる」形に
+// matcher は規約データの正規表現を「ゆるく当てて、前後の 1 文字を Go 側で見て捨てる」形に
 // 置き換えた物。
 //
 // WhyNot: 先読み・後読みの文字までマッチに含めて消費する書き方にしないのは、隣り合って
@@ -47,15 +47,15 @@ type matcher struct {
 	notNextWhen string
 }
 
-// isPyWord は Python の \w（Unicode）と同じ判定。
+// isPyWord は語の文字か（Unicode の文字・数字・下線）。
 func isPyWord(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
 
-// widenPySpace は \s を Python と同じ範囲へ広げる。
+// widenPySpace は \s を上の広い範囲へ書き換える。
 func widenPySpace(pattern string) string {
 	return strings.ReplaceAll(pattern, `\s`, pySpaceClass)
 }
 
-// compileGuarded は Python の正規表現をゆるい正規表現と前後 1 文字の判定に分ける。
+// compileGuarded は規約データの正規表現を、ゆるい正規表現と前後 1 文字の判定に分ける。
 func compileGuarded(pattern string) (*matcher, error) {
 	m := &matcher{}
 	src := widenPySpace(pattern)
@@ -86,7 +86,7 @@ func compileGuarded(pattern string) (*matcher, error) {
 	return m, nil
 }
 
-// widenPyWord は \w を Python と同じ Unicode の範囲へ広げる（pxlib.CompilePy と同じ形）。
+// widenPyWord は \w を Unicode の文字・数字・下線へ広げる（pxlib.CompilePy と同じ形）。
 func widenPyWord(pattern string) string {
 	return strings.ReplaceAll(pattern, `\w`, `[\p{L}\p{N}_]`)
 }
@@ -182,10 +182,10 @@ func (m *matcher) accept(s string, start, end int) bool {
 // span は当たった範囲（バイト位置）。
 type span struct{ start, end int }
 
-// FindAll は Python の finditer と同じ順・同じ個数の当たりを返す。
+// FindAll は前から順に当たりを返す。
 //
 // WhyNot: 捨てた当たりを飛ばさず「1 文字先」から探し直すのは、捨てた当たりの内側から
-// 始まる次の当たりを取りこぼさないため（Python の走査は 1 文字ずつ前へ進む）。
+// 始まる次の当たりを取りこぼさないため。
 func (m *matcher) FindAll(s string) []span {
 	var found []span
 	for pos := 0; pos <= len(s); {

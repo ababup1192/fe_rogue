@@ -1,6 +1,6 @@
 package style
 
-// 1 枚の絵を数値にする測り (bin/lint-style.py の measure と同じ計算)。
+// 1 枚の絵を数値にする測り。
 
 import (
 	"math"
@@ -193,7 +193,7 @@ func gridFit(im *pxlib.Image, unit int) float64 {
 }
 
 // gridScore は格子適合率を「偶然当たる分」で割り戻した値。第 2 の返り値が
-// false なら Python 版の None（表示は「—」）にあたる。
+// false なら測れなかった（表示は「—」）。
 func gridScore(im *pxlib.Image, unit int) (float64, bool) {
 	if unit <= 1 {
 		return 0, false
@@ -286,8 +286,8 @@ func (r *Rules) findRegions(q []uint32, w, h, minArea int) []rawRegion {
 	return out
 }
 
-// WhyNot: 幅優先の探索順は Python の deque と同じにしてある。順が変わると
-// cells の並びが変わり、楕円の重なり具合の丸め誤差がずれる。
+// WhyNot: 塊を拾う探索を幅優先で固定しているのは、順が変わると cells の並びが変わり、
+// 楕円の重なり具合の丸め誤差がずれるため。
 func regionEllipseIOU(cells []int32, w int) float64 {
 	n := float64(len(cells))
 	var mx, my float64

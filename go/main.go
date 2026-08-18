@@ -1,6 +1,6 @@
 package main
 
-// fge-go — bin/ の画素・波形を扱う層。仕様が外部で決まっていて動かない検査だけを持つ。
+// fge-go — bin/fge が呼ぶ検査・要約ツールの本体。判定はここが全部持つ。
 //
 //	fge-go digest  old.png new.png | oldDir/ newDir/ [名前...] | --stats [--unit N] a.png ...
 //	fge-go loop    [コマ列ディレクトリ...] [--strict]
@@ -11,7 +11,7 @@ package main
 //	fge-go view    [*.flix ...]
 //
 // どのサブコマンドにも --json を付けると機械可読の出力になる。
-// 出力の元データ (source of truth) は Python 版 (bin/*.py)。go/compare.sh が全件を突き合わせる。
+// 判定の閾値・語彙・一覧は bin/lint-rules/*.json が正本。
 
 import (
 	"encoding/json"
@@ -73,8 +73,8 @@ func hasFlag(args []string, name string) bool {
 }
 
 // dropJSONFlag は --json だけを取り除く。
-// WhyNot: dropFlags で -- 付きを全部落とさないのは、Python 版が --strict などを
-// ただのパスとして扱うため。落とすと引数の解釈がずれる。
+// WhyNot: -- 付きを全部落とさないのは、--strict などをサブコマンド側が自分で
+// 読むため。ここで落とすと引数の解釈がずれる。
 func dropJSONFlag(args []string) []string {
 	var out []string
 	for _, a := range args {
@@ -178,9 +178,9 @@ func main() {
 	if args[0] == "--version" || args[0] == "-V" || args[0] == "version" {
 		os.Exit(printVersion())
 	}
-	// --list は bin/fge が「Go 版が持っているのはどれか」を知るための口。
+	// --list はサブコマンド名だけを 1 行ずつ出す口。
 	// WhyNot: 呼ぶ側に一覧を写して持たせないのは、サブコマンドを足すたびに
-	// 2 か所直すことになり、片方だけ古いまま黙って Python へ落ちるため。
+	// 2 か所直すことになり、片方だけ古いまま黙って食い違うため。
 	if args[0] == "--list" {
 		for _, name := range commandNames() {
 			fmt.Println(name)
@@ -197,8 +197,8 @@ func main() {
 	}
 	var out, errOut strings.Builder
 	code := handler(&out, &errOut, rest, asJSON)
-	// WhyNot: stderr を先に書くのは、Python 側が stderr を素通し・stdout をまとめ書きに
-	// するため。2>&1 でまとめて受けたときの行順をそろえる。
+	// WhyNot: stderr を先に書くのは、2>&1 でまとめて受けたときに行順が
+	// 入れ替わらないようにするため。
 	os.Stderr.WriteString(errOut.String())
 	os.Stdout.WriteString(out.String())
 	os.Exit(code)

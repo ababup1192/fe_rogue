@@ -1,0 +1,14 @@
+-- Type Error [E5252] ---- src/Foo.flix
+
+>> Unable to unify the types 'Int32' and 'Int64'.
+
+12 |     let x = foo(1i64);
+                     ^^^^
+
+残り 1 件:
+  test/TestBar.flix:40 — Resolution Error [E3138]
+
+Compilation failed with 2 error(s).
+全文: .test-logs/check.log
+処方箋: レコードは Eq/Order を持てない。比較したい値は名前付き 1 フィールド enum で包む (詳細は /compile-fix)
+[exit=0]

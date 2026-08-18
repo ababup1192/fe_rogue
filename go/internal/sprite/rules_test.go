@@ -1,13 +1,11 @@
 package sprite
 
 // 規約データの読み込みが「黙って既定値へ倒れない」ことと、
-// 正本 (bin/lint-sprite.py) と値がずれていないことを縛る。
+// 正本である規約ファイル (JSON) の値がそのまま効くことを縛る。
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -59,85 +57,7 @@ func TestLoadRulesBrokenJSON(t *testing.T) {
 	}
 }
 
-// TestRulesMatchPython は bin/lint-sprite.py の定数と JSON がずれたら落ちる。
-func TestRulesMatchPython(t *testing.T) {
-	root := repoRoot(t)
-	src, err := os.ReadFile(filepath.Join(root, "bin", "lint-sprite.py"))
-	if err != nil {
-		t.Fatalf("正本を読めない: %v", err)
-	}
-	python := string(src)
-	rules, err := LoadRules(root)
-	if err != nil {
-		t.Fatalf("規約を読めない: %v", err)
-	}
-
-	numOf := func(name string) string {
-		re := regexp.MustCompile(`(?m)^` + name + ` = ([0-9.]+)`)
-		m := re.FindStringSubmatch(python)
-		if m == nil {
-			t.Fatalf("正本に %s が無い", name)
-		}
-		return m[1]
-	}
-	// JSON 側の値も同じ字面で読み出して、丸めの差を挟まずに比べる。
-	var raw map[string]json.RawMessage
-	data, err := os.ReadFile(filepath.Join(root, RulesPath))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	for jsonKey, pyName := range map[string]string{
-		"maxColors":        "MAX_COLORS",
-		"maxColorsBig":     "MAX_COLORS_BIG",
-		"bigSide":          "BIG_SIDE",
-		"textureFill":      "TEXTURE_FILL",
-		"minOrphanCells":   "MIN_ORPHAN_CELLS",
-		"minConnectCells":  "MIN_CONNECT_CELLS",
-		"connectShown":     "CONNECT_SHOWN",
-		"jaggyMinCount":    "JAGGY_MIN_COUNT",
-		"bandingMinRun":    "BANDING_MIN_RUN",
-		"silhouetteMinOcc": "SILHOUETTE_MIN_OCC",
-		"deltaEMin":        "DELTA_E_MIN",
-	} {
-		got := strings.TrimSpace(string(raw[jsonKey]))
-		if want := numOf(pyName); got != want {
-			t.Errorf("%s が正本 (%s = %s) とずれている: %s", jsonKey, pyName, want, got)
-		}
-	}
-
-	wantRules := []string{"structure", "orphan", "connect", "palette", "jaggy", "banding", "corner", "silhouette"}
-	for _, name := range wantRules {
-		if !strings.Contains(python, `"`+name+`"`) {
-			t.Errorf("正本に規則 %s が無い", name)
-		}
-	}
-	if strings.Join(rules.RuleNames, ",") != strings.Join(wantRules, ",") {
-		t.Errorf("規則の並びが正本とずれている: %v", rules.RuleNames)
-	}
-
-	for _, dir := range []string{"build", "lib", ".git", "gallery", ".devbox", "node_modules", "testdata"} {
-		if !rules.ExcludedDirs[dir] {
-			t.Errorf("excludedDirs に %s が無い", dir)
-		}
-	}
-	if len(rules.ExcludedDirs) != 7 {
-		t.Errorf("excludedDirs の数が正本 (7) と違う: %d", len(rules.ExcludedDirs))
-	}
-	if !rules.TransparentChars['.'] || !rules.TransparentChars[' '] || len(rules.TransparentChars) != 2 {
-		t.Errorf("transparentChars が正本 {\".\", \" \"} とずれている: %v", rules.TransparentChars)
-	}
-	if !strings.Contains(python, `re.search(r"対象外\s*(?:\(([^)]*)\))?", value)`) {
-		t.Error("正本の除外記法の正規表現が変わっている (exemptPattern を見直す)")
-	}
-	if !strings.Contains(python, `re.sub(r"^\s*\([^)]*\)", "", tail)`) {
-		t.Error("正本の括弧落としの正規表現が変わっている (exemptParenPattern を見直す)")
-	}
-}
-
-// TestExemptPatternIsUnicodeAware は Python の \s (Unicode) を写せているかを見る。
+// TestExemptPatternIsUnicodeAware は全角空白を挟んでも除外記法を読めるかを見る。
 func TestExemptPatternIsUnicodeAware(t *testing.T) {
 	rules, err := LoadRules(repoRoot(t))
 	if err != nil {

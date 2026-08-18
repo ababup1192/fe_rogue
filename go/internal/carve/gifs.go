@@ -1,6 +1,6 @@
 package carve
 
-// bin/carve/gifs.py の写し。コマの PNG を並べて動く GIF にする。
+// コマの PNG を並べて動く GIF にする。
 //
 //	fge-go carve-gifs [縮小率] [工程名...]
 
@@ -150,7 +150,7 @@ func FromPNGs(paths []string, shrink int, delay int) ([]byte, error) {
 	return GifOf(w, h, frames, palette, delay, 0), nil
 }
 
-// RunGifs は gifs.py の入口。
+// RunGifs は carve-gifs の入口。root は assets / gallery を置く根。
 func RunGifs(out *strings.Builder, root string, args []string, rules *Rules) (int, error) {
 	shrink := 6
 	if len(args) > 0 {

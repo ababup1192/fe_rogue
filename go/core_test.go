@@ -1,6 +1,6 @@
 package main
 
-// 各サブコマンドの芯。判定の境目と、Python 版の --self-test と同じ場面を見る。
+// 各サブコマンドの芯。判定の境目と、--self-test が見る場面を確かめる。
 
 import (
 	"os"
@@ -133,7 +133,7 @@ func TestRGBAOfHSVMatchesPureRed(t *testing.T) {
 }
 
 func TestRGBAOfFloatsRoundsToEven(t *testing.T) {
-	// 0.5/255 は 0.5 に落ちる。Python の round() と同じく偶数側 (0) へ寄せる。
+	// 0.5/255 は 0.5 に落ちる。ちょうど半分は偶数側 (0) へ寄せる。
 	if got := pxlib.RGBAOfFloats([3]float64{0.5 / 255.0, 0, 0}); got[0] != 0 {
 		t.Errorf("ちょうど半分は偶数側へ寄せるはず: %v", got)
 	}

@@ -1,0 +1,2 @@
+# 終了コード 0 なら 1 行に畳む。ブロックがあれば警告の件数と全文の場所だけ添える。
+bin/fge explain-error --status 0 --log .test-logs/check.log < testdata/lint/explain-error/ok-with-warnings/input.log

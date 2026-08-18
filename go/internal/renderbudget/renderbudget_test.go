@@ -238,7 +238,7 @@ func TestNoSidecarsIsNoteOnly(t *testing.T) {
 }
 
 func TestEmptyStaticSidecarIsTreatedAsAbsent(t *testing.T) {
-	// 中身が空の static.tsv は Python では空の dict = 偽になり、残骸として鳴らない。
+	// 中身が空の static.tsv は「無い」と同じ扱いで、残骸として鳴らない。
 	root := fixture(t, map[string]string{
 		"gallery/town.png":        "",
 		"gallery/town.static.tsv": "\n",
@@ -342,7 +342,7 @@ func TestNonNumericFieldFallsBackToZero(t *testing.T) {
 }
 
 func TestDefaultRootIsCurrentDirectory(t *testing.T) {
-	// 引数が無いときの根は Python と同じく "."。
+	// 引数が無いときの根は "."。
 	root := fixture(t, map[string]string{
 		"gallery/town.png":       "",
 		"gallery/town.items.tsv": "total=3000\n",

@@ -1,5 +1,5 @@
 {
-  "note": "lint-anim（コマ列と 4 方向のそろい方）の規約データ。source of truthは bin/lint-anim.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go anim）はこれを読んで動くので、閾値を変えるときは bin/lint-anim.py とこの 2 つを同時に直す。ずれると go/internal/anim の TestRulesMatchPython が落ちる。",
+  "note": "lint-anim（コマ列と 4 方向のそろい方）の規約データ。この JSON が source of truth で、bin/fge anim はこれを読んで動く。閾値を変えるときはここを直す。",
   "maxPopShare": 0.45,
   "maxAreaDrift": 0.20,
   "maxBob": 2,

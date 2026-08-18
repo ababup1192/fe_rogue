@@ -4,7 +4,7 @@ package carve
 //
 // WhyNot: Go の map で置き換えられないのは、この道具が set を回った順で
 // ボクセルを積み、その順が最後まで残るため:
-//   - carve() の `for x in xs: for z in zs` が立体の並びを決める
+//   - Carve() の x と z の 2 重走査が立体の並びを決める
 //   - その並びが「同じ (x,y) にどの z を残すか」「動いた画素が重なったときどれが勝つか」を決める
 // Go の map はわざと順を散らすので、写すには CPython の表の並び方そのものが要る。
 //
@@ -269,8 +269,8 @@ func hashInt(v int) uint64 {
 
 // hashPt は Python 3.7 の hash((x, y))。
 //
-// WhyNot: 3.8 以降の xxHash 版で書かないのは、この道具を動かしている python3 が
-// 3.7 で、3.8 とは組の hash が違うため。表の並びが変わると出る絵が変わる。
+// WhyNot: 3.8 以降の xxHash 版で書かないのは、組の hash が変わると set の表の
+// 並びが変わり、彫った立体の並び (= 出る絵) まで変わるため。
 func hashPt(p Pt) uint64 {
 	x := uint64(0x345678)
 	mult := uint64(1000003)

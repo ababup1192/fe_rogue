@@ -1,0 +1,2 @@
+# 2 件のエラー: 1 件目は全文、2 件目は file:line の一覧に畳み、処方箋を 1 行足す。
+bin/fge explain-error --status 1 --log .test-logs/check.log < testdata/lint/explain-error/two-errors-fires/input.log

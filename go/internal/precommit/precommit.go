@@ -1,16 +1,14 @@
 package precommit
 
-// precommit — git commit の直前に走るゲート (bin/precommit.py と同じ出力)。
+// precommit — git commit の直前に走るゲート。
 //
-// 自分では何も判定せず、bin/ の検査を順に呼んで結果を束ねる。Python 版は
-// 子プロセス (python3 bin/fge <サブコマンド>) を起こすが、Go 版は同じプロセスの
-// 中でハンドラを直に呼ぶ。呼び方と並びは bin/lint-rules/precommit.json が持つ。
+// 自分では何も判定せず、同じプロセスの中で検査のハンドラを順に呼んで結果を束ねる。
+// 呼ぶ順と条件は bin/lint-rules/precommit.json が持つ。
 //
 // 出力の並びについて:
-// Python の親は print() をまとめ書き (パイプへ出すときは終了時に一括) し、子は
-// その場で書く。だから「子の出力が全部先・親の知らせが後」になる。Go 版もこれに
-// 合わせて、子の出力は Stdout / Stderr へその場で書き、親の知らせだけを out へ
-// 貯めて呼び側 (main) に最後へ書かせる。
+// 各検査の出力は Stdout / Stderr へその場で書き、ゲート自身が出す知らせだけを
+// out へ貯めて呼び側 (main) に最後へ書かせる。2>&1 でまとめて受けても
+// 「検査の出力が全部先・ゲートの知らせが後」の並びになる。
 
 import (
 	"fmt"
@@ -30,9 +28,9 @@ type Lint func(out, errOut *strings.Builder, args []string) int
 type Options struct {
 	// Root はリポジトリの根 (絶対パスに直してから使う)。
 	Root string
-	// Args は Python 版の sys.argv[1:] にあたる引数 (--root は取り除いた後)。
+	// Args はコマンド名より後ろの引数 (--root は取り除いた後)。
 	Args []string
-	// Stdout / Stderr は子の検査がその場で書く先。
+	// Stdout / Stderr は各検査がその場で書く先。
 	Stdout io.Writer
 	Stderr io.Writer
 	// Lints はサブコマンド名から検査の入口を引く表。
@@ -49,9 +47,8 @@ type runner struct {
 }
 
 // ResolveRoot は根を絶対パスに直し、途中の symlink も解く。
-// WhyNot: filepath.Abs だけで済ませないのは、Python 版の ROOT が Path.resolve()
-// (symlink まで解く) で、macOS の /var → /private/var のような食い違いが出ると
-// 検査が出すパスの見え方が変わるため。
+// WhyNot: filepath.Abs だけで済ませないのは、macOS の /var → /private/var のような
+// symlink の食い違いが残ると、検査が出すパスの見え方が変わるため。
 func ResolveRoot(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -75,8 +72,8 @@ func Run(out *strings.Builder, opts Options) (int, error) {
 	}
 	r := &runner{opts: opts, rules: rules, root: root, parent: out}
 
-	// WhyNot: 根へ移ってから走らせるのは、Python 版が子を cwd=ROOT で起こすため。
-	// 相対パスのままの検査対象がここで解決される (出力に絶対パスを混ぜない)。
+	// WhyNot: 根へ移ってから走らせるのは、検査が受け取るパスを根からの相対のままに
+	// しておくため。移らないと出力に絶対パスが混ざる。
 	old, err := os.Getwd()
 	if err != nil {
 		return 2, fmt.Errorf("いまの場所を取れません: %v", err)
@@ -96,8 +93,8 @@ func Run(out *strings.Builder, opts Options) (int, error) {
 // stagedFiles は今回ステージしたパス。--files が来ていればそちらを使う。
 func (r *runner) stagedFiles() ([]string, error) {
 	args := r.opts.Args
-	// WhyNot: len(args) > 1 を見るのは、Python 版が len(sys.argv) > 2 を見て
-	// 「--files だけ」のときはステージを読みに行くため。
+	// WhyNot: len(args) > 1 を見るのは、「--files だけ」で中身が空のときに
+	// 「対象なし」と取らず、ステージを読みに行かせるため。
 	if len(args) > 1 && args[0] == "--files" {
 		return args[1:], nil
 	}
@@ -122,8 +119,7 @@ func (r *runner) gate(staged []string) (int, error) {
 	}
 	failed := false
 
-	li := r.hasTool(r.rules.StagedImages.Tool)
-	problems := r.checkStagedImages(staged, li)
+	problems := r.checkStagedImages(staged)
 	if len(problems) > 0 {
 		failed = true
 		fmt.Fprintf(r.parent, "[pre-commit] 画像 %d 件:\n", len(problems))
@@ -175,29 +171,19 @@ func selectPaths(staged []string, m Matcher) []string {
 	return out
 }
 
-// hasTool は bin/<name> が在るか。無ければ 1 行知らせて false (fail-open)。
-func (r *runner) hasTool(name string) bool {
-	info, err := os.Stat(filepath.Join(r.root, "bin", name))
-	if err == nil && info.Mode().IsRegular() {
-		return true
-	}
-	fmt.Fprintln(r.parent, strings.ReplaceAll(r.rules.FailOpen.ToolMissing, "{name}", name))
-	return false
-}
-
-// runLint は検査を 1 本走らせる。道具が無ければ 0 (fail-open)。
+// runLint は検査を 1 本走らせる。
+// WhyNot: 走らせる前に道具の実在を見ないのは、検査の中身がこのバイナリ自身の中に
+// あるため。外の道具を呼んでいた頃の実在検査を残すと、常に「無い」と読めて
+// 全部の検査が素通りする（関所が黙って開く）。
 func (r *runner) runLint(c Check, args []string) (int, error) {
-	if !r.hasTool(c.Tool) {
-		return 0, nil
-	}
 	fn := r.opts.Lints[c.Sub]
 	if fn == nil {
 		return 0, fmt.Errorf("サブコマンド %s の入口がありません (bin/lint-rules/precommit.json)", c.Sub)
 	}
 	var body, errBody strings.Builder
 	code := fn(&body, &errBody, args)
-	// WhyNot: stderr を先に書くのは、Python の子が stderr を素通し・stdout を
-	// 終了時にまとめて書くため。2>&1 でまとめて受けたときの行順をそろえる。
+	// WhyNot: stderr を先に書くのは、2>&1 でまとめて受けたときに
+	// 1 本の検査の中で行順が入れ替わらないようにするため。
 	io.WriteString(r.opts.Stderr, errBody.String())
 	io.WriteString(r.opts.Stdout, body.String())
 	return code, nil
@@ -211,11 +197,8 @@ func human(n int64) string {
 }
 
 // checkStagedImages は今回ステージした画像だけを、置き場と大きさの決まりに照らす。
-func (r *runner) checkStagedImages(staged []string, li bool) []string {
+func (r *runner) checkStagedImages(staged []string) []string {
 	var problems []string
-	if !li {
-		return problems
-	}
 	s := r.rules.StagedImages
 	var imgs []string
 	for _, p := range staged {
@@ -243,7 +226,7 @@ func (r *runner) checkStagedImages(staged []string, li bool) []string {
 	if len(imgs) > 0 && len(problems) == 0 {
 		if r.opts.Images != nil && r.opts.Images(r.root) != 0 {
 			fmt.Fprint(r.parent, "[pre-commit] 注意: 過去から追跡されている絵に違反が残っています"+
-				" (このコミットは止めません): python3 bin/fge images で一覧\n")
+				" (このコミットは止めません): bin/fge images で一覧\n")
 		}
 	}
 	return problems
@@ -256,7 +239,7 @@ func (r *runner) hasDocsSyncTarget() bool {
 	cmd.Dir = r.root
 	_ = cmd.Run()
 	if cmd.ProcessState == nil {
-		// 起こせなかった = Python の OSError と同じ位置。
+		// make 自体を起こせなかった。
 		fmt.Fprintln(r.parent, r.rules.FailOpen.MakeMissing)
 		return false
 	}

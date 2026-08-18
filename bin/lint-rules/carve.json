@@ -1,5 +1,5 @@
 {
-  "note": "bin/carve/ の 6 本が使う閾値・大きさの既定・色の決まり。source of truth は bin/carve/*.py で、Go 版 (fge-go carve / adopt) はこの表を読むだけ。値を変えると絵が変わる。",
+  "note": "bin/fge carve / adopt が使う閾値・大きさの既定・色の決まり。この JSON が source of truth。値を変えると絵が変わる。",
   "profile": {
     "feetShare": 0.18,
     "headRatio": 0.32,

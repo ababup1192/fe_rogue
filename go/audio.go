@@ -1,7 +1,7 @@
 package main
 
 // audio — 音の名前が 3 つの置き場 (書き出し名 / project.json / コード) でそろっているかを
-// 検査するゲート (bin/lint-audio.py と同じ出力)。
+// 検査するゲート。
 
 import (
 	"fmt"

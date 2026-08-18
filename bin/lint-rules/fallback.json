@@ -1,5 +1,5 @@
 {
-  "note": "lint-fallback（読み込みの途中で bug! していないか）の規約データ。source of truthは bin/lint-fallback.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go fallback）はこれを読んで動くので、規約を変えるときは bin/lint-fallback.py とこの 2 つを同時に直す。ずれると go/internal/fallback の TestRulesMatchPython が落ちる。",
+  "note": "lint-fallback（読み込みの途中で bug! していないか）の規約データ。この JSON が source of truth で、bin/fge fallback はこれを読んで動く。",
   "srcRoots": [
     "engine/src",
     "engine_world/src",

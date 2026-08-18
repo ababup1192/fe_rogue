@@ -24,10 +24,10 @@ type carveResult struct {
 	Exit  int      `json:"exit"`
 }
 
-// carveScriptDir は Python 版が自分の置き場から数えている根。
+// carveScriptDir は carve の書き出し先を数える起点 (bin/)。
 //
-// WhyNot: 実行したディレクトリを使わないのは、adopt / render / gifs / sheet が
-// os.path.dirname(HERE) (= bin/) を根にしているため。cwd に変えると書き出し先が動く。
+// WhyNot: 実行したディレクトリを使わないのは、adopt / render / gifs / sheet の
+// 書き出し先が、呼んだ場所によって動いてしまうため。
 func carveScriptDir() string {
 	return filepath.Join(repoRoot(), "bin")
 }

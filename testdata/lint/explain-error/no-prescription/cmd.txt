@@ -1,0 +1,2 @@
+# 処方箋の表に当たらないエラーは、処方箋の行を足さない。
+bin/fge explain-error --status 1 < testdata/lint/explain-error/no-prescription/input.log

@@ -1,7 +1,6 @@
 package apidigest
 
-// api-digest — engine 系パッケージの pub API を 1 枚のダイジェストにまとめる
-// (bin/gen-api-digest.py と同じ出力)。
+// api-digest — engine 系パッケージの pub API を 1 枚のダイジェストにまとめる。
 //
 //	fge-go api-digest              docs/api-digest.md と docs/api-digest/*.md を書く
 //	fge-go api-digest --check      書かずに、ソースとずれていないかだけ見る
@@ -29,9 +28,9 @@ var (
 	stampDateRe = regexp.MustCompile(`生成: \d{4}-\d{2}-\d{2}`)
 )
 
-const packageBanner = "<!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->\n"
+const packageBanner = "<!-- 生成物: bin/fge api-digest が作る。手で編集しない（make api-digest で作り直す） -->\n"
 
-const indexHeader = `<!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
+const indexHeader = `<!-- 生成物: bin/fge api-digest が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト
 

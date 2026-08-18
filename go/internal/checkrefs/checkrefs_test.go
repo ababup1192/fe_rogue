@@ -70,7 +70,7 @@ func TestExtractPaths(t *testing.T) {
 	}
 }
 
-// TestStripMkCommentsUnicodeSpace は Python の \s が Unicode 全体を見ることの写し。
+// 何を見るか: Makefile のコメント落としが、NBSP や全角空白も空白と数えること。
 func TestStripMkComments(t *testing.T) {
 	c := newChecker(t)
 	cases := [][2]string{

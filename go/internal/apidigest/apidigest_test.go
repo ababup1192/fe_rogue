@@ -172,8 +172,7 @@ func TestOutDirIsHonored(t *testing.T) {
 	}
 }
 
-// TestRepoDigestIsUpToDate はリポの docs/ が今のソースと合っているかを見る
-// (Python 版の --check と同じ判定)。
+// TestRepoDigestIsUpToDate はリポの docs/ が今のソースと合っているかを見る。
 func TestRepoDigestIsUpToDate(t *testing.T) {
 	var out, errOut strings.Builder
 	code, err := Run(&out, &errOut, repoRoot(), []string{"--check"})

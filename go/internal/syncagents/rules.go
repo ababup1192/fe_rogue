@@ -100,7 +100,7 @@ func LoadRules(root string) (*Rules, error) {
 		return nil, fmt.Errorf("規約ファイルに %s がありません (%s)", missing, path)
 	}
 	// WhyNot: 3 つに縛るのは、配る側 (copy / copyIfAbsent / copyDirs) の扱いが
-	// bin/sync-agents.py でもキーごとに別々に書かれていて、増減させる余地が無いため。
+	// キーごとに別々に書かれていて、増減させる余地が無いため。
 	if len(*f.ManifestKeys) != 3 {
 		return nil, fmt.Errorf("規約ファイルの manifestKeys は 3 つです (%s)", path)
 	}

@@ -1,2 +1,2 @@
-[pre-commit] 注意: 過去から追跡されている絵に違反が残っています (このコミットは止めません): python3 bin/fge images で一覧
+[pre-commit] 注意: 過去から追跡されている絵に違反が残っています (このコミットは止めません): bin/fge images で一覧
 [exit=0]

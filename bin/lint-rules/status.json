@@ -1,5 +1,5 @@
 {
-  "note": "status（セッション開始の現状 1 画面）の規約データ。source of truth は bin/status.py で、この JSON はそこに書いてある値を一字一句そのまま写した物。Go 版（bin/fge-go status）はこれを読んで動くので、規約を変えるときは bin/status.py とこの 2 つを同時に直す。ずれると go/internal/status の TestRulesMatchPython が落ちる。",
+  "note": "status（セッション開始の現状 1 画面）の規約データ。この JSON が source of truth で、bin/fge status はこれを読んで動く。",
   "maxLines": 40,
   "buildWarnEntries": 60000,
   "sections": [

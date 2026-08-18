@@ -1,6 +1,6 @@
 package carve
 
-// set の回る順は Python 3.7 の実測値で縛る。ここがずれると彫った立体の並びが変わり、
+// set の回る順は CPython 3.7 の並びで縛る。ここがずれると彫った立体の並びが変わり、
 // 「同じ (x,y) にどの z を残すか」が変わって絵が別物になる。
 
 import (
@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// intCases は python3.7 で `s=set(); [s.add(v) for v in add]; list(s)` を取った物。
+// intCases は int を 1 つずつ足したときに回る順。CPython 3.7 の set と同じ並び。
 const intCases = `[
 {"add":[3,9],"order":[9,3]},
 {"add":[9,3],"order":[9,3]},
@@ -30,7 +30,7 @@ const intCases = `[
 {"add":[59,28,12,50,62,20,28,20,55],"order":[12,50,20,55,59,28,62]}
 ]`
 
-// tupleCases は python3.7 で `set(dict.fromkeys(keys))` を取った物。
+// tupleCases は鍵の並びからまとめて作ったときに回る順。CPython 3.7 の set と同じ並び。
 // popped は pop と remove を混ぜて空にするまでの並び。
 const tupleCases = `[
 {"keys":[[16,3],[11,12],[19,40],[19,33],[13,18],[28,32],[11,17],[22,1],[16,2],[0,1],[12,32]],

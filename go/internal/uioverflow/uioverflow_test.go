@@ -103,7 +103,7 @@ func TestWidthLookup(t *testing.T) {
 		// grow の上が auto なら見逃す側
 		`{"version":1,"root":{"name":"o","children":[{"name":"i","width":"grow",
 			"children":[{"name":"t","widget":"text"}]}]}}`: "",
-		// 小数の幅は Python の書式 (g) で出す
+		// 小数の幅は余分な 0 を付けずに出す
 		`{"version":1,"root":{"name":"p","width":120.5,"children":[{"name":"t","widget":"text"}]}}`: "固定幅 120.5px",
 		// 真偽値の width は幅ではない
 		`{"version":1,"root":{"name":"p","width":true,"children":[{"name":"t","widget":"text"}]}}`: "",

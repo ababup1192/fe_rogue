@@ -18,8 +18,8 @@ type statusResult struct {
 }
 
 func cmdStatus(out, errOut *strings.Builder, rest []string, asJSON bool) int {
-	// WhyNot: --root を規約データの置き場にしないのは、Python 版がカレントを起点に
-	// 走査する道具で、差し替えたいのは「見に行く先」の方だから。規約データは
+	// WhyNot: --root を規約データの置き場にしないのは、この道具がカレントを起点に
+	// 走査するもので、差し替えたいのは「見に行く先」の方だから。規約データは
 	// バイナリの居場所（engine のリポ）から読む。
 	target, rest, hasRoot := declValueFlag(rest, "--root")
 	nowText, rest, hasNow := declValueFlag(rest, "--now")

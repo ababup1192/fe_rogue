@@ -1,12 +1,11 @@
 package apireleased
 
-// What: 規約データが読めること・欠けを見つけること・Python 版と食い違わないこと。
+// What: 規約データ (bin/lint-rules/check-api-released.json) が読めること・欠けを見つけること。
 
 import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 )
 
@@ -44,25 +43,3 @@ func TestLoadRulesFailsWhenPackagesMissing(t *testing.T) {
 
 var pyPkgs = regexp.MustCompile(`(?s)PKGS\s*=\s*\((.*?)\)`)
 var pyStr = regexp.MustCompile(`"([^"]*)"`)
-
-func TestRulesMatchPythonPackages(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, "bin", "check-api-released.py"))
-	if err != nil {
-		t.Skipf("Python 版が読めない: %v", err)
-	}
-	block := pyPkgs.FindStringSubmatch(string(data))
-	if block == nil {
-		t.Fatal("Python 版から PKGS を読めなかった")
-	}
-	var want []string
-	for _, m := range pyStr.FindAllStringSubmatch(block[1], -1) {
-		want = append(want, m[1])
-	}
-	rules, err := LoadRules(repoRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(want, ",") != strings.Join(rules.Packages, ",") {
-		t.Errorf("PKGS が Python %v / JSON %v", want, rules.Packages)
-	}
-}

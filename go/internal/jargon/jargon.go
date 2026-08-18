@@ -1,7 +1,6 @@
 package jargon
 
-// jargon — 独自の比喩語（このリポジトリでしか通じない言い回し）が新しく入るのを止める検査
-// (bin/lint-jargon.py と同じ出力)。
+// jargon — 独自の比喩語（このリポジトリでしか通じない言い回し）が新しく入るのを止める検査。
 //
 //	fge-go jargon              ステージした差分の + 行だけ（コミット時と同じ）
 //	fge-go jargon --all        追跡ファイル全部
@@ -36,7 +35,7 @@ var (
 	escapeRe   = regexp.MustCompile(`jargon-ok\s*[:：]`)
 	stringLit  = regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"`)
 	inlineCode = regexp.MustCompile("`[^`]*`")
-	// fenceRe は Python の re.match(r"\s*(```|~~~)") と同じ。Python の \s は Unicode 全体。
+	// fenceRe は md のコードブロックの囲い。頭の空白は Unicode の空白すべてを許す。
 	fenceRe = regexp.MustCompile("^[\\s\\v\\x{1c}-\\x{1f}\\x{85}\\p{Z}]*(?:```|~~~)")
 	echoRe  = regexp.MustCompile(`@?echo\s+"([^"]*)"`)
 	plusRe  = regexp.MustCompile(`\+(\d+)`)
@@ -53,7 +52,7 @@ var jsonDocValueRe = func() []*regexp.Regexp {
 	return out
 }()
 
-// suffixKind は拡張子から言語を決める。並びは Python の SUFFIX_KIND と同じ。
+// suffixKind は拡張子から言語を決める。上から順に見て最初に当たった物を採る。
 var suffixKind = []struct{ suffix, kind string }{
 	{".md", "md"}, {".flix", "flix"}, {".elm", "elm"}, {".json", "json"}, {".py", "py"},
 }
@@ -86,7 +85,7 @@ type lineText struct {
 // afterMarker は印より後ろを返す。found=false は「印が無い」。
 //
 // WhyNot: 文字列リテラルを消した側で位置を探すのに、切り出しは元の行から行う。
-// Python 版がそう書かれていて、置き換えで縮んだぶん切り口がずれる挙動まで同じにする。
+// 消した側で切ると、リテラルの中に書かれた印まで拾って行の途中から鳴る。
 func afterMarker(line, marker string) (string, bool) {
 	body := stringLit.ReplaceAllString(line, `""`)
 	i := strings.Index(body, marker)
@@ -245,7 +244,7 @@ func checkJSONFile(path, body string, rules []*Rule) ([]hit, bool) {
 // jsonDocStrings は JSON を上から順に歩いて、説明キーに直接ぶら下がる文字列だけを集める。
 //
 // WhyNot: json.Unmarshal で map に入れてから歩かないのは、Go の map の走査順が
-// 毎回変わって出力の行順が Python とずれるため。読んだ順のまま歩く。
+// 毎回変わって出力の行順が走らせるたびに変わるため。読んだ順のまま歩く。
 func jsonDocStrings(body string) ([]string, error) {
 	dec := json.NewDecoder(strings.NewReader(body))
 	var out []string
@@ -482,7 +481,7 @@ func warnSummary(warns []hit) string {
 		count[h.rule.Word]++
 	}
 	// WhyNot: sort.Slice でなく安定な並べ替えにするのは、同じ件数の語の並びを
-	// Python の sorted (安定) と同じ「最初に出た順」に保つため。
+	// 「最初に出た順」に保つため。入れ替わると走らせるたびに字面が変わる。
 	sort.SliceStable(order, func(i, j int) bool { return count[order[i]] > count[order[j]] })
 	if len(order) > 8 {
 		order = order[:8]
@@ -496,7 +495,7 @@ func warnSummary(warns []hit) string {
 
 // ---------------------------------------------------------------- 自己検査
 
-// selfTestWords は Python 版の SELF_TEST_WORDS と同じ 2 語。
+// selfTestWords は自己検査で使う 2 語 (error 段と warn 段を 1 つずつ)。
 var selfTestWords = []wordEntry{
 	{Word: strPtr("関所"), Pattern: nil, Better: strPtr("ゲート"), English: strPtr("gate"), Stage: strPtr("error")},
 	{Word: strPtr("倒す"), Pattern: strPtr(`(既定|空)[^。]{0,12}へ?倒`), Better: strPtr("既定へ落とす"),

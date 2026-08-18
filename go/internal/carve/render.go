@@ -1,6 +1,6 @@
 package carve
 
-// bin/carve/render.py の写し。sprite.json の文字格子を PNG に描く。
+// sprite.json の文字格子を PNG に描く。
 //
 //	fge-go carve-render                 # bin/assets 配下を全部 bin/gallery へ
 //	fge-go carve-render a.sprite.json   # 指定ファイルだけ
@@ -33,8 +33,8 @@ func pngChunk(buf *bytes.Buffer, tag string, data []byte) {
 
 // PNGOf は RGBA の格子を PNG のバイト列にする。
 //
-// WhyNot: 出たバイト列は Python 版と同一にならない (zlib と compress/flate は
-// 同じ画素から違う圧縮結果を作る)。合わせられるのは描かれた画素まで。
+// WhyNot: 出たバイト列そのものを絵の同一性の物差しに使わない。圧縮の仕方が
+// 変われば同じ画素でもバイト列は変わる。比べるなら展開した画素で見る。
 func PNGOf(width, height int, rows [][]RGBA) []byte {
 	raw := make([]byte, 0, height*(1+width*4))
 	for _, row := range rows {
@@ -218,7 +218,7 @@ func RenderDoc(path, outDir string) ([]string, error) {
 	return written, nil
 }
 
-// RunRender は render.py の入口。
+// RunRender は carve-render の入口。root は assets / gallery を置く根。
 func RunRender(out *strings.Builder, root string, args []string) (int, error) {
 	outDir := filepath.Join(root, "gallery")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -229,7 +229,7 @@ func RunRender(out *strings.Builder, root string, args []string) (int, error) {
 		var found []string
 		_ = filepath.Walk(filepath.Join(root, "assets"), func(p string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
-				return nil //nolint:nilerr // 走査できない枝は Python の os.walk と同じく黙って飛ばす
+				return nil //nolint:nilerr // 読めない枝で全体を止めないため、黙って飛ばす
 			}
 			if strings.HasSuffix(p, ".sprite.json") {
 				found = append(found, p)

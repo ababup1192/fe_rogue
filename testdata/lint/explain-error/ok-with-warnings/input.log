@@ -1,0 +1,3 @@
+-- Redundancy Error [E9999] ---- src/W.flix
+
+3 |  let y = 1;
