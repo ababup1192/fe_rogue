@@ -1,0 +1,4 @@
+{
+  "note": "fge api-diff の語彙。docKinds は engine が読む Doc の種で、docs/<種>.schema.json が無い物は「診られない」と名指しして出す（網があると思わせないため）。種を増やしたらここへ足す。",
+  "docKinds": ["fx", "sprite", "ui", "shader", "theme", "level", "hitbox"]
+}

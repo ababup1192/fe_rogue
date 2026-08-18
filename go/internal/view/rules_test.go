@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 正本は bin/lint-view.py。JSON がそこからずれていないかを機械で見る。
+// source of truthは bin/lint-view.py。JSON がそこからずれていないかを機械で見る。
 // WhyNot: 目視の約束にしないのは、規約を Python 側だけ直したときに Go 版だけが
 // 古い判定のまま緑を出すため。
 

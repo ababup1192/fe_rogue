@@ -1,0 +1,7 @@
+# 見に行く先の差し替え: --root で偽リポを渡す。
+# 消えた schema を見落とすと、その種は「診られない」側へ移り、
+# 退行が「元々 schema が無い種」の報告に化ける。消えたことを名指しで言うこと。
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/api-diff/_base/build.sh" "$WORK" "v0.1.0"
+rm -f "$WORK/docs/fx.schema.json"
+"$ENGINE/bin/fge" api-diff --root "$WORK" --from v0.1.0

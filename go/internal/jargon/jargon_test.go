@@ -246,3 +246,25 @@ func TestRunMatchesFixture(t *testing.T) {
 		}
 	}
 }
+
+// Python を Go へ移したとき .go を足し忘れ、道具のコメントが丸ごと検査から外れたのに
+// 「OK」と出続けた。書く言語が変わっても検査が付いてくることを、一覧そのもので縛る。
+func TestEveryLanguageWeWriteInIsChecked(t *testing.T) {
+	for _, path := range []string{"a.go", "a.sh", "a.flix", "a.py", "a.md", "a.elm", "a.json", "Makefile"} {
+		if kindOf(path) == "" {
+			t.Errorf("%s が検査の対象外です（何を書いても OK と出ます）", path)
+		}
+	}
+}
+
+func TestGoAndShellCommentsAreChecked(t *testing.T) {
+	if got := found(t, "go", "// 関所で止める", true); len(got) != 1 {
+		t.Errorf("go のコメントを見ていません: %v", got)
+	}
+	if got := found(t, "go", `msg := "関所を通っておくれ"`, true); len(got) != 0 {
+		t.Errorf("go の文字列まで見ています: %v", got)
+	}
+	if got := found(t, "sh", "# 関所で止める", true); len(got) != 1 {
+		t.Errorf("sh のコメントを見ていません: %v", got)
+	}
+}

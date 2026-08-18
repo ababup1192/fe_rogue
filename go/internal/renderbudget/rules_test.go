@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 正本は bin/lint-rules/check-render-budget.json。読み込みがそこからずれていないかを機械で見る。
+// source of truthは bin/lint-rules/check-render-budget.json。読み込みがそこからずれていないかを機械で見る。
 // WhyNot: 目視の約束にしないのは、閾値を JSON 側だけ直したときにコードが
 // 古い上限のまま緑を出すため。
 

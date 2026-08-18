@@ -174,7 +174,7 @@ func selectPaths(staged []string, m Matcher) []string {
 // runLint は検査を 1 本走らせる。
 // WhyNot: 走らせる前に道具の実在を見ないのは、検査の中身がこのバイナリ自身の中に
 // あるため。外の道具を呼んでいた頃の実在検査を残すと、常に「無い」と読めて
-// 全部の検査が素通りする（関所が黙って開く）。
+// 全部の検査がスキップする（ゲートが黙って開く）。
 func (r *runner) runLint(c Check, args []string) (int, error) {
 	fn := r.opts.Lints[c.Sub]
 	if fn == nil {

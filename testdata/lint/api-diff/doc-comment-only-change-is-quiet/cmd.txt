@@ -1,0 +1,12 @@
+# 見に行く先の差し替え: --root で偽リポを渡す。
+# doc コメントだけの書き直しを「API が変わった」と読むと、バージョンを跨ぐたびに
+# 何十件も偽の「直す物」が出る。ダイジェストの md を diff しない理由そのもの。
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/api-diff/_base/build.sh" "$WORK" "v0.1.0"
+cat > "$WORK/engine/src/Depth.flix" <<'FLIX'
+mod Depth {
+    /// 説明をそっくり書き直した。宣言そのものは 1 字も変えていない。
+    pub def world(): Int32 = 0
+}
+FLIX
+"$ENGINE/bin/fge" api-diff --root "$WORK" --from v0.1.0

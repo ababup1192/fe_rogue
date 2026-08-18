@@ -1,0 +1,7 @@
+[api-diff] v0.1.0 -> 0.2.0 (作業ツリー)
+  直す物: なし
+  増えた宣言: 0 件（読むだけでよい）
+  消えた schema: fx.schema.json
+  診られない Doc の種（schema がありません）: fx, sprite, shader
+  render_gl は見ていません（ゲームが直接呼ばない層）
+[exit=0]

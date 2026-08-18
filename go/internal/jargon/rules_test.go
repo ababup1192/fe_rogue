@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 正本は bin/lint-rules/jargon.json の words。読み込みがそこからずれていないかを機械で見る。
+// source of truthは bin/lint-rules/jargon.json の words。読み込みがそこからずれていないかを機械で見る。
 // WhyNot: 目視の約束にしないのは、語を JSON 側だけ直したときにコードが
 // 古い語彙のまま緑を出すため。
 
@@ -111,7 +111,7 @@ func TestEscapeLiteralMatchesPython(t *testing.T) {
 	if got := escapeLiteral("a.b*c"); got != `a\.b\*c` {
 		t.Errorf("escapeLiteral が %q", got)
 	}
-	if got := escapeLiteral("関所"); got != "関所" {
+	if got := escapeLiteral("ゲート"); got != "ゲート" {
 		t.Errorf("漢字を escape してしまった: %q", got)
 	}
 }

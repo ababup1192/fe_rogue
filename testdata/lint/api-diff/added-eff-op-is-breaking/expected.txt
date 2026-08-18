@@ -1,0 +1,8 @@
+[api-diff] v0.1.1 -> 0.2.0 (作業ツリー)
+  直す物 1 件:
+    増えた op（handler を直す） Depth.Sound.stop (engine)
+        後: pub eff Sound { def stop(): Unit }
+  増えた宣言: 0 件（読むだけでよい）
+  診られない Doc の種（schema がありません）: sprite, shader
+  render_gl は見ていません（ゲームが直接呼ばない層）
+[exit=0]

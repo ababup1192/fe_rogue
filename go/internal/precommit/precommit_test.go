@@ -170,8 +170,8 @@ func TestFailingLintStopsWithFinalNotice(t *testing.T) {
 }
 
 // TestChecksRunWithEmptyBin は bin/ に規約データしか無くても検査が走って止まることを見る。
-// WhyNot: 通る側でなく止まる側を見るのは、関所が黙って開いても終了コード 0 は
-// 「問題なし」と見分けが付かないため。実際にこの形で全検査が素通りしていた。
+// WhyNot: 通る側でなく止まる側を見るのは、ゲートが黙って開いても終了コード 0 は
+// 「問題なし」と見分けが付かないため。実際にこの形で全検査がスキップしていた。
 func TestChecksRunWithEmptyBin(t *testing.T) {
 	root := fakeRepo(t)
 	lints := okLints(t)

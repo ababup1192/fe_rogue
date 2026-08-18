@@ -51,7 +51,7 @@ const reMeta = `[]()|\^$.*+?{}`
 // 置き換えた物。Go の正規表現には先読み・後読みが無い。
 //
 // WhyNot: 先読みの文字までマッチに含めて消費する書き方にしないのは、隣り合って出る語を
-// 取りこぼすため（`札札幌` の 1 つ目の札が消える）。位置だけ見て捨てれば取りこぼさない。
+// 取りこぼすため（`札札幌` の 1 つ目の札が消える）。位置だけ見て捨てれば取りこぼさない。 jargon-ok: 検査するルールの書き方そのものを説明している
 type matcher struct {
 	re *pxlib.PyRegexp
 	// noPrevKanji は直前の 1 文字が漢字なら捨てる（後読みの代わり）。
@@ -108,7 +108,7 @@ func cutTrailingLookahead(src string) (head string, set map[rune]bool, when stri
 		set[r] = true
 	}
 	head = src[:i]
-	// 先読みは最後の選択肢だけに付いている（`降ろす|降ろさ|降ろし(?!物)`）。
+	// 先読みは最後の選択肢だけに付いている（`降ろす jargon-ok: 検査するルールの書き方そのものを説明している|降ろさ|降ろし(?!物)`）。
 	if j := strings.LastIndex(head, "|"); j >= 0 {
 		when = head[j+1:]
 	}

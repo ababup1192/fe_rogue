@@ -1,0 +1,6 @@
+# 見に行く先の差し替え: --root で偽リポを渡す。
+# タグが引けないときに黙って 0 で終わると「非互換ゼロ」と見分けが付かず、
+# 壊れたバージョンをそのまま配ってしまう。必ず鳴らして止まること。
+# cwd: このケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+sh "$ENGINE/testdata/lint/api-diff/_base/build.sh" "$WORK" "v0.1.0"
+"$ENGINE/bin/fge" api-diff --root "$WORK" --from v9.9.9

@@ -150,7 +150,7 @@ func cutTrailingLookahead(src string) (head string, set map[rune]bool, when stri
 		set[r] = true
 	}
 	head = src[:i]
-	// 先読みは最後の選択肢だけに付いている（`降ろす|降ろさ|降ろし(?!物)`）。
+	// 先読みは最後の選択肢だけに付いている（`降ろす jargon-ok: 検査するルールの書き方そのものを説明している|降ろさ|降ろし(?!物)`）。
 	if j := strings.LastIndex(head, "|"); j >= 0 {
 		when = head[j+1:]
 	}

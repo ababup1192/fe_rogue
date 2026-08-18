@@ -11,7 +11,7 @@ package main
 //	fge-go view    [*.flix ...]
 //
 // どのサブコマンドにも --json を付けると機械可読の出力になる。
-// 判定の閾値・語彙・一覧は bin/lint-rules/*.json が正本。
+// 判定の閾値・語彙・一覧は bin/lint-rules/*.json がsource of truth。
 
 import (
 	"encoding/json"

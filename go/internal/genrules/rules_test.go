@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// 正本は bin/lint-rules/gen-rules.json。読み込みがそこからずれていないかを機械で見る。
+// source of truthは bin/lint-rules/gen-rules.json。読み込みがそこからずれていないかを機械で見る。
 // WhyNot: 目視の約束にしないのは、ルールを JSON 側だけ足したときにコードが
 // 古い 3 本のまま緑を出すため。
 

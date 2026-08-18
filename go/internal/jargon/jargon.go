@@ -55,6 +55,7 @@ var jsonDocValueRe = func() []*regexp.Regexp {
 // suffixKind は拡張子から言語を決める。上から順に見て最初に当たった物を採る。
 var suffixKind = []struct{ suffix, kind string }{
 	{".md", "md"}, {".flix", "flix"}, {".elm", "elm"}, {".json", "json"}, {".py", "py"},
+	{".go", "go"}, {".sh", "sh"},
 }
 
 // kindOf はファイル名から言語を返す。対象外なら空文字。
@@ -129,8 +130,10 @@ func proseLines(kind string, lines []string, wholeFile bool) []lineText {
 			if !fence {
 				text, has = inlineCode.ReplaceAllString(line, ""), true
 			}
-		case "flix":
+		case "flix", "go":
 			text, has = afterMarker(line, "//")
+		case "sh":
+			text, has = afterMarker(line, "#")
 		case "elm":
 			if wholeFile {
 				switch {
@@ -534,6 +537,9 @@ func selfTest(out *strings.Builder, root string) (int, error) {
 		{"json の説明キー", hits("json", `{"note": "関所で止める"}`), true},
 		{"json のセリフ", hits("json", `{"text": "関所を通っておくれ"}`), false},
 		{"make の echo", hits("make", "\t@echo \"  make x   関所の検査\""), true},
+		{"go のコメント", hits("go", "// 関所で止める"), true},
+		{"go の文字列", hits("go", `msg := "関所を通っておくれ"`), false},
+		{"sh のコメント", hits("sh", "# 関所で止める"), true},
 		{"逃げ道の印", hits("flix", "// 関所で止める  jargon-ok: 説明のため"), false},
 		{"md のコードの囲い", hits("md", "```"), false},
 	}
