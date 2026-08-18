@@ -87,6 +87,16 @@ engine / engine_world の `pub` は、このリポジトリの外にある独立
 | style を instance 属性へ | −16〜−34% | 採用 |
 | zIndex ソートの置き換え | 6〜37 倍 | 採用 |
 | PxSprite 1 クアッド | 5.5〜8.8 倍 | 採用 |
+| 画素を int[] のまま一括で GPU へ写す | frame_p50 −1.0ms(12%) / frame_avg −0.63〜−0.86ms(8〜11%) | 採用（下の注） |
+| 辺長が同じときの `glTexSubImage2D` | 差なし（0.68ms 対 0.68ms） | **棄却** |
+
+> **一括で写す方の判断（2026-08-18）。** avg では 8〜11% と線をまたぐが、median では 12% で
+> 超える（avg だけがぶれるのは外れフレームが平均を押すため）。採ったのは 2 つの理由で、
+> ① 読みやすさの代金がほぼ無い（1 要素ずつ回す `Vector.forEach` が 1 行の一括写しになる。
+> 払ったのは `Vector` と `Array` が同じ JVM 配列だという前提だけで、そこは
+> `render_gl/test/TestTextureUpload.flix` が固定している）、② **効きの大きさを決めるのは
+> テクスチャの面積 = ゲームで、エンジンは N を知らない**（320x240 で 0.65ms なら
+> 1024x1024 では 9ms 前後になる）。数字は `bench/texture_upload/RESULTS.md`。
 
 **採らなかった最大が −2%、採った最小が −16%。** 足切りをその間に置く。
 
@@ -364,7 +374,7 @@ N が定数なので実害は無いと判断している。**N を決めるの�
 PNG の隣へ `gallery/<場面>.items.tsv`（`total` / `passes` / `surfaces`）を常時書く。
 env でも引数でも切れない — 消せる検査は消えるので。
 
-**判定** `$(ENGINE)/bin/check-render-budget.py`（`make reference-check` と `make status` が呼ぶ）:
+**判定** `$(ENGINE)/bin/fge check-render-budget`（`make reference-check` と `make status` が呼ぶ）:
 
 | | 内容 |
 |---|---|

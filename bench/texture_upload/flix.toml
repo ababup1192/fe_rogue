@@ -1,0 +1,9 @@
+[package]
+name        = "bench_texture_upload"
+description = "毎フレーム焼いたアトラスを GPU へ上げる経路（ensureTexture → RenderTexture）の費用を背中合わせで測るベンチ"
+version     = "0.1.0"
+flix        = "0.75.1"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+
+[dependencies]
+"github:ababup1192/flix_game_engine" = { version = "0.30.0", security = "unrestricted" }

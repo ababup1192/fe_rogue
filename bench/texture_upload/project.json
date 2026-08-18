@@ -1,0 +1,17 @@
+{
+  "title": "Texture Upload Bench",
+  "designWidth": 320,
+  "designHeight": 240,
+  "windowWidth": 960,
+  "windowHeight": 720,
+  "windowScale": 3,
+  "clearColor": {
+    "r": 0.101961,
+    "g": 0.109804,
+    "b": 0.172549
+  },
+  "maxDeltaTime": 10.0,
+  "textures": [],
+  "fonts": [],
+  "sounds": []
+}
