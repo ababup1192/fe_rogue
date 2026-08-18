@@ -105,6 +105,13 @@ type Handler func(out, errOut *strings.Builder, rest []string, asJSON bool) int
 var registry = map[string]Handler{}
 var registryNote = map[string]string{}
 
+// engineOnly は engine のリポでしか意味を持たないサブコマンド。
+//
+// WhyNot: 配るバイナリから外せないので名乗りの側で分けるのは、1 本の実行ファイルに
+// 全部入っているのがそのまま配れる利点だから。Python の頃は「配らない道具は
+// ゲームに存在しない」で自然に分かれていた仕切りを、ここで置き直す。
+var engineOnly = map[string]bool{}
+
 func register(name, note string, fn Handler) {
 	if _, dup := registry[name]; dup {
 		panic("fge-go: サブコマンド名が重複している: " + name)
@@ -113,9 +120,28 @@ func register(name, note string, fn Handler) {
 	registryNote[name] = note
 }
 
+// registerEngineOnly は engine のリポでだけ使えるサブコマンドを名乗る。
+func registerEngineOnly(name, note string, fn Handler) {
+	register(name, note, fn)
+	engineOnly[name] = true
+}
+
+// isEngineRepo は足元が engine のリポかどうか。
+//
+// WhyNot: agents-pack/ の実在で見るのは、あれを持つのが配り元だけだから
+// (配られた先は .agents/ と .claude/ を受け取る)。
+func isEngineRepo(root string) bool {
+	info, err := os.Stat(filepath.Join(root, "agents-pack", "manifest.json"))
+	return err == nil && info.Mode().IsRegular()
+}
+
 func commandNames() []string {
+	inEngine := isEngineRepo(repoRoot())
 	names := make([]string, 0, len(registry))
 	for name := range registry {
+		if engineOnly[name] && !inEngine {
+			continue
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -194,6 +220,13 @@ func main() {
 	if !known {
 		usage()
 		os.Exit(1)
+	}
+	// WhyNot: 生のファイル読み取りエラーで落とさないのは、あれが「配布が壊れている」と
+	// 読めるため。ここで止めるのは、engine の中身を見る検査がゲームでは必ず空振りするから。
+	if engineOnly[cmd] && !isEngineRepo(repoRoot()) {
+		fmt.Fprintf(os.Stderr,
+			"fge %s は engine のリポでだけ走ります (ここは %s)\n", cmd, repoRoot())
+		os.Exit(2)
 	}
 	var out, errOut strings.Builder
 	code := handler(&out, &errOut, rest, asJSON)

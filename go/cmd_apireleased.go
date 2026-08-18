@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("check-api-released", "digest にあってリリース済みの版に無い宣言", cmdAPIReleased)
+	registerEngineOnly("check-api-released", "digest にあってリリース済みの版に無い宣言", cmdAPIReleased)
 }
 
 // apiReleasedResult は --json 用のまとめ。

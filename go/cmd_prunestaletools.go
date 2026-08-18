@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("prune-stale-tools", "Go 移行で役目を終えた Python の道具をゲームから消す (一度きり)",
+	registerEngineOnly("prune-stale-tools", "Go 移行で役目を終えた Python の道具をゲームから消す (一度きり)",
 		cmdPruneStaleTools)
 }
 

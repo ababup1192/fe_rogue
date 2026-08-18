@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("gen-rules", "docs/ の規約から .claude/rules/*.md を作る", cmdGenRules)
+	registerEngineOnly("gen-rules", "docs/ の規約から .claude/rules/*.md を作る", cmdGenRules)
 }
 
 // genRulesResult は --json 用のまとめ。

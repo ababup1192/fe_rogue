@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("sync-agents", "agents-pack をゲームのリポへ配る", cmdSyncAgents)
+	registerEngineOnly("sync-agents", "agents-pack をゲームのリポへ配る", cmdSyncAgents)
 }
 
 // syncAgentsResult は --json 用のまとめ。

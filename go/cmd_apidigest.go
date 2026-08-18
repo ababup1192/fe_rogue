@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("api-digest", "engine の pub 面を 1 枚のダイジェストへ書き出す", cmdAPIDigest)
+	registerEngineOnly("api-digest", "engine の pub 面を 1 枚のダイジェストへ書き出す", cmdAPIDigest)
 }
 
 // apiDigestResult は --json 用のまとめ。

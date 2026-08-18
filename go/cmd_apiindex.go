@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("check-api-index", "pub def を持つモジュールが索引に載っているか", cmdAPIIndex)
+	registerEngineOnly("check-api-index", "pub def を持つモジュールが索引に載っているか", cmdAPIIndex)
 }
 
 // apiIndexResult は --json 用のまとめ。

@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("check-refs", "文章や Makefile が指す先が実在するか", cmdCheckRefs)
+	registerEngineOnly("check-refs", "文章や Makefile が指す先が実在するか", cmdCheckRefs)
 }
 
 // checkRefsResult は --json 用のまとめ。

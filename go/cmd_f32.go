@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("f32", "engine の pub 面に Float32 が出ていないか", cmdF32)
+	registerEngineOnly("f32", "engine の pub 面に Float32 が出ていないか", cmdF32)
 }
 
 // f32Result は --json 用のまとめ。

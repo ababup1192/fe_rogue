@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("stage-engine", "同梱 engine 一式を組み立てる (Studio / bundle-zip の共通の口)", cmdStageEngine)
+	registerEngineOnly("stage-engine", "同梱 engine 一式を組み立てる (Studio / bundle-zip の共通の口)", cmdStageEngine)
 }
 
 // stageEngineResult は --json 用のまとめ。

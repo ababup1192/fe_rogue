@@ -192,3 +192,16 @@ func TestIsRenderFileMatchesSrcRender(t *testing.T) {
 		t.Error("src/render/ 配下は書き出し側のはず")
 	}
 }
+
+// What: engine 専用のサブコマンドが、engine のリポでだけ一覧に出ること。
+func TestEngineOnlyCommandsHiddenOutsideEngineRepo(t *testing.T) {
+	if !engineOnly["check-refs"] {
+		t.Fatal("check-refs が engine 専用として名乗っていない")
+	}
+	if isEngineRepo(t.TempDir()) {
+		t.Error("agents-pack の無い場所を engine のリポと見なしている")
+	}
+	if !isEngineRepo(filepath.Join("..")) {
+		t.Error("engine のリポを engine のリポと見なしていない")
+	}
+}
