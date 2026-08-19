@@ -2,11 +2,17 @@
 
 ## 予約語を識別子に使わない
 
-`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` / `project` / `solve` /
-`from` / `to`
+**全量は `bin/lint-rules/flix-reserved.json` が source of truth**（0.75.1 で実測した 43 語）。
+よく踏むのは `from` / `into` / `run` / `spawn` / `region` / `project` / `solve` / `inject` /
+`handler` / `query` / `select` / `where` / `force` / `discard`。
 
 変数・関数名だけでなく**レコードのフィールド名**でも落ちる（`{ spawn = ... }` は不可）。
 エラーは `Expected ',' before '='` のような間接的なパースエラーで出るので、原因に見えない。
+
+**型検査が終わらないときも、まずこれを疑う。** Flix はパースで止まらず、壊れた構文木の
+まま型検査へ進んで発散することがある — 赤も警告も出ず、ただ何分でも回り続ける
+（2026-08-19 に `{ into = …, from = … }` で 6 時間溶かした）。
+`bin/fge flix-reserved <ファイル…>`（全量は `--all`）が保存時とコミット時に自動で走る。
 ゲームで踏みやすいのは `spawn`（湧き位置 → `start`）、`run`（走り → `walkR` 等)、
 `project`（→ `apply`）、グラデーションの両端の `from` / `to`（→ `top` / `bottom`。
 engine の `Render.vgrad` も同じ理由で `{ top, bottom }`）。

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ababup1192/flix_game_engine/go/internal/f32"
 	"github.com/ababup1192/flix_game_engine/go/internal/fallback"
+	"github.com/ababup1192/flix_game_engine/go/internal/flixreserved"
 	"github.com/ababup1192/flix_game_engine/go/internal/jargon"
 	"github.com/ababup1192/flix_game_engine/go/internal/precommit"
 	"github.com/ababup1192/flix_game_engine/go/internal/uioverflow"
@@ -41,10 +42,11 @@ func cmdPrecommit(out, errOut *strings.Builder, rest []string, _ bool) int {
 	}
 
 	lints := map[string]precommit.Lint{
-		"view":        lintOf(view.Run, abs),
-		"fallback":    lintOf(fallback.Run, abs),
-		"jargon":      lintOf(jargon.Run, abs),
-		"ui-overflow": lintOf(uioverflow.Run, abs),
+		"flix-reserved": lintOf(flixreserved.Run, abs),
+		"view":          lintOf(view.Run, abs),
+		"fallback":      lintOf(fallback.Run, abs),
+		"jargon":        lintOf(jargon.Run, abs),
+		"ui-overflow":   lintOf(uioverflow.Run, abs),
 		"f32": func(o, e *strings.Builder, args []string) int {
 			code, err := f32.Run(o, e, abs, args, f32.Options{})
 			return orAbort(e, code, err)

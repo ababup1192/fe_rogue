@@ -2,45 +2,97 @@
   "note": "precommit（git commit の直前に走るゲート）の規約データ。この JSON が source of truth で、bin/fge precommit はこれを読んで動く。checks の並びはそのまま出力の並びになるので配列で持つ。",
   "stagedImages": {
     "sub": "images",
-    "imageExts": [".png", ".gif", ".jpg", ".jpeg", ".webp", ".bmp"],
+    "imageExts": [
+      ".png",
+      ".gif",
+      ".jpg",
+      ".jpeg",
+      ".webp",
+      ".bmp"
+    ],
     "galleryPrefix": "docs/gallery/",
     "galleryMaxFileBytes": 307200,
-    "allowedPrefixes": ["docs/gallery/", "docs/brand/"],
-    "allowedSubstrings": ["/assets/"],
-    "allowedSuffixes": ["/reference/title.png"],
-    "allowedExact": ["reference/title.png"]
+    "allowedPrefixes": [
+      "docs/gallery/",
+      "docs/brand/"
+    ],
+    "allowedSubstrings": [
+      "/assets/"
+    ],
+    "allowedSuffixes": [
+      "/reference/title.png"
+    ],
+    "allowedExact": [
+      "reference/title.png"
+    ]
   },
   "checks": [
+    {
+      "id": "flix-reserved",
+      "sub": "flix-reserved",
+      "flags": [],
+      "pass": "matched",
+      "when": {
+        "suffixes": [
+          ".flix"
+        ]
+      }
+    },
     {
       "id": "view",
       "sub": "view",
       "flags": [],
       "pass": "matched",
-      "when": {"suffixes": [".flix"]}
+      "when": {
+        "suffixes": [
+          ".flix"
+        ]
+      }
     },
     {
       "id": "palette",
       "sub": "palette",
       "flags": [],
       "pass": "none",
-      "when": {"anyOf": [
-        {"suffixes": [".sprite.json", ".theme.json"]},
-        {"substrings": ["palette"]}
-      ]}
+      "when": {
+        "anyOf": [
+          {
+            "suffixes": [
+              ".sprite.json",
+              ".theme.json"
+            ]
+          },
+          {
+            "substrings": [
+              "palette"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "ui-overflow",
       "sub": "ui-overflow",
-      "flags": ["--strict"],
+      "flags": [
+        "--strict"
+      ],
       "pass": "matched",
-      "when": {"suffixes": [".ui.json"]}
+      "when": {
+        "suffixes": [
+          ".ui.json"
+        ]
+      }
     },
     {
       "id": "fallback",
       "sub": "fallback",
       "flags": [],
       "pass": "none",
-      "when": {"suffixes": [".flix"]}
+      "when": {
+        "suffixes": [
+          ".flix"
+        ]
+      }
     },
     {
       "id": "f32",
@@ -48,8 +100,14 @@
       "flags": [],
       "pass": "none",
       "when": {
-        "suffixes": [".flix"],
-        "prefixes": ["engine/src/", "engine_world/src/", "engine_tools/src/"]
+        "suffixes": [
+          ".flix"
+        ],
+        "prefixes": [
+          "engine/src/",
+          "engine_world/src/",
+          "engine_tools/src/"
+        ]
       }
     },
     {
@@ -57,23 +115,54 @@
       "sub": "jargon",
       "flags": [],
       "pass": "none",
-      "when": {"anyOf": [
-        {"suffixes": [".md", ".flix", ".elm", ".json", ".py"]},
-        {"basenames": ["Makefile"]}
-      ]}
+      "when": {
+        "anyOf": [
+          {
+            "suffixes": [
+              ".md",
+              ".flix",
+              ".elm",
+              ".json",
+              ".py"
+            ]
+          },
+          {
+            "basenames": [
+              "Makefile"
+            ]
+          }
+        ]
+      }
     }
   ],
   "docsSync": {
     "target": "check-docs-sync",
-    "when": {"anyOf": [
-      {"basenames": ["Makefile"]},
-      {"prefixes": [
-        ".claude/", "agents-pack/", "templates/",
-        "go/internal/genrules/", "go/internal/apidigest/",
-        "go/internal/apiindex/", "go/internal/checkrefs/"
-      ]},
-      {"suffixes": [".md", ".flix"]}
-    ]}
+    "when": {
+      "anyOf": [
+        {
+          "basenames": [
+            "Makefile"
+          ]
+        },
+        {
+          "prefixes": [
+            ".claude/",
+            "agents-pack/",
+            "templates/",
+            "go/internal/genrules/",
+            "go/internal/apidigest/",
+            "go/internal/apiindex/",
+            "go/internal/checkrefs/"
+          ]
+        },
+        {
+          "suffixes": [
+            ".md",
+            ".flix"
+          ]
+        }
+      ]
+    }
   },
   "failOpen": {
     "makeMissing": "[pre-commit] make が見つからないので配線検査 (check-docs-sync) は飛ばします",

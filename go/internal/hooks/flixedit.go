@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ababup1192/flix_game_engine/go/internal/explainerror"
+	"github.com/ababup1192/flix_game_engine/go/internal/flixreserved"
 )
 
 // RunFlixEdit は 1 ファイル分のペイロードを読んで型検査する。返すのは 0 か 2 だけ。
@@ -38,6 +39,11 @@ func RunFlixEdit(errOut io.Writer, root string, in io.Reader) int {
 	if !strings.HasSuffix(path, ".flix") {
 		return 0
 	}
+	// WhyNot: 予約語だけは常駐を待たずにここで見る — 踏むと Flix はパースで止まらず
+	// 型検査が終わらなくなるので、型検査に任せると「何も出ないまま返らない」になる。
+	if code := reservedWords(errOut, root, path); code != 0 {
+		return code
+	}
 	pkg := FindPkg(r, absolutize(payload, root, path))
 	if pkg == "" {
 		return 0
@@ -56,5 +62,15 @@ func RunFlixEdit(errOut io.Writer, root string, in io.Reader) int {
 		msg += "\n" + fmt.Sprintf(rules.TipFormat, tip)
 	}
 	fmt.Fprintln(errOut, msg)
+	return 2
+}
+
+// reservedWords は保存したファイル 1 つに予約語が入っていないかを見る。
+func reservedWords(errOut io.Writer, root, path string) int {
+	var body, problems strings.Builder
+	if code, err := flixreserved.Run(&body, &problems, root, []string{path}); err != nil || code == 0 {
+		return 0
+	}
+	fmt.Fprintf(errOut, "# hook-flix-edit: 予約語を識別子に使っています\n%s", problems.String())
 	return 2
 }

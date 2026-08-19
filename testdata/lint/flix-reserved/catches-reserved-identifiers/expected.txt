@@ -1,0 +1,5 @@
+!! testdata/lint/flix-reserved/catches-reserved-identifiers/sample.flix:3 レコードの項目名 に予約語 "into" — 行き先。→ dest / target / versionsDir
+!! testdata/lint/flix-reserved/catches-reserved-identifiers/sample.flix:3 レコードの項目名 に予約語 "from" — 始点。→ start / top / src
+!! testdata/lint/flix-reserved/catches-reserved-identifiers/sample.flix:7 let の名前 に予約語 "into" — 行き先。→ dest / target / versionsDir
+予約語を識別子に使うと、Flix はパースで止まらず型検査が終わらなくなります (画面には何も出ません)。docs/flix-conventions.md を見てください
+[exit=1]

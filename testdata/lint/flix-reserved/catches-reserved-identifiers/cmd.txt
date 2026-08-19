@@ -1,0 +1,1 @@
+bin/fge flix-reserved testdata/lint/flix-reserved/catches-reserved-identifiers/sample.flix
