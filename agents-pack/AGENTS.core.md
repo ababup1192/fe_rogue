@@ -91,7 +91,8 @@
   `make reference-check`（gallery/ vs reference/ のバイト比較）
 - `make reference-update`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
-  `make gallery-sounds` の sounds.png / music.png）で**目と耳で確かめて**批評する。
+  `make gallery-sounds` の sounds.png — 1 音 1 段の波形とスペクトログラム。BGM の WAV が
+  あれば music.png も）で**目と耳で確かめて**批評する。
 - 口の一覧は `make help`。共通の口の実体はエンジンの `mk/game.mk` で、ゲームの Makefile は
   それを include している。**共通ターゲットをゲームの Makefile へ写さない** — 写すと
   エンジンを直しても届かず（`upgrade-game` は Makefile を運ばない）、写経元からずれていく。

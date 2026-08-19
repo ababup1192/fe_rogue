@@ -34,7 +34,7 @@ else
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: help status run debug test build check render render-all reference-check reference-update loc api hooks check-docs-sync
+.PHONY: help status run debug test build check render render-all gallery-sounds reference-check reference-update loc api hooks check-docs-sync
 
 # 共通の口の一覧。engine を上げるとここも一緒に新しくなる
 # （ゲーム側の Makefile へ写さないので、口が増えても書き足しに回らなくて済む）。
@@ -50,6 +50,7 @@ help:
 	@echo "  make render SHOT=<場面>  1 枚だけ debug/<場面>.png へ描き出す"
 	@echo "                          場面: $(SHOTS)"
 	@echo "  make render-all         全部 gallery/ へ描き出す（決定的）"
+	@echo "  make gallery-sounds     効果音を debug/sounds/ に集め、波形とスペクトログラムを debug/sounds.png に描く"
 	@echo "  make reference-check    描き出した絵をリファレンス画像とバイト比較する"
 	@echo "  make reference-update   いまの gallery をリファレンス画像として更新する"
 	$(if $(PALETTE),@echo "  make palette            Studio が読む色の写し ($(PALETTE)) を無条件に作り直す")
@@ -133,6 +134,28 @@ render:
 		exit 1; \
 	fi
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" SHOT="$(SHOT)" $(FLIX) run --entrypoint SceneRender.one
+
+# 音を目視できる 1 枚にする (debug/sounds.png と、BGM の WAV があれば debug/music.png)。
+# 1 音 1 段で、波形とスペクトログラムに名前・長さ・サンプルレート・ピーク振幅が付く。
+#
+# WhyNot: gallery/ へは書かない。描き出した物は git に入れない決まりで、
+# debug/ が目視用の置き場だから。
+gallery-sounds:
+	@fge=bin/fge; [ -x "$$fge" ] || fge="$(ENGINE)/bin/fge"; \
+	sfx=$$(ls assets/sfx/*.wav 2>/dev/null); \
+	if [ -z "$$sfx" ]; then \
+		echo "[gallery-sounds] assets/sfx/*.wav がありません (効果音を持つゲームなら先に make render-all)"; \
+		exit 1; \
+	fi; \
+	mkdir -p debug/sounds; \
+	cp $$sfx debug/sounds/; \
+	"$$fge" waveform debug/sounds --out debug/sounds.png || exit 1; \
+	music=$$(ls assets/music/*.wav assets/bgm/*.wav 2>/dev/null); \
+	if [ -z "$$music" ]; then \
+		echo "[gallery-sounds] BGM の WAV が無いので music.png は作りません"; \
+	else \
+		"$$fge" waveform $$music --out debug/music.png || exit 1; \
+	fi
 
 reference-check: render-all
 	"$(ENGINE)/bin/reference-check.sh"
