@@ -235,30 +235,52 @@ mod DrawCmd {
         mask
 
     // ── 部分更新（元を変えず新しい Drawable を返す）─────────────────
+    // 実装は match で全フィールドを受けて enum を直接組み直す。`toSpec` + レコード更新 +
+    // `make` の形にしないのは、毎フレーム全 Drawable が通る経路（drawInto の clip 刻み等）で
+    // 部分更新 1 回ごとに中間レコードを 2 周ぶん確保することになるため。
+    // 位置引数の並びに触る関数はこのモジュールの外に増やさない。
 
     /// clip 矩形を差し替える。
     pub def withClip(clip: Option[Rect2.Rect2], d: Drawable): Drawable =
-        make({ clip = clip | toSpec(d) })
+        let Drawable.Drawable(tex, px, py, sx, sy, rot, cr, cg, cb, alpha, cen,
+                              uox, uoy, usx, usy, z, style, _clip, blend, mask) = d;
+        Drawable.Drawable(tex, px, py, sx, sy, rot, cr, cg, cb, alpha, cen,
+                          uox, uoy, usx, usy, z, style, clip, blend, mask)
 
     /// color と zIndex を差し替える（テキストの文字色・重なり順の上書き用）。
     pub def withTint(color: Color, zIndex: Int32, d: Drawable): Drawable =
-        make({ color = color, zIndex = zIndex | toSpec(d) })
+        let Drawable.Drawable(tex, px, py, sx, sy, rot, _cr, _cg, _cb, alpha, cen,
+                              uox, uoy, usx, usy, _z, style, clip, blend, mask) = d;
+        Drawable.Drawable(tex, px, py, sx, sy, rot, color#r, color#g, color#b, alpha, cen,
+                          uox, uoy, usx, usy, zIndex, style, clip, blend, mask)
 
     /// scale を差し替える。
     pub def withScale(scale: Vec2.Vec2, d: Drawable): Drawable =
-        make({ scale = scale | toSpec(d) })
+        let Drawable.Drawable(tex, px, py, _sx, _sy, rot, cr, cg, cb, alpha, cen,
+                              uox, uoy, usx, usy, z, style, clip, blend, mask) = d;
+        Drawable.Drawable(tex, px, py, scale#x, scale#y, rot, cr, cg, cb, alpha, cen,
+                          uox, uoy, usx, usy, z, style, clip, blend, mask)
 
     /// scale と mask を一緒に差し替える（カメラの zoom は型抜きの形にも掛ける必要がある）。
     pub def withScaleAndMask(scale: Vec2.Vec2, mask: List[List[Vec2.Vec2]], d: Drawable): Drawable =
-        make({ scale = scale, mask = mask | toSpec(d) })
+        let Drawable.Drawable(tex, px, py, _sx, _sy, rot, cr, cg, cb, alpha, cen,
+                              uox, uoy, usx, usy, z, style, clip, blend, _mask) = d;
+        Drawable.Drawable(tex, px, py, scale#x, scale#y, rot, cr, cg, cb, alpha, cen,
+                          uox, uoy, usx, usy, z, style, clip, blend, mask)
 
     /// position と rotation を一緒に差し替える（グリフを文字列の置き場所のまわりに回す用）。
     pub def withPositionRotation(position: Vec2.Vec2, rotation: Float64, d: Drawable): Drawable =
-        make({ position = position, rotation = rotation | toSpec(d) })
+        let Drawable.Drawable(tex, _px, _py, sx, sy, _rot, cr, cg, cb, alpha, cen,
+                              uox, uoy, usx, usy, z, style, clip, blend, mask) = d;
+        Drawable.Drawable(tex, position#x, position#y, sx, sy, rotation, cr, cg, cb, alpha, cen,
+                          uox, uoy, usx, usy, z, style, clip, blend, mask)
 
     /// uvOffset と uvScale を一緒に差し替える（レンダーターゲットの上下反転用）。
     pub def withUv(uvOffset: Vec2.Vec2, uvScale: Vec2.Vec2, d: Drawable): Drawable =
-        make({ uvOffset = uvOffset, uvScale = uvScale | toSpec(d) })
+        let Drawable.Drawable(tex, px, py, sx, sy, rot, cr, cg, cb, alpha, cen,
+                              _uox, _uoy, _usx, _usy, z, style, clip, blend, mask) = d;
+        Drawable.Drawable(tex, px, py, sx, sy, rot, cr, cg, cb, alpha, cen,
+                          uvOffset#x, uvOffset#y, uvScale#x, uvScale#y, z, style, clip, blend, mask)
 
     /// タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、
     /// バックエンドの `initTileBuffer` が GPU へアップロードする素材。
