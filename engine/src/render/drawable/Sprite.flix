@@ -138,22 +138,21 @@ mod Sprite {
             x = if (r#flipH) -1.0 * drawScale#x else drawScale#x,
             y = if (r#flipV) -1.0 * drawScale#y else drawScale#y
         };
-        DrawCmd.make({
-            texture = r#texture,
-            position = globalPos,
-            scale = flippedScale,
-            rotation = r#transform#rotation,
-            color = r#visual#color,
-            alpha = r#alpha,
-            centered = r#centered,
-            uvOffset = uv#uvOffset,
-            uvScale = uvSc,
-            zIndex = r#visual#zIndex,
-            style = None,
-            clip = None,
-            blend = DrawCmd.BlendMode.Normal,
-            mask = Nil
-        })
+        DrawCmd.fromParts(
+            r#texture,
+            globalPos,
+            flippedScale,
+            r#transform#rotation,
+            r#visual#color,
+            r#alpha,
+            r#centered,
+            uv#uvOffset,
+            uvSc,
+            r#visual#zIndex,
+            None,
+            None,
+            DrawCmd.BlendMode.Normal,
+            Nil)
 
     /// regionRect / hframes / vframes / frame と元テクスチャサイズから
     /// GPU シェーダ用の uvOffset / uvScale を計算する。

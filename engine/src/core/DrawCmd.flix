@@ -139,6 +139,32 @@ mod DrawCmd {
             spec#blend,
             spec#mask)
 
+    /// Drawable を組むもう 1 つの入口（毎フレーム大量に通る構築用）。`make` の spec レコードを
+    /// 作らないのは、構築 1 回ごとに入れ物のレコード一式を確保することになり、enum へ平置きした
+    /// 節約がそこで消えるため。Vec2 / Color は値のまま受けて中で x, y / r, g, b に展開する —
+    /// 引数の型が互いに違うので、並びの取り違えがコンパイルを通るのは
+    /// (position, scale) と (uvOffset, uvScale) の 2 ペアだけ。
+    pub def fromParts(texture: String, position: Vec2.Vec2, scale: Vec2.Vec2,
+                      rotation: Float64, color: Color, alpha: Float64, centered: Bool,
+                      uvOffset: Vec2.Vec2, uvScale: Vec2.Vec2, zIndex: Int32,
+                      style: Option[BoxStyle], clip: Option[Rect2.Rect2],
+                      blend: BlendMode, mask: List[List[Vec2.Vec2]]): Drawable =
+        Drawable.Drawable(
+            texture,
+            position#x, position#y,
+            scale#x, scale#y,
+            rotation,
+            color#r, color#g, color#b,
+            alpha,
+            centered,
+            uvOffset#x, uvOffset#y,
+            uvScale#x, uvScale#y,
+            zIndex,
+            style,
+            clip,
+            blend,
+            mask)
+
     /// 全フィールドを名前付きレコードへ展開する（部分更新と、めったに呼ばれない経路の
     /// 読み出し用）。毎フレーム大量に通る経路ではレコードを作り直すぶん高くつくので、
     /// そこでは match で直接分解する。

@@ -206,22 +206,21 @@ mod Text {
                         let w = qb#x1 - qb#x0;
                         let h = qb#y1 - qb#y0;
                         if (w <= 0.0 or h <= 0.0) None
-                        else Some(DrawCmd.make({
-                            texture = atlas#textureName,
-                            position = {x = qb#x0, y = qb#y0},
-                            scale = {x = w / atlas#textureSize, y = h / atlas#textureSize},
-                            rotation = 0.0,
-                            color = r#visual#color,
-                            alpha = 1.0,
-                            centered = false,
-                            uvOffset = {x = gm#s0, y = gm#t0},
-                            uvScale = {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
-                            zIndex = r#visual#zIndex,
-                            style = None,
-                            clip = None,
-                            blend = DrawCmd.BlendMode.Normal,
-                            mask = Nil
-                        }))
+                        else Some(DrawCmd.fromParts(
+                            atlas#textureName,
+                            {x = qb#x0, y = qb#y0},
+                            {x = w / atlas#textureSize, y = h / atlas#textureSize},
+                            0.0,
+                            r#visual#color,
+                            1.0,
+                            false,
+                            {x = gm#s0, y = gm#t0},
+                            {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
+                            r#visual#zIndex,
+                            None,
+                            None,
+                            DrawCmd.BlendMode.Normal,
+                            Nil))
                     case None => None
                 }
             }, List.zip(lineChars, positions));

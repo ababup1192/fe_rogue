@@ -236,6 +236,8 @@
   `pub type alias DrawableSpec = { texture = String, position = Vec2.Vec2, scale = Vec2.Vec2, rotation = Float64, color = Color, alpha = Float64, centered = Bool, uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, zIndex = Int32, style = Option[BoxStyle], clip = Option[Rect2.Rect2], blend = BlendMode, mask = List[List[Vec2.Vec2]] }`
 - Drawable を組む唯一の入口。位置引数の並びに触るのはこの関数の中だけ —
   `pub def make(spec: DrawableSpec): Drawable`
+- Drawable を組むもう 1 つの入口（毎フレーム大量に通る構築用）。`make` の spec レコードを
+  `pub def fromParts(texture: String, position: Vec2.Vec2, scale: Vec2.Vec2, rotation: Float64, color: Color, alpha: Float64, centered: Bool, uvOffset: Vec2.Vec2, uvScale: Vec2.Vec2, zIndex: Int32, style: Option[BoxStyle], clip: Option[Rect2.Rect2], blend: BlendMode, mask: List[List[Vec2.Vec2]]): Drawable`
 - 全フィールドを名前付きレコードへ展開する（部分更新と、めったに呼ばれない経路の
   `pub def toSpec(d: Drawable): DrawableSpec`
 - `pub def textureOf(d: Drawable): String`

@@ -921,12 +921,12 @@ mod Render {
                         case None     => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
                     }
                 };
-                DrawCmd.make({
-                   texture = s#texture, position = pos,
-                   scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
-                   rotation = radiansOf(s#rotation), color = s#tint, alpha = s#alpha, centered = s#centered,
-                   uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
-                   clip = None, blend = s#blend, mask = s#maskPolys }) :: Nil
+                DrawCmd.fromParts(
+                   s#texture, pos,
+                   {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
+                   radiansOf(s#rotation), s#tint, s#alpha, s#centered,
+                   uvOff, uvScl, s#zIndex, None,
+                   None, s#blend, s#maskPolys) :: Nil
             case other => toDrawables(other, pos)
         }
 
@@ -939,21 +939,21 @@ mod Render {
         match regionRect {
             case Some(_) => bug!("Render: region atlas not supported yet (pass regionRect=None)")
             case None    =>
-                DrawCmd.make({
-                  texture  = texture,
-                  position = pos,
-                  scale    = {x = scale#x * flipSign(flipH), y = scale#y * flipSign(flipV)},
-                  rotation = radiansOf(rotation),
-                  color    = tint,
-                  alpha    = alpha,
-                  centered = centered,
-                  uvOffset = {x = 0.0, y = 0.0},
-                  uvScale  = {x = 1.0, y = 1.0},
-                  zIndex   = zIndex,
-                  style    = None,
-                  clip     = None,
-                  blend    = blend,
-                  mask     = maskPolys })
+                DrawCmd.fromParts(
+                  texture,
+                  pos,
+                  {x = scale#x * flipSign(flipH), y = scale#y * flipSign(flipV)},
+                  radiansOf(rotation),
+                  tint,
+                  alpha,
+                  centered,
+                  {x = 0.0, y = 0.0},
+                  {x = 1.0, y = 1.0},
+                  zIndex,
+                  None,
+                  None,
+                  blend,
+                  maskPolys)
         }
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
@@ -989,19 +989,19 @@ mod Render {
                     style: Option[GameEngine.BoxStyle], zIndex: Int32, blend: DrawCmd.BlendMode,
                     pos: Vec2.Vec2): GameEngine.Drawable =
         // texture=""・centered=false・position=左上・scale=ピクセルサイズ・style=Some で単色塗り。
-        DrawCmd.make({
-          texture  = "",
-          position = pos,
-          scale    = size,
-          rotation = radiansOf(rotation),
-          color    = color,
-          alpha    = alpha,
-          centered = false,
-          uvOffset = {x = 0.0, y = 0.0},
-          uvScale  = {x = 1.0, y = 1.0},
-          zIndex   = zIndex,
-          style    = style,
-          clip     = None,
-          blend    = blend,
-          mask     = Nil })
+        DrawCmd.fromParts(
+          "",
+          pos,
+          size,
+          radiansOf(rotation),
+          color,
+          alpha,
+          false,
+          {x = 0.0, y = 0.0},
+          {x = 1.0, y = 1.0},
+          zIndex,
+          style,
+          None,
+          blend,
+          Nil)
 }
