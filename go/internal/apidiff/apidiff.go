@@ -141,51 +141,24 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 		return 2, nil
 	}
 
-	rules, err := LoadRules(root)
-	if err != nil {
-		return 2, err
-	}
-
-	res := newResult()
-	res.To = versionLabelOf(root, to)
-
-	if from == "none" {
-		res.From = "none"
-		writeResult(out, errOut, res, asJSON)
-		return 0, nil
-	}
-
+	notice := ""
 	if from == "auto" {
-		picked, notice, err := fetchPreviousTag(root)
+		picked, said, err := fetchPreviousTag(root)
 		if err != nil {
 			// WhyNot: 何も知らせずに 0 で終わらないのは、「差分ゼロ」と区別が付かないため。
 			// 無言で成功すると、非互換を配ったまま緑になる。
 			return 2, err
 		}
-		if notice != "" {
-			res.Notices = append(res.Notices, notice)
-		}
-		from = picked
+		from, notice = picked, said
 	}
-	res.From = from
 
-	beforeRoot, cleanup, err := exportSources(root, from)
+	res, err := Compute(root, from, to)
 	if err != nil {
 		return 2, err
 	}
-	defer cleanup()
-
-	afterRoot := root
-	if to != "" {
-		dir, c, exportErr := exportSources(root, to)
-		if exportErr != nil {
-			return 2, exportErr
-		}
-		defer c()
-		afterRoot = dir
+	if notice != "" {
+		res.Notices = append(res.Notices, notice)
 	}
-
-	fillDiff(&res, beforeRoot, afterRoot, rules.DocKinds)
 	writeResult(out, errOut, res, asJSON)
 	return 0, nil
 }

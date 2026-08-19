@@ -87,6 +87,11 @@
       "dest": "docs/api-digest"
     },
     {
+      "src": "docs/migrations/*.md",
+      "dest": "docs/migrations",
+      "why": "バージョン上げの追随の材料 (fge migration-notes が焼く)。ゲームを新しい engine へ載せ替えるときに読む。間引かず全部持つ — 1 枚が数 KB で、古い方を捨てるとバージョンを跨いだ追随が組み立てられなくなる"
+    },
+    {
       "src": "mk/*.mk",
       "dest": "mk",
       "why": "ゲームの Makefile が include する共通部。漏れると include ごと落ちる"

@@ -8,6 +8,9 @@ dist/
 dist-win/
 # make bundle-zip が吐く同梱用 zip (Release に添える生成物)。
 flix_game_engine-engine-v*.zip
+# 同梱 zip の照合の相手（make bundle-zip が焼く）。先頭のスラッシュは必須 ——
+# 素の名前だと templates/*/reference/SHA256SUMS.txt まで無視され、退行検知が黙って壊れる。
+/SHA256SUMS.txt
 lib/
 # `lib/`(末尾スラッシュ)はディレクトリにしか効かず、worktree 運用で作る
 # 「lib という名前の symlink」がすり抜けてコミットされる事故が起きた。

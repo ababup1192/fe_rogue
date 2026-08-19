@@ -467,7 +467,9 @@ sync-engine-full:
 RELEASE_SHA := $(shell git rev-parse HEAD)
 TEST := test-par
 release-guard:
-	@dirty=$$(git status --porcelain -- $(ROOT_SRC_PKGS)); \
+	@# WhyNot: 追随の材料も未コミット検査に入れるのは、bump が焼いた物をコミットし
+	@# 忘れるとタグの中身に材料が入らず、後からそのバージョンを取り出しても空になるため。
+	@dirty=$$(git status --porcelain -- $(ROOT_SRC_PKGS) docs/migrations); \
 	 if [ -n "$$dirty" ]; then \
 	   echo "[release] engine ソースが未コミットです。commit してから実行してください:"; echo "$$dirty"; exit 1; \
 	 fi
@@ -480,6 +482,8 @@ release-guard:
 	@# 後ろで気づくと、10 分以上かけたテストの後に落ちて全部やり直しになる。
 	@test -n "$(BUNDLE_FLIX_JAR)" -a -f "$(BUNDLE_FLIX_JAR)" \
 	  || { echo "[release] flix.jar が見つかりません (同梱 zip が作れません)。BUNDLE_FLIX_JAR= で場所を指定してください"; exit 1; }
+	@# 追随の材料が bump のときのままか。API を触るコミットが bump の後に入ると古くなる。
+	@bin/fge migration-notes --check
 	@echo "[release] v$(VERSION) を $(RELEASE_SHA) で公開します"
 # gl-parity も全量ゲートの一員 — GL と SoftRaster の絵の退行はテストに出ないため。
 release: release-guard sync $(TEST) gl-parity
@@ -491,7 +495,7 @@ release: release-guard sync $(TEST) gl-parity
 	  --title "v$(VERSION)" --generate-notes \
 	  "$(ENGINE_FULL_FPKG_SRC)#$(ENGINE_FULL_FPKG_NAME)" \
 	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)" \
-	  "$(BUNDLE_ZIP)"
+	  "$(BUNDLE_ZIP)" "$(BUNDLE_SUMS)"
 	@echo "[release] 完了。外部 fetch 検証: lib/ を消したサンプルで github:ababup1192/flix_game_engine v$(VERSION) を引けるか確認してください"
 
 # ── 同梱用 zip ────────────────────────────────────────────
@@ -506,6 +510,7 @@ release: release-guard sync $(TEST) gl-parity
 # 見つけ方)。手で置いた bin/flix.jar が古いことがあるので既定にしない。
 BUNDLE_ZIP   := flix_game_engine-engine-v$(VERSION).zip
 BUNDLE_STAGE := build/bundle/engine
+BUNDLE_SUMS  := SHA256SUMS.txt
 BUNDLE_FLIX_JAR ?= $(shell real=$$(readlink -f .devbox/nix/profile/default/bin/flix 2>/dev/null); \
                      [ -n "$$real" ] && echo "$$(dirname $$(dirname $$real))/share/java/flix/flix.jar")
 BUNDLE_FLIX_WRAPPER ?= bin/flix
@@ -513,11 +518,14 @@ BUNDLE_FLIX_WRAPPER ?= bin/flix
 bundle-zip:
 	@test -n "$(BUNDLE_FLIX_JAR)" -a -f "$(BUNDLE_FLIX_JAR)" \
 	  || (echo "!! flix.jar が見つかりません (BUNDLE_FLIX_JAR= で場所を指定してください)" && exit 1)
-	rm -rf build/bundle "$(BUNDLE_ZIP)"
+	rm -rf build/bundle "$(BUNDLE_ZIP)" "$(BUNDLE_SUMS)"
 	bin/fge stage-engine --out "$(BUNDLE_STAGE)" \
 	  --flix-jar "$(BUNDLE_FLIX_JAR)" \
 	  --flix-wrapper "$(BUNDLE_FLIX_WRAPPER)"
 	cd build/bundle && zip -qry "../../$(BUNDLE_ZIP)" engine
+	@# WhyNot: 照合の相手を release でなく bundle-zip で焼くのは、zip と対で作れば
+	@# ズレが原理的に起きないため。Studio の self-update はこれと突き合わせてから差し替える。
+	shasum -a 256 "$(BUNDLE_ZIP)" > "$(BUNDLE_SUMS)"
 	@echo "[bundle-zip] $(BUNDLE_ZIP) ($$(du -h $(BUNDLE_ZIP) | cut -f1))"
 
 # ── バージョン更新 (lockstep) ─────────────────────────────
@@ -535,7 +543,17 @@ bump:
 	done
 	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
 	@$(MAKE) --no-print-directory api-digest VERSION=$(TO)
+	@# WhyNot: リリースの中でなく bump で焼くのは、release の途中で作ると未コミットの
+	@# 生成物が同梱 zip にだけ入り、タグの中身には入らないため（後からそのバージョンを
+	@# 取り出しても追随の材料が無い、という形になる）。
+	@$(MAKE) --no-print-directory migration-notes
 	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧バージョンどれでも TO へ・flix-random と flix コンパイラのバージョンは据え置き。api-digest も再生成済み)。"
+
+# 1 つ前のリリースからの非互換と、engine 自身の追随例を 1 枚へ焼く。
+# make bump が呼ぶので普段は直に打たない（作り直したいときだけ）。
+.PHONY: migration-notes
+migration-notes:
+	@bin/fge migration-notes
 
 # ── コミュニティビルド用ルート src/ ──────────────────────
 # Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
