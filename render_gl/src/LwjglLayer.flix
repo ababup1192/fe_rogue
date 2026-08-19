@@ -475,9 +475,12 @@ mod LwjglLayer {
         let fallbackShader = RenderShader.createShaderProgram(
             ShaderGen.vertexSource(), RenderShader.fallbackFragmentSource());
         RenderShader.setProjectionMatrix(fallbackShader, screenW, screenH);
-        // GLSL ソース文字列 → コンパイル済みプログラム（+ uniform location）のキャッシュ。
+        // Spec の name → (組んだときの Spec, コンパイル済みプログラム + uniform location)。
         // buildProgram は毎フレーム呼ばれ得るので、同じ Spec の再コンパイルをここで防ぐ。
-        let shaderProgramCache: Ref[Map[String, RenderShaderCache.ProgramEntry], Static] = Ref.fresh(Static, Map.empty());
+        // 鍵を GLSL ソースにしない — 鍵を組むだけで毎フレーム GLSL 全文の組み立てを払う。
+        // name だけで返さず、当たりでも eqSpec で中身を確かめる — 同名で中身が変わる
+        // ホットリロード（shader.json の保存し直し）が絵に反映されなくなる。
+        let shaderProgramCache: Ref[Map[String, (ShaderDoc.Spec, RenderShaderCache.ProgramEntry)], Static] = Ref.fresh(Static, Map.empty());
         // 描いたフレームの通し番号。ShaderGen.compile は Doc の数値を GLSL に書き込むので、
         // shader.json を保存し直すたびに別の鍵になる — LRU で古い方を追い出すために、
         // 「どの program をいつ使ったか」を数えるものさしが要る。
@@ -605,7 +608,8 @@ mod LwjglLayer {
                     Set.insert(GpuHandle.shaderProgramInt(cmd#program), acc), liveNow)
                 |> Set.insert(fallbackShader);
             let entries = Map.toList(cache0) |> List.map(ke -> {
-                let (key, e) = ke;
+                let (key, se) = ke;
+                let (_, e) = se;
                 (key, e#program, Map.get(e#program, usedAt) |> Option.getWithDefault(0i64))
             });
             let victims = RenderShaderCache.computeEvictions(
@@ -615,14 +619,16 @@ mod LwjglLayer {
                 // 鍵ごとの「その番号を指す鍵がまだ何本あるか」。コンパイルに失敗した Spec は
                 // 全部同じ fallback program を値にして入るので、鍵を抜いても番号が
                 // 生きていることがある。数えずに毎回探し直すと鍵の数の二乗になる。
-                let counts0 = Map.valuesOf(cache0) |> List.foldLeft((acc, e) ->
-                    Map.insert(e#program, 1 + Option.getWithDefault(0, Map.get(e#program, acc)), acc),
-                    Map.empty());
+                let counts0 = Map.valuesOf(cache0) |> List.foldLeft((acc, se) -> {
+                    let (_, e) = se;
+                    Map.insert(e#program, 1 + Option.getWithDefault(0, Map.get(e#program, acc)), acc)
+                }, Map.empty());
                 let (_, deleted) = List.foldLeft((acc, key) -> {
                     let (counts, n) = acc;
                     match Map.get(key, cache0) {
-                        case None    => (counts, n)
-                        case Some(e) =>
+                        case None     => (counts, n)
+                        case Some(se) =>
+                            let (_, e) = se;
                             let prog = e#program;
                             Ref.put(Map.remove(key, Ref.get(shaderProgramCache)), shaderProgramCache);
                             let left = Option.getWithDefault(0, Map.get(prog, counts)) - 1;
@@ -1327,15 +1333,21 @@ mod LwjglLayer {
             }
         } with handler ShaderEffect.Shader {
             def buildProgram(spec, k) = {
-                // codegen が吐いた GLSL をコンパイル（fail-open）。同じソースはキャッシュから返す。
+                // name で引き、当たりは eqSpec（Spec の構造比較）で確かめてから返す —
+                // 当たったフレームでは ShaderGen.compile（GLSL 全文の組み立て）を呼ばない。
+                // eqSpec が偽（同名で中身が違う = ホットリロード）なら作り直して差し替える。
                 // コンパイル/リンク失敗時は単色フォールバックプログラムに落ちる（黒画面でなく色は出る）。
-                let source = ShaderGen.compile(spec);
                 let cache0 = Ref.get(shaderProgramCache);
                 let gen = Array.get(0, frameGenHolder);
-                let hit = Map.get(source, cache0);
+                let hit = match Map.get(spec#name, cache0) {
+                    case Some((stored, found)) =>
+                        if (ShaderGen.eqSpec(stored, spec)) Some(found) else None
+                    case None => None
+                };
                 let entry = match hit {
                     case Some(found) => found
                     case None =>
+                        let source = ShaderGen.compile(spec);
                         let prog = match RenderShader.tryCreateProgram(
                                 ShaderGen.vertexSource(), source, "surface:${spec#name}") {
                             case Some(p) => RenderShader.setProjectionMatrix(p, screenW, screenH); p
@@ -1363,7 +1375,7 @@ mod LwjglLayer {
                         };
                         let fresh: RenderShaderCache.ProgramEntry =
                             { program = prog, uRectPos = up, uRectSize = us, uTime = ut };
-                        Ref.put(Map.insert(source, fresh, cache0), shaderProgramCache);
+                        Ref.put(Map.insert(spec#name, (spec, fresh), cache0), shaderProgramCache);
                         Ref.put(Map.insert(prog, (up, us, ut, texLocs), Ref.get(shaderUniformCache)), shaderUniformCache);
                         fresh
                 };

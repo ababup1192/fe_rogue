@@ -653,6 +653,8 @@
   `pub def vertexSource(): String`
 - ノイズ関数の固定テンプレ（hash2 / worley / fbm）。Spec に依存しないので 1 度だけ pin し、
   `pub def preludeSource(): String`
+- Spec 2 つの構造比較（program キャッシュの正当性の中核）。真 ⇒ compile は純関数なので
+  `pub def eqSpec(a: ShaderDoc.Spec, b: ShaderDoc.Spec): Bool`
 - Spec → fragment シェーダー全体（prelude + main）。uTime uniform を前提に持つ。
   `pub def compile(spec: ShaderDoc.Spec): String`
 - `pub def compileBody(spec: ShaderDoc.Spec): String`

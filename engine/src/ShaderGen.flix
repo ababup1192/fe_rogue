@@ -168,10 +168,148 @@ mod ShaderGen {
             StringBuilder.toString(sb)
         }
 
+    /// Spec 2 つの構造比較（program キャッシュの正当性の中核）。真 ⇒ compile は純関数なので
+    /// GLSL も等しい、が構成的に成り立つ。確保ゼロの純関数。
+    /// WhyNot: derive の Eq にしない — Field 等の payload はレコードで、Flix のレコードは
+    /// Eq を持てず導出がそこで止まる。GLSL 全文を鍵にしない — 当たったフレームでも
+    /// compile（GLSL 全文の組み立て）を毎回払うことになる。ハッシュにしない — 衝突しない
+    /// ことを証明できない。1 フィールドでも比べ忘れると、違う Spec を同じと誤答して
+    /// 古い program の絵が何も知らせずに出続けるため、全 case・全フィールドをテストで pin する
+    /// （engine/test/TestShaderGenEqSpec.flix）。
+    pub def eqSpec(a: ShaderDoc.Spec, b: ShaderDoc.Spec): Bool =
+        a#name == b#name
+            and a#cycleRate == b#cycleRate
+            and eqBindings(a#bindings, b#bindings)
+            and eqOut(a#out, b#out)
+
+    def eqBindings(a: List[(String, ShaderDoc.Field)], b: List[(String, ShaderDoc.Field)]): Bool =
+        match (a, b) {
+            case (Nil, Nil)                       => true
+            case ((na, fa) :: ra, (nb, fb) :: rb) => na == nb and eqField(fa, fb) and eqBindings(ra, rb)
+            case _                                => false
+        }
+
+    def eqOut(a: ShaderDoc.Out, b: ShaderDoc.Out): Bool =
+        match (a, b) {
+            case (ShaderDoc.Out.Fill(fa), ShaderDoc.Out.Fill(fb)) =>
+                eqShade(fa#shade, fb#shade) and eqField(fa#alpha, fb#alpha)
+        }
+
+    def eqShade(a: ShaderDoc.Shade, b: ShaderDoc.Shade): Bool =
+        use ShaderDoc.Shade;
+        match (a, b) {
+            case (Shade.Solid(ca), Shade.Solid(cb))       => eqColor(ca, cb)
+            case (Shade.Ramp(ra), Shade.Ramp(rb))         =>
+                eqColor(ra#lo, rb#lo) and eqColor(ra#hi, rb#hi) and eqField(ra#field, rb#field)
+            case (Shade.Gradient(ga), Shade.Gradient(gb)) =>
+                eqStops(ga#stops, gb#stops) and eqField(ga#field, gb#field)
+            case (Shade.Cosine(ca), Shade.Cosine(cb))     =>
+                eqColor(ca#a, cb#a) and eqColor(ca#b, cb#b) and eqColor(ca#c, cb#c)
+                    and eqColor(ca#d, cb#d) and eqField(ca#field, cb#field)
+            case (Shade.Rgb(ra), Shade.Rgb(rb))           =>
+                eqField(ra#r, rb#r) and eqField(ra#g, rb#g) and eqField(ra#b, rb#b)
+            case _                                        => false
+        }
+
+    def eqStops(a: List[(Float64, Color)], b: List[(Float64, Color)]): Bool =
+        match (a, b) {
+            case (Nil, Nil)                       => true
+            case ((pa, ca) :: ra, (pb, cb) :: rb) => pa == pb and eqColor(ca, cb) and eqStops(ra, rb)
+            case _                                => false
+        }
+
+    def eqColor(a: Color, b: Color): Bool =
+        a#r == b#r and a#g == b#g and a#b == b#b
+
+    def eqVec2(a: Vec2.Vec2, b: Vec2.Vec2): Bool =
+        a#x == b#x and a#y == b#y
+
+    def eqOptField(a: Option[ShaderDoc.Field], b: Option[ShaderDoc.Field]): Bool =
+        match (a, b) {
+            case (None, None)         => true
+            case (Some(fa), Some(fb)) => eqField(fa, fb)
+            case _                    => false
+        }
+
+    def eqField(a: ShaderDoc.Field, b: ShaderDoc.Field): Bool =
+        use ShaderDoc.Field;
+        match (a, b) {
+            case (Field.Const(va), Field.Const(vb))               => va == vb
+            case (Field.Uv(ra), Field.Uv(rb))                     => ra#axis == rb#axis
+            case (Field.Worley(ra), Field.Worley(rb))             =>
+                ra#scale == rb#scale and ra#seed == rb#seed and ra#out == rb#out
+            case (Field.Fbm(ra), Field.Fbm(rb))                   =>
+                ra#octaves == rb#octaves and ra#scale == rb#scale and ra#seed == rb#seed
+            case (Field.FbmTile(ra), Field.FbmTile(rb))           =>
+                ra#octaves == rb#octaves and ra#scale == rb#scale
+                    and eqVec2(ra#period, rb#period) and ra#seed == rb#seed
+            case (Field.Smoothstep(ra), Field.Smoothstep(rb))     =>
+                ra#lo == rb#lo and ra#hi == rb#hi and eqField(ra#of, rb#of)
+            case (Field.Scaled(ra), Field.Scaled(rb))             =>
+                ra#factor == rb#factor and eqVec2(ra#scroll, rb#scroll) and eqField(ra#of, rb#of)
+            case (Field.Warp(ra), Field.Warp(rb))                 =>
+                ra#amount == rb#amount and ra#scale == rb#scale and ra#seed == rb#seed
+                    and eqField(ra#of, rb#of)
+            case (Field.Mix(ra), Field.Mix(rb))                   =>
+                eqField(ra#a, rb#a) and eqField(ra#b, rb#b) and ra#t == rb#t
+            case (Field.Blend(ra), Field.Blend(rb))               =>
+                eqField(ra#a, rb#a) and eqField(ra#b, rb#b) and eqField(ra#by, rb#by)
+            case (Field.Disk(ra), Field.Disk(rb))                 =>
+                ra#cx == rb#cx and ra#cy == rb#cy
+                    and ra#radius == rb#radius and ra#feather == rb#feather
+            case (Field.Radial(ra), Field.Radial(rb))             =>
+                ra#cx == rb#cx and ra#cy == rb#cy
+            case (Field.RadialAspect(ra), Field.RadialAspect(rb)) =>
+                ra#cx == rb#cx and ra#cy == rb#cy and ra#aspect == rb#aspect
+            case (Field.Quantize(ra), Field.Quantize(rb))         =>
+                eqField(ra#of, rb#of) and ra#steps == rb#steps
+            case (Field.Scales(ra), Field.Scales(rb))             =>
+                ra#scale == rb#scale and ra#stagger == rb#stagger
+            case (Field.Glints(ra), Field.Glints(rb))             =>
+                ra#scale == rb#scale and ra#rate == rb#rate
+                    and ra#density == rb#density and ra#seed == rb#seed
+            case (Field.Ripples(ra), Field.Ripples(rb))           =>
+                ra#freq == rb#freq and ra#amp == rb#amp
+                    and ra#speed == rb#speed and ra#seed == rb#seed
+            case (Field.Sparkle(ra), Field.Sparkle(rb))           =>
+                ra#scale == rb#scale and ra#rate == rb#rate
+                    and ra#density == rb#density and ra#seed == rb#seed
+            case (Field.Bin(ra), Field.Bin(rb))                   =>
+                ra#op == rb#op and eqField(ra#a, rb#a) and eqField(ra#b, rb#b)
+            case (Field.Hash1(ra), Field.Hash1(rb))               =>
+                ra#scale == rb#scale and ra#seed == rb#seed and eqOptField(ra#bucket, rb#bucket)
+            case (Field.Hash2(ra), Field.Hash2(rb))               =>
+                ra#scale == rb#scale and ra#seed == rb#seed
+                    and ra#comp == rb#comp and eqOptField(ra#bucket, rb#bucket)
+            case (Field.Un(ra), Field.Un(rb))                     =>
+                ra#op == rb#op and eqField(ra#of, rb#of)
+            case (Field.Pow(ra), Field.Pow(rb))                   =>
+                eqField(ra#of, rb#of) and ra#p == rb#p
+            case (Field.Time(ra), Field.Time(rb))                 =>
+                ra#scale == rb#scale and eqField(ra#offset, rb#offset)
+            case (Field.Tiling(ra), Field.Tiling(rb))             =>
+                eqVec2(ra#tiles, rb#tiles) and eqField(ra#of, rb#of)
+            case (Field.Snap(ra), Field.Snap(rb))                 =>
+                eqVec2(ra#cells, rb#cells) and eqField(ra#of, rb#of)
+            case (Field.Swirl(ra), Field.Swirl(rb))               =>
+                ra#cx == rb#cx and ra#cy == rb#cy and ra#strength == rb#strength
+                    and ra#rate == rb#rate and eqField(ra#of, rb#of)
+            case (Field.Angle(ra), Field.Angle(rb))               =>
+                ra#cx == rb#cx and ra#cy == rb#cy
+            case (Field.Rotate(ra), Field.Rotate(rb))             =>
+                ra#cx == rb#cx and ra#cy == rb#cy and ra#turns == rb#turns
+                    and ra#rate == rb#rate and eqField(ra#of, rb#of)
+            case (Field.Ref(na), Field.Ref(nb))                   => na == nb
+            case (Field.Tex(ra), Field.Tex(rb))                   =>
+                ra#name == rb#name and ra#chan == rb#chan
+            case (Field.Shift(ra), Field.Shift(rb))               =>
+                eqField(ra#dx, rb#dx) and eqField(ra#dy, rb#dy) and eqField(ra#of, rb#of)
+            case _                                                => false
+        }
+
     /// Spec → fragment シェーダー全体（prelude + main）。uTime uniform を前提に持つ。
     /// Tex を使う Spec だけ sampler uniform（uTexN / uTexFlipN）が増える — 使わない Spec の
-    /// 出力は 1 文字も変えない（GLSL ソースが program キャッシュの鍵なので、既存の面の
-    /// キャッシュとスナップショットを無傷に保つ）。
+    /// 出力は 1 文字も変えない（headless のスナップショットを無傷に保つ）。
     pub def compile(spec: ShaderDoc.Spec): String =
         // texNames は木を全走査するので、宣言と番号表で使い回す（毎回呼ぶと走査が重複する）。
         let names = ShaderDoc.texNames(spec);
