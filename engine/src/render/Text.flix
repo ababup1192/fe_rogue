@@ -206,7 +206,7 @@ mod Text {
                         let w = qb#x1 - qb#x0;
                         let h = qb#y1 - qb#y0;
                         if (w <= 0.0 or h <= 0.0) None
-                        else Some({
+                        else Some(DrawCmd.make({
                             texture = atlas#textureName,
                             position = {x = qb#x0, y = qb#y0},
                             scale = {x = w / atlas#textureSize, y = h / atlas#textureSize},
@@ -221,7 +221,7 @@ mod Text {
                             clip = None,
                             blend = DrawCmd.BlendMode.Normal,
                             mask = Nil
-                        })
+                        }))
                     case None => None
                 }
             }, List.zip(lineChars, positions));

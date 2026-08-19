@@ -4,10 +4,11 @@ mod TestHeadlessRenderSilhouette {
 
     /// z に置いた最小の Drawable。シルエット化で消えるべき情報（色・半透明・Add）を持たせる。
     def drawableAt(z: Int32): GameEngine.Drawable =
-        { texture = "", position = { x = 0.0, y = 0.0 }, scale = { x = 8.0, y = 8.0 },
+        DrawCmd.make({
+          texture = "", position = { x = 0.0, y = 0.0 }, scale = { x = 8.0, y = 8.0 },
           rotation = 0.0, color = { r = 1.0, g = 0.0, b = 0.0 }, alpha = 0.5,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
-          zIndex = z, style = None, clip = None, blend = DrawCmd.BlendMode.Add, mask = Nil }
+          zIndex = z, style = None, clip = None, blend = DrawCmd.BlendMode.Add, mask = Nil })
 
     /// z に置いた最小の多角形。grad（頂点色）はシルエット化で外れるべき情報。
     def polygonAt(z: Int32): GameEngine.PolygonRenderCmd =
@@ -23,7 +24,7 @@ mod TestHeadlessRenderSilhouette {
             drawableAt(5) :: drawableAt(CanvasLayer.layerStride()) :: drawableAt(ZBand.hudBase()) :: Nil,
             polygonAt(3) :: polygonAt(ZBand.hudBase()) :: Nil);
         Assert.assertEq(expected = ((1, Some(5)), (1, Some(3))),
-            ((List.length(drawables), List.head(drawables) |> Option.map(d -> d#zIndex)),
+            ((List.length(drawables), List.head(drawables) |> Option.map(d -> DrawCmd.zIndexOf(d))),
              (List.length(polygons),  List.head(polygons)  |> Option.map(p -> p#zIndex))))
 
     /// z に置いた最小のシェーダー面。中の場（水色のグラデ）と抜き（alpha）は
@@ -73,7 +74,7 @@ mod TestHeadlessRenderSilhouette {
         Assert.assertEq(
             expected = (Some(((0.0, 0.0, 0.0), 1.0, DrawCmd.BlendMode.Normal)),
                         Some(((0.0, 0.0, 0.0), 1.0, DrawCmd.BlendMode.Normal, true))),
-            (List.head(drawables) |> Option.map(d -> (Color.channels(d#color), d#alpha, d#blend)),
+            (List.head(drawables) |> Option.map(d -> (Color.channels(DrawCmd.colorOf(d)), DrawCmd.alphaOf(d), DrawCmd.blendOf(d))),
              List.head(polygons)  |> Option.map(p ->
                  (Color.channels(p#color), p#alpha, p#blend, Option.isEmpty(p#grad)))))
 }

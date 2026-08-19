@@ -11,7 +11,7 @@ mod TestRect {
     def testPlainRectHasNoStyle(): Unit \ Assert =
         let rect = Rect.make({x = 100.0, y = 50.0}, black());
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
-        Assert.assertEq(expected = true, Option.isEmpty(d#style))
+        Assert.assertEq(expected = true, Option.isEmpty(DrawCmd.styleOf(d)))
 
     /// 枠線（width>0 かつ alpha>0）を付けると styled Drawable（style=Some）になり、
     /// borderWidth が style に流れる
@@ -22,7 +22,7 @@ mod TestRect {
             |> Rect.setBorderAlpha(1.0)
             |> Rect.setBorderWidth(2.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
-        let bw = match d#style {
+        let bw = match DrawCmd.styleOf(d) {
             case Some(st) => st#borderWidth
             case None     => -1.0
         };
@@ -34,7 +34,7 @@ mod TestRect {
         let rect = Rect.make({x = 100.0, y = 50.0}, black())
             |> Rect.setBorderWidth(2.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
-        Assert.assertEq(expected = true, Option.isEmpty(d#style))
+        Assert.assertEq(expected = true, Option.isEmpty(DrawCmd.styleOf(d)))
 
     /// 負の borderWidth は 0 にクランプされる
     @Test
@@ -63,7 +63,7 @@ mod TestRect {
     def testCornerRadiusEmitsStyled(): Unit \ Assert =
         let rect = Rect.make({x = 100.0, y = 50.0}, black())
             |> Rect.setCornerRadius(6.0);
-        let cr = match Rect.toDrawable(rect, {x = 0.0, y = 0.0})#style {
+        let cr = match DrawCmd.styleOf(Rect.toDrawable(rect, {x = 0.0, y = 0.0})) {
             case Some(st) => st#cornerRadius
             case None     => -1.0
         };
@@ -75,7 +75,7 @@ mod TestRect {
         let rect = Rect.make({x = 100.0, y = 50.0}, black())
             |> Rect.setStripe(white(), 0.5, 1.0, 2.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
-        Assert.assertEq(expected = false, Option.isEmpty(d#style))
+        Assert.assertEq(expected = false, Option.isEmpty(DrawCmd.styleOf(d)))
 
     /// styled Drawable では 塗り色/α は Drawable 本体へ、枠色/α は style へ流れる
     /// （色の流路の取り違え防止）
@@ -90,8 +90,8 @@ mod TestRect {
             |> Rect.setBorderWidth(2.0)
             |> Rect.setCornerRadius(6.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
-        let info = match d#style {
-            case Some(st) => (d#color#r, d#alpha, st#borderColor#r, st#borderAlpha)
+        let info = match DrawCmd.styleOf(d) {
+            case Some(st) => (DrawCmd.colorOf(d)#r, DrawCmd.alphaOf(d), st#borderColor#r, st#borderAlpha)
             case None     => (-1.0, -1.0, -1.0, -1.0)
         };
         Assert.assertEq(expected = (0.2, 0.8, 0.9, 0.5), info)

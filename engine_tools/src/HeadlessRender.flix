@@ -200,7 +200,7 @@ mod HeadlessRender {
                        drawables: List[GameEngine.Drawable],
                        polygons: List[GameEngine.PolygonRenderCmd]):
                        (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        (drawables |> List.filter(d -> silhouetteKeeps(scope, d#zIndex)) |> List.map(blackenDrawable),
+        (drawables |> List.filter(d -> silhouetteKeeps(scope, DrawCmd.zIndexOf(d))) |> List.map(blackenDrawable),
          polygons  |> List.filter(p -> silhouetteKeeps(scope, p#zIndex)) |> List.map(blackenPolygon))
 
     /// 宣言シェーダー面も含めた silhouette。面は「rect と mask の形をそのまま黒で塗る」に
@@ -233,10 +233,11 @@ mod HeadlessRender {
     /// 足しても何も描かず、形ごと消える）。alpha を 1 に上げるのは、半透明の濃淡は塗りの
     /// 情報で、形の検査には雑音だから。
     def blackenDrawable(d: GameEngine.Drawable): GameEngine.Drawable =
-        { color = silhouetteInk(), alpha = 1.0, blend = DrawCmd.BlendMode.Normal,
-          style = d#style |> Option.map(st ->
+        let spec = DrawCmd.toSpec(d);
+        DrawCmd.make({ color = silhouetteInk(), alpha = 1.0, blend = DrawCmd.BlendMode.Normal,
+          style = spec#style |> Option.map(st ->
               { borderColor = silhouetteInk(), stripeColor = silhouetteInk(),
-                checkerColor = silhouetteInk() | st }) | d }
+                checkerColor = silhouetteInk() | st }) | spec })
 
     /// 多角形を真っ黒の不透明に写す。grad は外す — 頂点ごとの色は面の情報で、
     /// 残すと補間の縁が灰色に出てシルエットの縁が濁る。

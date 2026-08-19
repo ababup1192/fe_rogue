@@ -312,7 +312,8 @@ mod Annotate {
     /// それ以外はスプライト（scale は倍率・region 表示ぶんは uvScale で縮む）として外形を出す。
     pub def hitsFromDrawables(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
                               rect: Rect2.Rect2, ds: List[GameEngine.Drawable]): List[Hit] \ ef =
-        ds |> List.filterMap(d -> {
+        ds |> List.filterMap(dd -> {
+            let d = DrawCmd.toSpec(dd);
             let aabb = drawableAabb(sizeOf, d);
             if (rectIntersects(rect, aabb))
                 Some({ kind = if (d#texture == "") "box" else "sprite",
@@ -322,7 +323,7 @@ mod Annotate {
 
     /// Drawable 1 件を覆う矩形（デザイン座標）。回転は無視した外形の近似。
     def drawableAabb(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                     d: GameEngine.Drawable): Rect2.Rect2 \ ef =
+                     d: DrawCmd.DrawableSpec): Rect2.Rect2 \ ef =
         let base = if (d#texture == "") { x = 1.0, y = 1.0 }
                    else match sizeOf(d#texture) {
                        case Some(info) => { x = info#width * d#uvScale#x, y = info#height * d#uvScale#y }
@@ -428,12 +429,15 @@ mod Annotate {
     /// 角丸ボックスで描いた円が拡大時に四角へ化ける。
     pub def applyInspect(view: View, ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
         if (isIdentity(view)) ds
-        else ds |> List.map(d -> { position = toScreen(view, d#position),
-                                   scale = Vec2.mul(d#scale, view#zoom),
-                                   style = Option.map(st -> scaleStyle(view#zoom, st), d#style),
-                                   // clip 矩形も一緒に写す — 忘れると中身だけ動いて、切り口が
-                                   // スクリーンに置き去りになる(ズームすると見当違いに切れる)。
-                                   clip = Option.map(r -> inspectRect(view, r), d#clip) | d })
+        else ds |> List.map(dd -> {
+            let d = DrawCmd.toSpec(dd);
+            DrawCmd.make({ position = toScreen(view, d#position),
+                           scale = Vec2.mul(d#scale, view#zoom),
+                           style = Option.map(st -> scaleStyle(view#zoom, st), d#style),
+                           // clip 矩形も一緒に写す — 忘れると中身だけ動いて、切り口が
+                           // スクリーンに置き去りになる(ズームすると見当違いに切れる)。
+                           clip = Option.map(r -> inspectRect(view, r), d#clip) | d })
+        })
 
     /// 矩形へ見え方を適用する(位置は toScreen、大きさは zoom 倍。軸平行なので厳密に写る)。
     def inspectRect(view: View, r: Rect2.Rect2): Rect2.Rect2 =

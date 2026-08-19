@@ -78,7 +78,7 @@ mod SoftRaster {
     /// 知らないテクスチャ名は primary を使う（fail-open — 字が消えるより既定で出るほうがよい）。
     type alias FontTable = { primary = FontCtx, byTexture = Map[String, FontCtx] }
 
-    def fontFor(fonts: FontTable, d: GameEngine.Drawable): FontCtx =
+    def fontFor(fonts: FontTable, d: DrawCmd.DrawableSpec): FontCtx =
         Map.get(d#texture, fonts#byTexture) |> Option.getWithDefault(fonts#primary)
 
     /// 宣言シェーダー面 1 枚の headless ラスタライズ要求（Render.ShaderSurface と同形の
@@ -96,7 +96,7 @@ mod SoftRaster {
     /// 描き物 1 件（z 合流用の内部タグ）。Drawable / Polygon / シェーダー面を
     /// 1 列に混ぜて (zIndex, 追加順) で安定ソートするための包み。
     enum RItem {
-        case RDraw(GameEngine.Drawable)
+        case RDraw(DrawCmd.DrawableSpec)
         case RPoly(GameEngine.PolygonRenderCmd)
         case RSurf(SurfaceCmd)
     }
@@ -114,11 +114,12 @@ mod SoftRaster {
     /// 対応表は docs/backend-parity.md。
     pub def dropped(ds: List[GameEngine.Drawable]): List[Dropped] =
         let styledSprite = ds |> List.count(d ->
-            not String.isEmpty(d#texture)
-                and not String.startsWith({prefix = "font_"}, d#texture)
-                and not Option.isEmpty(d#style));
+            not String.isEmpty(DrawCmd.textureOf(d))
+                and not String.startsWith({prefix = "font_"}, DrawCmd.textureOf(d))
+                and not Option.isEmpty(DrawCmd.styleOf(d)));
         let styledGlyph = ds |> List.count(d ->
-            String.startsWith({prefix = "font_"}, d#texture) and not Option.isEmpty(d#style));
+            String.startsWith({prefix = "font_"}, DrawCmd.textureOf(d))
+                and not Option.isEmpty(DrawCmd.styleOf(d)));
         List.filter(x -> x#count > 0,
             ({ attr = "style on textured sprite", count = styledSprite,
                hint = "角丸・枠・縞・市松は単色の box にだけ描ける。スプライトの枠は box を重ねて作る" }: Dropped) ::
@@ -270,8 +271,10 @@ mod SoftRaster {
             }
         }, (Map.empty(): Map[String, ShaderEval.TexData]));
         // Drawable / Polygon / シェーダー面を 1 列にまとめ、(z, 追加順) で安定ソートする。
+        // Drawable は入口で 1 回だけ名前付きレコードへ展開する（描き出しは 1 枚きりの経路
+        // なので、以降の細かな読み出しをフィールド名のまま書けるほうを取る）。
         let tagged = List.append(
-            List.map(d -> RItem.RDraw(d), req#drawables),
+            List.map(d -> RItem.RDraw(DrawCmd.toSpec(d)), req#drawables),
             List.append(
                 List.map(p -> RItem.RPoly(p), req#polygons),
                 List.map(s -> RItem.RSurf(s), surfaces)));
@@ -524,7 +527,7 @@ mod SoftRaster {
     /// グリフごとの実寸計算が煩雑なので design 全体へ安全側フォールバックする
     /// （HUD 文字は毎フレーム変わり得るため、狭く絞って文字の一部を取りこぼす方が危険）。
     def drawableAabb(design: Vec2.Vec2, textures: Map[String, BufferedImage],
-                     d: GameEngine.Drawable): Rect2.Rect2 \ IO =
+                     d: DrawCmd.DrawableSpec): Rect2.Rect2 \ IO =
         if (String.startsWith({prefix = "font_"}, d#texture))
             fullDesignRect(design)
         else {
@@ -578,7 +581,7 @@ mod SoftRaster {
     /// drawables がその名前を実際に使うときだけ — 256×256 の画素計算を毎フレームの
     /// 描き出しに無条件で払わせない（描き出しの画素ループは既知の性能の池）。
     def builtinRadialImages(drawables: List[GameEngine.Drawable]): Map[String, BufferedImage] \ IO =
-        let usedOf = name -> List.exists(d -> d#texture == name, drawables);
+        let usedOf = name -> List.exists(d -> DrawCmd.textureOf(d) == name, drawables);
         let withEntry = (name: String, pixelsOf: Unit -> Vector[Int32],
                          acc: Map[String, BufferedImage]) ->
             if (usedOf(name)) Map.insert(name, imageOfArgb(RadialBuiltin.size(), pixelsOf()), acc)
@@ -621,7 +624,7 @@ mod SoftRaster {
     /// 1 つの Drawable を描く。texture が空なら box、`font_` ならグリフを直接 drawString、
     /// それ以外はテクスチャ画像。
     def drawDrawable(g: Graphics2D, sf: Float64,
-                     textures: Map[String, BufferedImage], fctx: FontTable, d: GameEngine.Drawable,
+                     textures: Map[String, BufferedImage], fctx: FontTable, d: DrawCmd.DrawableSpec,
                      warnLog: TexWarnLog): Unit \ IO =
         withRotation(g, sf, d#rotation, quadCenter(textures, fctx, d), () ->
             if (String.isEmpty(d#texture))
@@ -686,7 +689,7 @@ mod SoftRaster {
     /// Drawable の四角の中心（design px）。表示サイズの出し方は種類ごとに drawBox /
     /// drawGlyph / drawTextured と同じ式を使う。
     def quadCenter(textures: Map[String, BufferedImage], fctx: FontTable,
-                   d: GameEngine.Drawable): Vec2.Vec2 \ IO =
+                   d: DrawCmd.DrawableSpec): Vec2.Vec2 \ IO =
         let size = displaySize(textures, fctx, d);
         if (d#centered) d#position
         else {
@@ -698,7 +701,7 @@ mod SoftRaster {
     /// Drawable の表示サイズ（design px・反転の符号は残す）。box は scale がそのまま px、
     /// font_ はアトラス辺長との積、その他はテクスチャ実寸との積。
     def displaySize(textures: Map[String, BufferedImage], fctx: FontTable,
-                    d: GameEngine.Drawable): Vec2.Vec2 \ IO =
+                    d: DrawCmd.DrawableSpec): Vec2.Vec2 \ IO =
         if (String.isEmpty(d#texture)) d#scale
         else if (String.startsWith({prefix = "font_"}, d#texture))
             // アトラス辺長は本ごとに違うので、回す軸がずれないよう同じ本から取る。
@@ -740,7 +743,7 @@ mod SoftRaster {
     /// bake スケール = display fontSize / bake fontSize なので、そこから display fontSize を復元する。
     /// ベースラインはセル上端（drawable#position#y）から ascent × bakeScale 下。
     /// uvOffset をセル px へ戻して codepoint を逆引きし、その 1 文字を drawString する。
-    def drawGlyph(g: Graphics2D, sf: Float64, fctx: FontCtx, d: GameEngine.Drawable): Unit \ IO =
+    def drawGlyph(g: Graphics2D, sf: Float64, fctx: FontCtx, d: DrawCmd.DrawableSpec): Unit \ IO =
         let atlas = fctx#atlas;
         let ts = atlas#textureSize;
         let rowH = atlas#ascent + atlas#descent + 2.0;
@@ -762,7 +765,7 @@ mod SoftRaster {
 
     /// 単色矩形（角丸＋枠）。scale が design px サイズ、position が左上。
     /// 重ねる順は GL シェーダと同じ 塗り → 縞 → 市松 → 枠。
-    def drawBox(g: Graphics2D, sf: Float64, d: GameEngine.Drawable): Unit \ IO =
+    def drawBox(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec): Unit \ IO =
         let x = ri(d#position#x * sf);
         let y = ri(d#position#y * sf);
         let bw = ri(d#scale#x * sf);
@@ -785,7 +788,7 @@ mod SoftRaster {
         } else ()
 
     /// 塗りの上に縞と市松を重ねる。box の角丸矩形にクリップして描き、終わったら解除する。
-    def drawBoxOverlays(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
+    def drawBoxOverlays(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec,
                         st: GameEngine.BoxStyle): Unit \ IO =
         let hasStripe = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0;
         let hasChecker = st#checkerCell > 0.0 and st#checkerAlpha > 0.0;
@@ -811,7 +814,7 @@ mod SoftRaster {
 
     /// 縞を描く。GL シェーダと同じ box 中心原点のローカル座標 p を使い、
     /// mod(hv, period) が [0, width] に入る範囲を線分で塗る（dir 0: p.x−p.y / 1: p.y / 2: p.x）。
-    def drawStripes(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
+    def drawStripes(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec,
                     st: GameEngine.BoxStyle): Unit \ IO =
         let bw = d#scale#x * sf;
         let bh = d#scale#y * sf;
@@ -847,7 +850,7 @@ mod SoftRaster {
 
     /// 市松を描く。GL シェーダと同じ box 中心原点でセルを刻み、
     /// floor(p.x/cell) + floor(p.y/cell) が偶数のセルだけ塗る。
-    def drawChecker(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
+    def drawChecker(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec,
                     st: GameEngine.BoxStyle): Unit \ IO =
         let bw = d#scale#x * sf;
         let bh = d#scale#y * sf;
@@ -880,7 +883,7 @@ mod SoftRaster {
 
     /// 画像 Drawable。元テクスチャの uv 部分矩形を切り出し、color で tint・alpha を乗算して
     /// design px の表示矩形へ拡大転写する。font_ アトラス（白グリフ）もこの経路で色が付く。
-    def drawTextured(g: Graphics2D, sf: Float64, img: BufferedImage, d: GameEngine.Drawable): Unit \ IO =
+    def drawTextured(g: Graphics2D, sf: Float64, img: BufferedImage, d: DrawCmd.DrawableSpec): Unit \ IO =
         let texW = Int32.toFloat64(img.getWidth());
         let texH = Int32.toFloat64(img.getHeight());
         let displayW = texW * d#scale#x;

@@ -232,10 +232,10 @@ mod TestAnnotate {
         let (drawables, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = RawDraw.circle(5.0, yellow, 0) } :: Nil);
         match Annotate.applyInspect(view, drawables) {
             case d :: Nil =>
-                match d#style {
+                match DrawCmd.styleOf(d) {
                     case Some(style) =>
                         Assert.assertEq(expected = (20.0, 20.0, 10.0),
-                            (d#scale#x, d#scale#y, style#cornerRadius))
+                            (DrawCmd.scaleOf(d)#x, DrawCmd.scaleOf(d)#y, style#cornerRadius))
                     case None => bug!("円の描画命令には角丸スタイルが付いているはず")
                 }
             case _ => bug!("円 1 個は描画命令 1 件になるはず")
@@ -247,11 +247,12 @@ mod TestAnnotate {
     @Test
     def testHitsFromDrawablesFindsSprite(): Unit \ Assert =
         let white = { r = 1.0, g = 1.0, b = 1.0 };
-        let drawable = { texture = "unit", position = { x = 100.0, y = 100.0 },
+        let drawable = DrawCmd.make({
+                         texture = "unit", position = { x = 100.0, y = 100.0 },
                          scale = { x = 2.0, y = 2.0 }, rotation = 0.0, color = white,
                          alpha = 1.0, centered = true, uvOffset = { x = 0.0, y = 0.0 },
                          uvScale = { x = 1.0, y = 1.0 }, zIndex = 5, style = None, clip = None,
-                         blend = DrawCmd.BlendMode.Normal, mask = Nil };
+                         blend = DrawCmd.BlendMode.Normal, mask = Nil });
         let sizeOf = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 10.0, height = 20.0 });
         let rect = { position = { x = 95.0, y = 95.0 }, size = { x = 10.0, y = 10.0 } };
         match Annotate.hitsFromDrawables(sizeOf, rect, drawable :: Nil) {

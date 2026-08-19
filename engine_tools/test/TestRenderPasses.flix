@@ -35,10 +35,11 @@ mod TestRenderPasses {
 
     /// 最小の Drawable（テクスチャ名だけ指定。位置・拡大は個々のテストで上書きする）。
     def drawable(texture: String): GameEngine.Drawable =
-        { texture = texture, position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
+        DrawCmd.make({
+          texture = texture, position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
           rotation = 0.0, color = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
-          zIndex = 0, style = None, clip = None, blend = DrawCmd.BlendMode.Normal, mask = Nil }
+          zIndex = 0, style = None, clip = None, blend = DrawCmd.BlendMode.Normal, mask = Nil })
 
     // clear Clear は GL の glClear と同じ — ターゲットの全画素がその色（不透明）になる。
     @Test
@@ -75,7 +76,7 @@ mod TestRenderPasses {
         paper.setRGB(1i32, 1i32, argb(255, 255, 0, 0));
         let c = cfg(2);
         let req: SoftRaster.RasterReq =
-            { drawables = { position = { x = 1.0, y = 1.0 } | drawable("paper") } :: Nil,
+            { drawables = DrawCmd.make({ position = { x = 1.0, y = 1.0 } | DrawCmd.toSpec(drawable("paper")) }) :: Nil,
               polygons = Nil, design = c#design, scale = c#scale, background = c#background,
               texturePath = c#texturePath, fontTtf = c#fontTtf, fontAtlas = c#fontAtlas,
               outPath = "", shapeAntialias = true, textAntialias = true };
@@ -145,8 +146,8 @@ mod TestRenderPasses {
     @Test
     def testRenderToImageFullRendersBuiltinRadialLight(): Unit \ {Assert, IO} =
         let c = cfg(1);
-        let light = { texture = "__radial_light", position = { x = 128.0, y = 128.0 },
-                      centered = true, blend = DrawCmd.BlendMode.Add | drawable("") };
+        let light = DrawCmd.make({ texture = "__radial_light", position = { x = 128.0, y = 128.0 },
+                      centered = true, blend = DrawCmd.BlendMode.Add | DrawCmd.toSpec(drawable("")) });
         let req: SoftRaster.RasterReq =
             { drawables = light :: Nil,
               polygons = Nil, design = { x = 256.0, y = 256.0 }, scale = c#scale,

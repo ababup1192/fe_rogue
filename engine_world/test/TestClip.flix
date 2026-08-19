@@ -39,7 +39,7 @@ mod TestClip {
         let (ds, _) = Render.draw(items);
         Assert.assertEq(
             expected = Some((1.0, 2.0, 3.0, 4.0)) :: (None: Option[(Float64, Float64, Float64, Float64)]) :: Nil,
-            ds |> List.map(d -> Option.map(rectTuple, d#clip)))
+            ds |> List.map(d -> Option.map(rectTuple, DrawCmd.clipOf(d))))
 
     @Test
     def testNestedClipIntersects(): Unit \ Assert =
@@ -49,7 +49,7 @@ mod TestClip {
                         Render.clipped(rect(10.0, 20.0, 100.0, 100.0), box));
         let (ds, _) = Render.draw(({ at = { x = 0.0, y = 0.0 }, item = nested }: Render.PlacedItem) :: Nil);
         Assert.assertEq(expected = Some((10.0, 20.0, 30.0, 10.0)) :: Nil,
-            ds |> List.map(d -> Option.map(rectTuple, d#clip)))
+            ds |> List.map(d -> Option.map(rectTuple, DrawCmd.clipOf(d))))
 
     @Test
     def testClippedPolyRoutesToPolygonWithClip(): Unit \ Assert =
@@ -70,7 +70,7 @@ mod TestClip {
         let (ds, _) = Render.draw(({ at = { x = 0.0, y = 0.0 }, item = faded }: Render.PlacedItem) :: Nil);
         Assert.assertEq(
             expected = (0.5, Some((1.0, 2.0, 3.0, 4.0))) :: Nil,
-            ds |> List.map(d -> (d#alpha, Option.map(rectTuple, d#clip))))
+            ds |> List.map(d -> (DrawCmd.alphaOf(d), Option.map(rectTuple, DrawCmd.clipOf(d)))))
 
     @Test
     def testAnnotateAabbShrinksToClipRect(): Unit \ Assert =

@@ -33,10 +33,13 @@ mod TestFxSample {
     def fingerprints(items: List[Render.PlacedItem]):
             List[(Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, String, Int32)] =
         let (drawables, _) = Render.draw(items);
-        List.map(d -> (d#position#x, d#position#y, d#scale#x, d#scale#y,
-                       d#color#r, d#color#g, d#color#b, d#alpha,
-                       match d#blend { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" },
-                       d#zIndex), drawables)
+        List.map(dd -> {
+            let d = DrawCmd.toSpec(dd);
+            (d#position#x, d#position#y, d#scale#x, d#scale#y,
+             d#color#r, d#color#g, d#color#b, d#alpha,
+             match d#blend { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" },
+             d#zIndex)
+        }, drawables)
 
     // ════════════════════════════════════════════════════════
     // 決定論

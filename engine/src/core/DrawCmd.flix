@@ -76,9 +76,34 @@ mod DrawCmd {
     /// `mask` は多角形の型抜き（空 = 抜かない）。頂点は表示クアッドのローカル座標
     /// （design px・原点 = クアッドの左上・回転前）で、rotation / 反転（scale の符号）は
     /// クアッドと同じ変換が掛かる — 形を 1 回定義すれば回転は rotation に任せられる。
-    /// 縁は GL のステンシルも Java2D の clip も AA なしの硬い縁（docs/backend-parity.md）。
+    /// エッジは GL のステンシルも Java2D の clip も AA なしのハードエッジ（docs/backend-parity.md）。
     /// グリフ（font_ テクスチャ）には効かない。
-    pub type alias Drawable = {
+    /// payload は Vec2 / Color を x, y / r, g, b のフィールドへ展開してフラットに持つ — 入れ子のオブジェクトを
+    /// フィールドごとに持つ形にしないのは、毎フレーム数千個作る値では確保量が大きすぎるため。
+    /// 位置引数の構築・分解を呼び側に書かせない（隣どうしの Float64 の取り違えはコンパイルが
+    /// 通ってしまう）ため、構築は必ず `make`、部分更新は `toSpec` + `make` か `with*` を使う。
+    /// 毎フレーム大量に通る読み出しだけ、match で全フィールドを一度に受けてよい。
+    pub enum Drawable {
+        case Drawable(
+            String,                // texture
+            Float64, Float64,      // position.x, position.y
+            Float64, Float64,      // scale.x, scale.y
+            Float64,               // rotation
+            Float64, Float64, Float64, // color.r, color.g, color.b
+            Float64,               // alpha
+            Bool,                  // centered
+            Float64, Float64,      // uvOffset.x, uvOffset.y
+            Float64, Float64,      // uvScale.x, uvScale.y
+            Int32,                 // zIndex
+            Option[BoxStyle],      // style
+            Option[Rect2.Rect2],   // clip
+            BlendMode,             // blend
+            List[List[Vec2.Vec2]]  // mask
+        )
+    }
+
+    /// Drawable の全フィールドを名前で持つレコード（`make` の入力・`toSpec` の出力）。
+    pub type alias DrawableSpec = {
         texture = String,
         position = Vec2.Vec2,
         scale = Vec2.Vec2,
@@ -94,6 +119,146 @@ mod DrawCmd {
         blend = BlendMode,
         mask = List[List[Vec2.Vec2]]
     }
+
+    /// Drawable を組む唯一の入口。位置引数の並びに触るのはこの関数の中だけ —
+    /// 呼び側は名前付きの spec を書くので、隣どうしの Float64 を取り違えられない。
+    pub def make(spec: DrawableSpec): Drawable =
+        Drawable.Drawable(
+            spec#texture,
+            spec#position#x, spec#position#y,
+            spec#scale#x, spec#scale#y,
+            spec#rotation,
+            spec#color#r, spec#color#g, spec#color#b,
+            spec#alpha,
+            spec#centered,
+            spec#uvOffset#x, spec#uvOffset#y,
+            spec#uvScale#x, spec#uvScale#y,
+            spec#zIndex,
+            spec#style,
+            spec#clip,
+            spec#blend,
+            spec#mask)
+
+    /// 全フィールドを名前付きレコードへ展開する（部分更新と、めったに呼ばれない経路の
+    /// 読み出し用）。毎フレーム大量に通る経路ではレコードを作り直すぶん高くつくので、
+    /// そこでは match で直接分解する。
+    pub def toSpec(d: Drawable): DrawableSpec =
+        let Drawable.Drawable(tex, px, py, sx, sy, rot, cr, cg, cb, alpha, centered,
+                              uox, uoy, usx, usy, z, style, clip, blend, mask) = d;
+        { texture = tex,
+          position = {x = px, y = py},
+          scale = {x = sx, y = sy},
+          rotation = rot,
+          color = {r = cr, g = cg, b = cb},
+          alpha = alpha,
+          centered = centered,
+          uvOffset = {x = uox, y = uoy},
+          uvScale = {x = usx, y = usy},
+          zIndex = z,
+          style = style,
+          clip = clip,
+          blend = blend,
+          mask = mask }
+
+    // ── 読み用アクセサ ──────────────────────────────────────────
+    // Vec2 / Color を返す物は呼ぶたびにレコードを 1 個作る。毎フレーム大量に通る経路では
+    // 使わず、match で全フィールドを一度に受けること。
+
+    pub def textureOf(d: Drawable): String =
+        let Drawable.Drawable(tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        tex
+
+    pub def positionOf(d: Drawable): Vec2.Vec2 =
+        let Drawable.Drawable(_tex, px, py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        {x = px, y = py}
+
+    pub def scaleOf(d: Drawable): Vec2.Vec2 =
+        let Drawable.Drawable(_tex, _px, _py, sx, sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        {x = sx, y = sy}
+
+    pub def rotationOf(d: Drawable): Float64 =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        rot
+
+    pub def colorOf(d: Drawable): Color =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, cr, cg, cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        {r = cr, g = cg, b = cb}
+
+    pub def alphaOf(d: Drawable): Float64 =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        a
+
+    pub def centeredOf(d: Drawable): Bool =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        cen
+
+    pub def uvOffsetOf(d: Drawable): Vec2.Vec2 =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              uox, uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        {x = uox, y = uoy}
+
+    pub def uvScaleOf(d: Drawable): Vec2.Vec2 =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, usx, usy, _z, _style, _clip, _blend, _mask) = d;
+        {x = usx, y = usy}
+
+    pub def zIndexOf(d: Drawable): Int32 =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, z, _style, _clip, _blend, _mask) = d;
+        z
+
+    pub def styleOf(d: Drawable): Option[BoxStyle] =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, style, _clip, _blend, _mask) = d;
+        style
+
+    pub def clipOf(d: Drawable): Option[Rect2.Rect2] =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, clip, _blend, _mask) = d;
+        clip
+
+    pub def blendOf(d: Drawable): BlendMode =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, blend, _mask) = d;
+        blend
+
+    pub def maskOf(d: Drawable): List[List[Vec2.Vec2]] =
+        let Drawable.Drawable(_tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
+                              _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, mask) = d;
+        mask
+
+    // ── 部分更新（元を変えず新しい Drawable を返す）─────────────────
+
+    /// clip 矩形を差し替える。
+    pub def withClip(clip: Option[Rect2.Rect2], d: Drawable): Drawable =
+        make({ clip = clip | toSpec(d) })
+
+    /// color と zIndex を差し替える（テキストの文字色・重なり順の上書き用）。
+    pub def withTint(color: Color, zIndex: Int32, d: Drawable): Drawable =
+        make({ color = color, zIndex = zIndex | toSpec(d) })
+
+    /// scale を差し替える。
+    pub def withScale(scale: Vec2.Vec2, d: Drawable): Drawable =
+        make({ scale = scale | toSpec(d) })
+
+    /// scale と mask を一緒に差し替える（カメラの zoom は型抜きの形にも掛ける必要がある）。
+    pub def withScaleAndMask(scale: Vec2.Vec2, mask: List[List[Vec2.Vec2]], d: Drawable): Drawable =
+        make({ scale = scale, mask = mask | toSpec(d) })
+
+    /// position と rotation を一緒に差し替える（グリフを文字列の置き場所のまわりに回す用）。
+    pub def withPositionRotation(position: Vec2.Vec2, rotation: Float64, d: Drawable): Drawable =
+        make({ position = position, rotation = rotation | toSpec(d) })
+
+    /// uvOffset と uvScale を一緒に差し替える（レンダーターゲットの上下反転用）。
+    pub def withUv(uvOffset: Vec2.Vec2, uvScale: Vec2.Vec2, d: Drawable): Drawable =
+        make({ uvOffset = uvOffset, uvScale = uvScale | toSpec(d) })
 
     /// タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、
     /// バックエンドの `initTileBuffer` が GPU へアップロードする素材。

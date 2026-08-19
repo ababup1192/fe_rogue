@@ -1,4 +1,4 @@
-<!-- engine v0.32.0 / 生成: 2026-08-19 -->
+<!-- engine v0.32.0 / 生成: 2026-08-20 -->
 <!-- 生成物: bin/fge api-digest が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine
@@ -231,7 +231,39 @@
 - clip 矩形（design px・スクリーン空間）を出力ピクセルの整数矩形 (x0, y0, x1, y1) へ写す
   `pub def clipPixels(scale: {scaleX = Float64, scaleY = Float64}, clip: Rect2.Rect2): (Int32, Int32, Int32, Int32)`
 - スプライト 1 つ分の描画命令（zIndex 順にソートして描画される）。
-  `pub type alias Drawable = { texture = String, position = Vec2.Vec2, scale = Vec2.Vec2, rotation = Float64, color = Color, alpha = Float64, centered = Bool, uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, zIndex = Int32, style = Option[BoxStyle], clip = Option[Rect2.Rect2], blend = BlendMode, mask = List[List[Vec2.Vec2]] }`
+  `pub enum Drawable { case Drawable( String, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Bool, Float64, Float64, Float64, Float64, Int32, Option[BoxStyle], Option[Rect2.Rect2], BlendMode, List[List[Vec2.Vec2]] ) }`
+- Drawable の全フィールドを名前で持つレコード（`make` の入力・`toSpec` の出力）。
+  `pub type alias DrawableSpec = { texture = String, position = Vec2.Vec2, scale = Vec2.Vec2, rotation = Float64, color = Color, alpha = Float64, centered = Bool, uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, zIndex = Int32, style = Option[BoxStyle], clip = Option[Rect2.Rect2], blend = BlendMode, mask = List[List[Vec2.Vec2]] }`
+- Drawable を組む唯一の入口。位置引数の並びに触るのはこの関数の中だけ —
+  `pub def make(spec: DrawableSpec): Drawable`
+- 全フィールドを名前付きレコードへ展開する（部分更新と、めったに呼ばれない経路の
+  `pub def toSpec(d: Drawable): DrawableSpec`
+- `pub def textureOf(d: Drawable): String`
+- `pub def positionOf(d: Drawable): Vec2.Vec2`
+- `pub def scaleOf(d: Drawable): Vec2.Vec2`
+- `pub def rotationOf(d: Drawable): Float64`
+- `pub def colorOf(d: Drawable): Color`
+- `pub def alphaOf(d: Drawable): Float64`
+- `pub def centeredOf(d: Drawable): Bool`
+- `pub def uvOffsetOf(d: Drawable): Vec2.Vec2`
+- `pub def uvScaleOf(d: Drawable): Vec2.Vec2`
+- `pub def zIndexOf(d: Drawable): Int32`
+- `pub def styleOf(d: Drawable): Option[BoxStyle]`
+- `pub def clipOf(d: Drawable): Option[Rect2.Rect2]`
+- `pub def blendOf(d: Drawable): BlendMode`
+- `pub def maskOf(d: Drawable): List[List[Vec2.Vec2]]`
+- clip 矩形を差し替える。
+  `pub def withClip(clip: Option[Rect2.Rect2], d: Drawable): Drawable`
+- color と zIndex を差し替える（テキストの文字色・重なり順の上書き用）。
+  `pub def withTint(color: Color, zIndex: Int32, d: Drawable): Drawable`
+- scale を差し替える。
+  `pub def withScale(scale: Vec2.Vec2, d: Drawable): Drawable`
+- scale と mask を一緒に差し替える（カメラの zoom は型抜きの形にも掛ける必要がある）。
+  `pub def withScaleAndMask(scale: Vec2.Vec2, mask: List[List[Vec2.Vec2]], d: Drawable): Drawable`
+- position と rotation を一緒に差し替える（グリフを文字列の置き場所のまわりに回す用）。
+  `pub def withPositionRotation(position: Vec2.Vec2, rotation: Float64, d: Drawable): Drawable`
+- uvOffset と uvScale を一緒に差し替える（レンダーターゲットの上下反転用）。
+  `pub def withUv(uvOffset: Vec2.Vec2, uvScale: Vec2.Vec2, d: Drawable): Drawable`
 - タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、
   `pub type alias TileInstance = { px = Vec2.Vec2, uvOff = Vec2.Vec2, uvSc = Vec2.Vec2, alpha = Float64, tint = Color }`
 - タイルマップのインスタンス描画命令（1 draw call で全タイル）。

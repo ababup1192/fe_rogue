@@ -830,7 +830,7 @@ mod Render {
                         |> List.foldLeft((rest, d) -> d :: rest, ds), ps)
                 case (other, Some(_))        =>
                     (toDs(other, placed#at)
-                        |> List.foldLeft((rest, d) -> { clip = clip | d } :: rest, ds), ps)
+                        |> List.foldLeft((rest, d) -> DrawCmd.withClip(clip, d) :: rest, ds), ps)
             }
         }, ((Nil, Nil): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])));
         (List.reverse(dsRev), List.reverse(psRev))
@@ -862,15 +862,18 @@ mod Render {
     pub def applyCameraScale(transform: Projection.ViewTransform,
                              ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
         // mask はクアッドのローカル px なので zoom で一緒に伸ばす（伸ばさないと型抜きの形だけ
-        // 等倍のまま置き去りになる）。空（＝大半）のときはフィールドを触らない。
-        List.map(d ->
-            if (List.isEmpty(d#mask))
-                {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}
+        // 等倍のまま置き去りになる）。空（＝大半）のときは mask を触らない。
+        List.map(d -> {
+            let DrawCmd.Drawable.Drawable(_tex, _px, _py, sx, sy, _rot, _cr, _cg, _cb, _a, _cen,
+                                          _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, mask) = d;
+            let zoomed: Vec2.Vec2 = {x = sx * transform#scale#x, y = sy * transform#scale#y};
+            if (List.isEmpty(mask))
+                DrawCmd.withScale(zoomed, d)
             else
-                {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
-                 mask = d#mask |> List.map(poly -> poly |> List.map(v ->
-                     ({ x = v#x * transform#scale#x, y = v#y * transform#scale#y }: Vec2.Vec2))) | d},
-            ds)
+                DrawCmd.withScaleAndMask(zoomed,
+                    mask |> List.map(poly -> poly |> List.map(v ->
+                        ({ x = v#x * transform#scale#x, y = v#y * transform#scale#y }: Vec2.Vec2))), d)
+        }, ds)
 
     /// 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
     /// Clipped は中身を変換してから clip 矩形を刻む（入れ子は交差 — draw を通さない直呼びでも clip が効く）。
@@ -892,7 +895,8 @@ mod Render {
                 boxDrawable(s#rect#size, ShaderDoc.representativeColor(s#spec), 1.0, 0.0, None,
                             s#zIndex, s#blend, s#rect#position) :: Nil
             case Item.Clipped(c) =>
-                toDrawables(c#inner, pos) |> List.map(d -> { clip = mergeClip(c#rect, d#clip) | d })
+                toDrawables(c#inner, pos)
+                    |> List.map(d -> DrawCmd.withClip(mergeClip(c#rect, DrawCmd.clipOf(d)), d))
         }
 
     /// clip 矩形 rect を既存の clip と重ねる（両方あれば交差）。
@@ -917,11 +921,12 @@ mod Render {
                         case None     => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
                     }
                 };
-                ({ texture = s#texture, position = pos,
+                DrawCmd.make({
+                   texture = s#texture, position = pos,
                    scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
                    rotation = radiansOf(s#rotation), color = s#tint, alpha = s#alpha, centered = s#centered,
                    uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
-                   clip = None, blend = s#blend, mask = s#maskPolys }: GameEngine.Drawable) :: Nil
+                   clip = None, blend = s#blend, mask = s#maskPolys }) :: Nil
             case other => toDrawables(other, pos)
         }
 
@@ -934,7 +939,8 @@ mod Render {
         match regionRect {
             case Some(_) => bug!("Render: region atlas not supported yet (pass regionRect=None)")
             case None    =>
-                { texture  = texture,
+                DrawCmd.make({
+                  texture  = texture,
                   position = pos,
                   scale    = {x = scale#x * flipSign(flipH), y = scale#y * flipSign(flipV)},
                   rotation = radiansOf(rotation),
@@ -947,7 +953,7 @@ mod Render {
                   style    = None,
                   clip     = None,
                   blend    = blend,
-                  mask     = maskPolys }
+                  mask     = maskPolys })
         }
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
@@ -962,7 +968,7 @@ mod Render {
         // （SDF 描画では color がそのまま文字色になる）。
         let ds = Text.toDrawables(Text.make(content, fontAtlas, fontSize)
                      |> Text.setWrapWidth(wrapWidth), pos)
-            |> List.map(d -> {color = tint, zIndex = zIndex | d});
+            |> List.map(d -> DrawCmd.withTint(tint, zIndex, d));
         if (rotation == 0.0) ds
         else ds |> List.map(turnGlyph(rotation, fontAtlas#textureSize, pos))
 
@@ -972,16 +978,19 @@ mod Render {
     /// scale × アトラス辺長（Text.toDrawables がそう組んでいる）。
     def turnGlyph(t: Float64, textureSize: Float64, pivot: Vec2.Vec2,
                   d: GameEngine.Drawable): GameEngine.Drawable =
-        let size = { x = d#scale#x * textureSize, y = d#scale#y * textureSize };
+        let DrawCmd.Drawable.Drawable(_tex, px, py, sx, sy, _rot, _cr, _cg, _cb, _a, _cen,
+                                      _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        let size = { x = sx * textureSize, y = sy * textureSize };
         let half = Vec2.div(size, 2.0);
-        let moved = rotAbout(t, pivot, Vec2.add(d#position, half));
-        { position = Vec2.sub(moved, half), rotation = radiansOf(t) | d }
+        let moved = rotAbout(t, pivot, Vec2.add({x = px, y = py}, half));
+        DrawCmd.withPositionRotation(Vec2.sub(moved, half), radiansOf(t), d)
 
     def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float64, rotation: Float64,
                     style: Option[GameEngine.BoxStyle], zIndex: Int32, blend: DrawCmd.BlendMode,
                     pos: Vec2.Vec2): GameEngine.Drawable =
         // texture=""・centered=false・position=左上・scale=ピクセルサイズ・style=Some で単色塗り。
-        { texture  = "",
+        DrawCmd.make({
+          texture  = "",
           position = pos,
           scale    = size,
           rotation = radiansOf(rotation),
@@ -994,5 +1003,5 @@ mod Render {
           style    = style,
           clip     = None,
           blend    = blend,
-          mask     = Nil }
+          mask     = Nil })
 }

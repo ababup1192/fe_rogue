@@ -26,12 +26,12 @@ mod TestSoftRasterMask {
     def maskedRender(): BufferedImage \ IO =
         let mask = ({ x = 0.0, y = 0.0 } :: { x = 8.0, y = 0.0 } :: { x = 0.0, y = 8.0 } :: Nil)
             :: Nil;
-        let d: GameEngine.Drawable =
-            { texture = "paper", position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
+        let d: GameEngine.Drawable = DrawCmd.make({
+              texture = "paper", position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
               rotation = 0.0, color = { r = 1.0, g = 1.0, b = 1.0 }, alpha = 1.0,
               centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
               zIndex = 0, style = None, clip = None, blend = DrawCmd.BlendMode.Normal,
-              mask = mask };
+              mask = mask });
         let req: SoftRaster.RasterReq =
             { drawables = d :: Nil, polygons = Nil,
               design = { x = 8.0, y = 8.0 }, scale = 1,

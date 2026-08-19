@@ -139,7 +139,7 @@ mod TestText {
         let ds = Text.toDrawables(label, {x = 0.0, y = 0.0});
         let fourth = List.drop(3, ds) |> List.head;
         match fourth {
-            case Some(d) => Assert.assertEq(expected = (0.0, 18.0), (d#position#x, d#position#y))
+            case Some(d) => Assert.assertEq(expected = (0.0, 18.0), (DrawCmd.positionOf(d)#x, DrawCmd.positionOf(d)#y))
             case None    => bug!("4 文字目の Drawable が無い")
         }
 
@@ -150,7 +150,7 @@ mod TestText {
         let ds = Text.toDrawables(label, {x = 0.0, y = 0.0});
         let fourth = List.drop(3, ds) |> List.head;
         match fourth {
-            case Some(d) => Assert.assertEq(expected = (30.0, 8.0), (d#position#x, d#position#y))
+            case Some(d) => Assert.assertEq(expected = (30.0, 8.0), (DrawCmd.positionOf(d)#x, DrawCmd.positionOf(d)#y))
             case None    => bug!("4 文字目の Drawable が無い")
         }
 

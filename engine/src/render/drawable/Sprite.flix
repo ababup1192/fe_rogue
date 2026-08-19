@@ -138,7 +138,7 @@ mod Sprite {
             x = if (r#flipH) -1.0 * drawScale#x else drawScale#x,
             y = if (r#flipV) -1.0 * drawScale#y else drawScale#y
         };
-        {
+        DrawCmd.make({
             texture = r#texture,
             position = globalPos,
             scale = flippedScale,
@@ -153,7 +153,7 @@ mod Sprite {
             clip = None,
             blend = DrawCmd.BlendMode.Normal,
             mask = Nil
-        }
+        })
 
     /// regionRect / hframes / vframes / frame と元テクスチャサイズから
     /// GPU シェーダ用の uvOffset / uvScale を計算する。

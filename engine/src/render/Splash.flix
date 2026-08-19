@@ -77,7 +77,8 @@ mod Splash {
         if (v#logoSize#x <= 0.0 or v#logoSize#y <= 0.0) Nil
         else {
             let w = logoH * v#logoSize#x / v#logoSize#y;
-            { texture  = BootFont.logoTextureName(),
+            DrawCmd.make({
+              texture  = BootFont.logoTextureName(),
               position = { x = Float64.floor(cx - w / 2.0), y = top },
               scale    = { x = w / v#logoSize#x, y = logoH / v#logoSize#y },
               rotation = 0.0,
@@ -90,7 +91,7 @@ mod Splash {
               style    = None,
               clip     = None,
               blend    = DrawCmd.BlendMode.Normal,
-              mask     = Nil } :: Nil
+              mask     = Nil }) :: Nil
         }
 
     /// 進み具合のゲージ。本数が分かっていれば左から溜まり、分からなければバーが流れる。
@@ -121,7 +122,8 @@ mod Splash {
 
     def box(pos: Vec2.Vec2, size: Vec2.Vec2, color: Color, alpha: Float64,
             z: Int32): GameEngine.Drawable =
-        { texture  = "",
+        DrawCmd.make({
+          texture  = "",
           position = pos,
           scale    = size,
           rotation = 0.0,
@@ -134,7 +136,7 @@ mod Splash {
           style    = Some(DrawCmd.defaultStyle(color)),
           clip     = None,
           blend    = DrawCmd.BlendMode.Normal,
-          mask     = Nil }
+          mask     = Nil })
 
     // ── 寸法と色 ──────────────────────────────────────────────
 

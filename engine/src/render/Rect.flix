@@ -126,7 +126,7 @@ mod Rect {
         let Rect.Rect(r) = rect;
         let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0)
             or (r#borderWidth > 0.0 and r#borderAlpha > 0.0);
-        {
+        DrawCmd.make({
             texture = "",
             position = globalPos,
             scale = r#size,
@@ -141,5 +141,5 @@ mod Rect {
             clip = None,
             blend = DrawCmd.BlendMode.Normal,
             mask = Nil
-        }
+        })
 }

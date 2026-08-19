@@ -53,7 +53,7 @@ mod TestRender {
         let untouched = RawDraw.polygon({ x = 0.0, y = 0.0 } :: Nil, red(), 0) |> Render.rounded(4.0);
         let (_, ps) = Render.draw({ at = { x = 9.0, y = 9.0 }, item = untouched } :: Nil);
         Assert.assertEq(expected = (Some(0.5), 1),
-            (ds |> List.head |> Option.map(d -> d#alpha), List.length(ps)))
+            (ds |> List.head |> Option.map(d -> DrawCmd.alphaOf(d)), List.length(ps)))
 
     // outline と striped は同じ Box の style に重なる（枠幅・縞の濃度と周期を同時に pin）。
     @Test
@@ -62,7 +62,7 @@ mod TestRender {
             |> Render.outline(red(), 1.5)
             |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = 0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
-        let style = ds |> List.head |> Option.flatMap(d -> d#style);
+        let style = ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d));
         Assert.assertEq(expected = (Some(1.5), Some(0.25), Some(6.0)),
             (style |> Option.map(s -> s#borderWidth),
              style |> Option.map(s -> s#stripeAlpha),
@@ -75,7 +75,7 @@ mod TestRender {
             let item = RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0)
                 |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = dir });
             let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
-            ds |> List.head |> Option.flatMap(d -> d#style) |> Option.map(s -> s#stripeDir)
+            ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d)) |> Option.map(s -> s#stripeDir)
         };
         Assert.assertEq(expected = (Some(0), Some(1), Some(2)), (dirOf(0), dirOf(1), dirOf(2)))
 
@@ -85,7 +85,7 @@ mod TestRender {
         let item = RawDraw.box({ x = 8.0, y = 8.0 }, red(), 0)
             |> Render.checker({ color = red(), alpha = 0.5, cell = 4.0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
-        let style = ds |> List.head |> Option.flatMap(d -> d#style);
+        let style = ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d));
         Assert.assertEq(expected = (Some(0.5), Some(4.0)),
             (style |> Option.map(s -> s#checkerAlpha),
              style |> Option.map(s -> s#checkerCell)))
@@ -106,8 +106,8 @@ mod TestRender {
         let (ds, ps) = Render.draw(items);
         Assert.assertEq(
             expected = (Some(DrawCmd.BlendMode.Normal), Some(DrawCmd.BlendMode.Normal), Some(DrawCmd.BlendMode.Normal)),
-            (ds |> List.head |> Option.map(d -> d#blend),
-             ds |> List.drop(1) |> List.head |> Option.map(d -> d#blend),
+            (ds |> List.head |> Option.map(d -> DrawCmd.blendOf(d)),
+             ds |> List.drop(1) |> List.head |> Option.map(d -> DrawCmd.blendOf(d)),
              ps |> List.head |> Option.map(p -> p#blend)))
 
     // blended は Sprite / Box / Poly に効き、draw の出口（Drawable / PolygonRenderCmd）まで届く。
@@ -120,8 +120,8 @@ mod TestRender {
         let (ds, ps) = Render.draw(items);
         Assert.assertEq(
             expected = (Some(DrawCmd.BlendMode.Add), Some(DrawCmd.BlendMode.Multiply), Some(DrawCmd.BlendMode.Add)),
-            (ds |> List.head |> Option.map(d -> d#blend),
-             ds |> List.drop(1) |> List.head |> Option.map(d -> d#blend),
+            (ds |> List.head |> Option.map(d -> DrawCmd.blendOf(d)),
+             ds |> List.drop(1) |> List.head |> Option.map(d -> DrawCmd.blendOf(d)),
              ps |> List.head |> Option.map(p -> p#blend)))
 
     // blended は Clipped の clip 矩形越しに葉へ届く（fade と同じ onLeaf 規約）。clip 矩形（clip）はそのまま残る。
@@ -132,8 +132,8 @@ mod TestRender {
             |> Render.blended(DrawCmd.BlendMode.Add);
         let (ds, _) = Render.draw({ at = Vec2.zero(), item = boxed } :: Nil);
         Assert.assertEq(expected = (Some(DrawCmd.BlendMode.Add), Some(true)),
-            (ds |> List.head |> Option.map(d -> d#blend),
-             ds |> List.head |> Option.map(d -> Option.nonEmpty(d#clip))))
+            (ds |> List.head |> Option.map(d -> DrawCmd.blendOf(d)),
+             ds |> List.head |> Option.map(d -> Option.nonEmpty(DrawCmd.clipOf(d)))))
 
     // atCenter は「左上原点の item」の中心置き — 同じ box なら boxAt と同じ場所に着地する
     // （2 つの公開 API の整合。Poly を渡す誤用は bug! で loud に落ちる設計なのでテストしない）。
@@ -199,7 +199,7 @@ mod TestRender {
         let item = RawDraw.box({ x = 4.0, y = 2.0 }, red(), 0) |> Render.turned(0.25);
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         Assert.assertEq(expected = Some(round4(Vec2.tau() / 4.0)),
-            ds |> List.head |> Option.map(d -> round4(d#rotation)))
+            ds |> List.head |> Option.map(d -> round4(DrawCmd.rotationOf(d))))
 
     // 自分の中心を軸にすれば、群回転をかけても置き場所は動かない（その場で回るだけ）。
     @Test
@@ -241,8 +241,11 @@ mod TestRender {
         let centersOf = t -> {
             let item = Render.text("AB", testAtlas(), 1.0, 0) |> Render.turned(t);
             let (ds, _) = Render.draw({ at = pos, item = item } :: Nil);
-            ds |> List.map(d -> (round4(d#position#x + d#scale#x / 2.0),
-                                 round4(d#position#y + d#scale#y / 2.0)))
+            ds |> List.map(dd -> {
+                let d = DrawCmd.toSpec(dd);
+                (round4(d#position#x + d#scale#x / 2.0),
+                 round4(d#position#y + d#scale#y / 2.0))
+            })
         };
         let mirrored = centersOf(0.0) |> List.map(c -> {
             let (x, y) = c; (round4(2.0 * pos#x - x), round4(2.0 * pos#y - y))

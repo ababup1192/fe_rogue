@@ -29,7 +29,7 @@ mod TestSplash {
     /// 枚数そのものでなく差を見るので、絵に飾りを足しても壊れない。
     @Test
     def testGaugeShowsNoFillAtZero(): Unit \ Assert =
-        let boxes = v -> Splash.drawables(v) |> List.count(d -> String.isEmpty(d#texture));
+        let boxes = v -> Splash.drawables(v) |> List.count(d -> String.isEmpty(DrawCmd.textureOf(d)));
         let design = { x = 320.0, y = 240.0 };
         let half = boxes(Splash.bootView(design, "loading...", Some(0.5), 0.0));
         let zero = boxes(Splash.bootView(design, "loading...", Some(0.0), 0.0));
