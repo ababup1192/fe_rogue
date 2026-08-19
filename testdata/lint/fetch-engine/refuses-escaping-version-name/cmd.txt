@@ -1,0 +1,3 @@
+# 置き場の外を指すバージョンの字で呼ぶ。網に出る前に使い方の検分で止まること。
+# cwd: ケースのフォルダ / 環境変数: ENGINE(本物のリポ) CASE(このケース) WORK(使い捨ての作業先)
+"$ENGINE/bin/fge" fetch-engine --version ../etc --into "$WORK/engines"

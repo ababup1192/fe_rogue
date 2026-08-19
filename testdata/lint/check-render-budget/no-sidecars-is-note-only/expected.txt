@@ -1,2 +1,2 @@
-[budget] town: 予算 未計測（古い engine で焼いた絵）
+[budget] town: 予算 未計測（古い engine で生成した絵）
 [exit=0]

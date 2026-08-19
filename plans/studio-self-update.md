@@ -212,6 +212,18 @@ engine を **`.app` の中から外へ出す**。Studio は `~/.flix_ge_studio/e
 
 ## D1. 差し替えの手順
 
+> **落とす・照合する・展開するは engine の `fge fetch-engine` が持つ**（2026-08-19 実装済み）。
+> Studio(Flix) で書くと HTTPS・SHA-256・zip 展開の Java 相互運用を 3 つとも手書きすることに
+> なり、どれもこのリポに前例が無い。Go なら標準ライブラリで揃い、負の見本とテストの土台も
+> そのまま使える。Studio 側に残るのは「走らせて `--json` を読む」だけ。
+>
+> - `fge fetch-engine --check --current <今> --json` → `{available, version, zipUrl, sumsUrl}`
+> - `fge fetch-engine --version <新> --into <engines> --carry-from <今> --json`
+>   → `{installed, version, dir, carriedTo}`（下の 2〜6 を全部やる）
+>
+> 呼ぶのは**置き場に今ある engine の `bin/fge`**。まだ落としていない新しい engine の
+> 道具は使えないので、古い側が新しい側を迎えに行く形になる。
+
 1. バージョンの確認は GitHub API 1 回（ETag 付き条件付き GET・1 日 1 回。未認証 60 回/h を枯らさない）。
    ダウンロードは **タグ固定の `browser_download_url`**（latest だと表示したバージョンと落ちるバージョンがずれ得る）
 2. zip と **`SHA256SUMS.txt`** を落として照合（`make bundle-zip` が作ってリリースへ添付する。
@@ -255,6 +267,27 @@ engine を **`.app` の中から外へ出す**。Studio は `~/.flix_ge_studio/e
 
 **`codesign` は打たない。`.app` を触らないので署名の対象が何も変わらない。**
 
+### D1 の実装で足した守り（レビュー 76 点 → 反映済み・2026-08-19）
+
+- **optional な持ち越し物は無くても止めない** — `lib/cache` / `lib/external` は
+  `optional`。Maven の種を持たずに組んだ Studio が永久に上がらなくなるため
+- **実行ビットは zip の物を残す** — `exec` の印だけで決めると、印の無い実行物
+  （`bin/githooks/pre-commit` など）が差し替えた後だけ静かに走らなくなる
+- **入れ先が塞がっていたら落とす前に断る** — 今使っている engine と同じ場所・
+  既に揃っている場所（別の Studio が今置いたばかりかもしれない）
+- **`https` 以外の置き場を受けない**（zip と照合の相手が同じ経路で来るため）
+- **1 件も取り出せない zip を通さない**（区切りが `\` の zip で空の engine が立つ）
+- **進み具合は stderr へ即座に流す** — `fge` は出力を終わりにまとめて吐くので、
+  貯めると数分の間 1 行も画面へ届かない
+- **`.partial-*` の残骸は次の差し替えの頭で掃く**（触られなくなって 1 時間経った物だけ）
+- **既に揃っている置き場は「置いた物」として返す**（2 巡目のレビューで判明）— 展開が
+  済んだ直後に落ちると実体だけが残る。そこで断ると、押しても毎回失敗する袋小路から
+  人が手で消すまで戻れない。中身の検査に通らないなら置き直す
+- **今のバージョンが読めないときは帯を出さない** — 道具は `--current` が空だと
+  無条件に available を返すので、最新でも帯が出て押せば必ず失敗する
+- **`upgrade-game` には別名（`--root`）を渡す** — 道具はこれを `ENGINE=…` として
+  ゲームの make へ流し、ゲームの Makefile は空白で千切れる
+
 ## D2. 更新の前に止める物
 
 外に置くと「使っている物を消す」場面が無くなるので、止める物は **1 つだけ**になる。
@@ -268,6 +301,9 @@ engine を **`.app` の中から外へ出す**。Studio は `~/.flix_ge_studio/e
 - 受付を塞ぐ門は**作らない**。差し替えは別フォルダの中で完結し、
   指し先を変える瞬間だけが切り替わりなので、塞ぐ意味が小さい。
   同時に 2 回押されるのだけ `Runner.launchWork` の走行権で防ぐ（既にある）
+
+> **実装済み（2026-08-19）**: `EngineUpdate.install` の頭で、今の engine の
+> `bin/fge-go checkd --stop-all` を 1 回叩く。走行中のゲームは止めない。
 
 ## D3. Windows
 
@@ -293,6 +329,11 @@ engine zip も作る形。
 editor_server 自身の `"0.1.0"` で、Elm はデコードしてから捨てている）。
 帯を書く前に「今のバージョンを出す」1 段が要る。
 
+> **実装済み（2026-08-19）**: `web/src/EngineUpdate.elm`（帯の状態と見た目）＋
+> `Main.elm` の 3 経路（check / start / log）。今のバージョンを引いた直後に 1 回だけ
+> check を撃ち、押した後は 1 秒ごとに log を引く。切り替わったらバージョンを引き直す。
+> Windows と「engine のリポで開発中」は `updatable: false` で案内だけ（ボタンを出さない）。
+
 ## D5. ゲーム側への接続
 
 - 押した後: 開いているゲームに `upgrade-game` → `update-plan`。呼ぶときは
@@ -304,6 +345,14 @@ editor_server 自身の `"0.1.0"` で、Elm はデコードしてから捨てて
   「engine バージョンズレ」表示**が次に触った瞬間に案内を出す
 - エンジンだけ上がってゲームが古い期間、`make check` は古い fpkg で普通に緑
   （flix.toml のバージョンで解決するので嘘ではない）。案内は status の仕事とする
+
+> **実装済み（2026-08-19）**: 差し替えが済んだ同じ仕事の続きで、開いているゲームへ
+> `fge upgrade-game --json` を打つ。置き場の engine は `agents-pack/manifest.json` も
+> `engine_full/artifact/engine_full.fpkg` も `docs/migrations` も持っているので、
+> engine のリポでなくてもそのまま走る（`make upgrade-game` は engine_full を作り直す
+> 前提が付くので通さず、`bin/fge-go` を直に呼ぶ）。終了コードは 0 上げ切った /
+> 3 追随待ち / それ以外は失敗で、どれもログの 1 行になる。載せ替えの失敗で engine の
+> 差し替えまで失敗にはしない（engine は既に切り替わっていて、ゲーム側は道具が戻す）。
 
 ## 段階と見積もり（実績ベースの日数）
 

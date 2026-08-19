@@ -2,7 +2,7 @@
 # 負の見本（lint がちゃんと鳴るか・鳴らないか）の走らせ手。
 #
 #   sh testdata/lint/run.sh                     全ケースを走らせて expected.txt と突き合わせる
-#   sh testdata/lint/run.sh --record            expected.txt を今の出力で焼き直す
+#   sh testdata/lint/run.sh --record            expected.txt を今の出力で作り直す
 #   sh testdata/lint/run.sh <ケースのパス> ...   そのケースだけ
 #   sh testdata/lint/run.sh --quiet             ok の行を出さず、最後の数と NG だけ
 #
@@ -30,7 +30,7 @@ export ENGINE
 # 根から走らせる検査（ファイル 1 つを引数で渡せば鳴らせる）。
 ROOT_CWD_TOOLS="sprite anim style jargon fallback ui-overflow view f32 explain-error hooks"
 # ケースのフォルダから走らせる検査（リポ全体を見るので使い捨ての偽リポを組む）。
-CASE_CWD_TOOLS="check-refs api-diff check-render-budget check-api-index check-api-released precommit stage-engine"
+CASE_CWD_TOOLS="check-refs api-diff check-render-budget check-api-index check-api-released precommit stage-engine fetch-engine"
 
 record=0
 quiet=0
