@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "palette": {"skin": "#e0b088"},
+  "legend": {
+    "a": "skin",
+    "b": "hero.hair.tone"
+  }
+}

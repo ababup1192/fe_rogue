@@ -1,0 +1,10 @@
+# git が追跡している絵が置いてよい場所の外に居るとき赤で止まる見本。
+# この検査は git ls-files でリポの中身を読むので、$WORK に使い捨ての git リポを組む。
+# 本物のリポでは commit しない。
+# cwd: ケースのフォルダ / 環境変数: ENGINE(本物のリポ) WORK(使い捨ての作業先)
+mkdir -p "$WORK/repo"
+printf 'not a real png\n' > "$WORK/repo/screenshot.png"
+git -C "$WORK/repo" init -q
+git -C "$WORK/repo" add -A
+cd "$WORK/repo"
+"$ENGINE/bin/fge" images .

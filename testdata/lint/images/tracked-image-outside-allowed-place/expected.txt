@@ -1,0 +1,3 @@
+[lint-images] 1 件:
+  screenshot.png (0KB) — 追跡してよい置き場ではありません。人に見せる絵なら docs/gallery/ へ移してください
+[exit=1]

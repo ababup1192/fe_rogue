@@ -1,0 +1,3 @@
+# 最終コマから先頭コマへ戻る継ぎ目だけが跳ねているとき、--strict で赤になる見本。
+# frames/ の 3 枚は 1 コマにつき 1 列ずつ欠けていき、先頭へ戻らない。
+bin/fge loop testdata/lint/loop/seam-jump/frames --strict

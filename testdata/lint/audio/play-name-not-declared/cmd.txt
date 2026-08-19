@@ -1,0 +1,5 @@
+# 再生呼び出しの音名が project.json の sounds に無いとき赤で止まる見本。
+# 見に行く先の差し替え: 裁く相手が第 1 引数 (偽リポは repo/)。
+# cwd: ケースのフォルダ / 環境変数: ENGINE(本物のリポ)
+cd repo
+"$ENGINE/bin/fge" audio .

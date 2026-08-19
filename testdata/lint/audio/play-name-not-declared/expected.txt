@@ -1,0 +1,3 @@
+./src/Game.flix: 再生呼び出しの "jump" が project.json の sounds に無い
+NG: 1 個の音名のずれ (sounds 1 件を検査)
+[exit=1]

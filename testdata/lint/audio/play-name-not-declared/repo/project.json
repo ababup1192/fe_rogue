@@ -1,0 +1,5 @@
+{
+  "sounds": [
+    {"name": "step", "path": "assets/sfx/step.wav"}
+  ]
+}

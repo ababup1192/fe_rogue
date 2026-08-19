@@ -1,0 +1,3 @@
+./assets/hero.sprite.json: legend 'b' の "hero.hair.tone" がどの色票にも無い (*.theme.json のトップレベル / paletteFile / inline palette)
+NG: 1 個の意味色キーが解けない (sprite Doc 1 件を検査)
+[exit=1]
