@@ -64,8 +64,9 @@ func encodePNG(width, height int, grid [][]pxlib.RGBA) []byte {
 	return buf.Bytes()
 }
 
-// legendColorsOf は legend の 文字 → RGBA。解けない文字は塗らない (palette の縄張り)。
-func legendColorsOf(gameDir string, doc map[string]any) map[string]pxlib.RGBA {
+// legendColorsOf は legend の 文字 → RGBA と、解けなかった色名 (文字=名前) を返す。
+// 解けない文字は塗らない (palette の縄張り)。
+func legendColorsOf(gameDir string, doc map[string]any) (map[string]pxlib.RGBA, []string) {
 	names := map[string]pxlib.RGBA{}
 	for _, rel := range pxlib.WalkJSON(gameDir, pxlib.SpriteExcludedDirs) {
 		if strings.HasSuffix(rel, ".theme.json") {
@@ -84,6 +85,7 @@ func legendColorsOf(gameDir string, doc map[string]any) map[string]pxlib.RGBA {
 	}
 
 	colors := map[string]pxlib.RGBA{}
+	var unresolved []string
 	legend, _ := pxlib.AsObject(doc["legend"])
 	for char, value := range legend {
 		if direct, ok := pxlib.RGBAOfValue(value); ok {
@@ -94,10 +96,15 @@ func legendColorsOf(gameDir string, doc map[string]any) map[string]pxlib.RGBA {
 			name := strings.TrimPrefix(s, "@")
 			if got, ok := names[name]; ok {
 				colors[char] = got
+				continue
 			}
+			unresolved = append(unresolved, char+"="+name)
+			continue
 		}
+		unresolved = append(unresolved, char)
 	}
-	return colors
+	sort.Strings(unresolved)
+	return colors, unresolved
 }
 
 func toGray(px pxlib.RGBA) pxlib.RGBA {
@@ -244,7 +251,23 @@ func processSilDoc(root string, t silTarget, mode, outDir string) ([]string, err
 	if !ok {
 		return nil, fmt.Errorf("読めない: %s", t.shown)
 	}
-	legend := legendColorsOf(t.gameDir, doc)
+	legend, unresolved := legendColorsOf(t.gameDir, doc)
+	// WhyNot: 解けない色があっても白紙を書き出さないのは、この道具の出す絵が
+	// 「形が物として読めるか」を人が見るための物だから。全面白の PNG は
+	// 「入力が解けなかった」と「本当に何も描かれていない」を見分けられない。
+	if len(legend) == 0 {
+		if len(unresolved) == 0 {
+			return nil, fmt.Errorf("legend がありません: %s", t.shown)
+		}
+		return nil, fmt.Errorf(
+			"legend の色が 1 つも解けません: %s (%s)\n"+
+				"  色名の出どころは 3 つ: 同じゲームの *.theme.json / doc の paletteFile / doc の palette。\n"+
+				"  入れ子やドット付きの色名 (grass.lit) は解けません",
+			t.shown, strings.Join(unresolved, " "))
+	}
+	if len(unresolved) > 0 {
+		fmt.Fprintf(os.Stderr, "!! 解けない色: %s (%s)\n", t.shown, strings.Join(unresolved, " "))
+	}
 	base := baseNameOf(root, t.shown)
 	sprites, _ := pxlib.AsObject(doc["sprites"])
 	spriteNames := make([]string, 0, len(sprites))
@@ -314,11 +337,13 @@ func runSil(out *strings.Builder, root, mode string, files []string, asJSON bool
 		return 1
 	}
 	count := 0
+	failed := 0
 	var written []string
 	for _, t := range gatherTargets(files, root) {
 		got, err := processSilDoc(root, t, mode, outDir)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			failed++
 		}
 		for _, p := range got {
 			rel, _ := filepath.Rel(root, p)
@@ -329,10 +354,19 @@ func runSil(out *strings.Builder, root, mode string, files []string, asJSON bool
 			count++
 		}
 	}
+	// WhyNot: 1 つも描けなかった doc があっても 0 で終わらないのは、呼ぶ側 (人・フック) が
+	// 「緑だから絵は出ている」と読むため。書けた物は残したまま、赤で知らせる。
+	code := 0
+	if failed > 0 {
+		code = 1
+	}
 	if asJSON {
-		emitJSON(out, silResult{mode, orEmpty(written), count, 0})
-		return 0
+		emitJSON(out, silResult{mode, orEmpty(written), count, code})
+		return code
 	}
 	fmt.Fprintf(out, "%d 枚を書き出した (%s)\n", count, mode)
-	return 0
+	if failed > 0 {
+		fmt.Fprintf(out, "%d 個の doc は描けなかった (上の理由)\n", failed)
+	}
+	return code
 }
