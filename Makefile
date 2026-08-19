@@ -515,7 +515,11 @@ BUNDLE_FLIX_JAR ?= $(shell real=$$(readlink -f .devbox/nix/profile/default/bin/f
                      [ -n "$$real" ] && echo "$$(dirname $$(dirname $$real))/share/java/flix/flix.jar")
 BUNDLE_FLIX_WRAPPER ?= bin/flix
 .PHONY: bundle-zip
-bundle-zip:
+# WhyNot: 組む前に必ず go-build を通すのは、検査データ (bin/lint-rules/*.json) が git の
+# 作業ツリーから、検査の中身 (bin/dist の fge-go) が前に組んだ物から来るため。
+# 別々の経路なので、バイナリだけ古いまま配ると「宣言はあるのに入口が無い」バンドルになり、
+# 配った先の precommit が毎回 exit 2 で止まる (0.32.0 の flix-reserved がこれ)。
+bundle-zip: go-build
 	@test -n "$(BUNDLE_FLIX_JAR)" -a -f "$(BUNDLE_FLIX_JAR)" \
 	  || (echo "!! flix.jar が見つかりません (BUNDLE_FLIX_JAR= で場所を指定してください)" && exit 1)
 	rm -rf build/bundle "$(BUNDLE_ZIP)" "$(BUNDLE_SUMS)"
@@ -677,7 +681,10 @@ prune-stale-tools:
 # WhyNot: manifest.json の copy に並べないのは、あそこが「どの OS でも同じ物を配る」表で、
 # 配る先ごとに 1 つ選ぶ仕組みが無いため (全部配ると 4 つ × 4.2M が各リポに積まれる)。
 .PHONY: sync-fge-go
-sync-fge-go:
+# WhyNot: 配る前に go-build を通すのは、規約データ (lint-rules) を sync-agents が git の
+# 作業ツリーから配るのに対し、検査の中身はここが bin/dist から配るため。組み直しを忘れると
+# 「宣言はあるのに入口が無い」ゲームができる。Go のビルドキャッシュが効くので数秒。
+sync-fge-go: go-build
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください"; exit 1; fi
 	@os=$$(uname -s | tr 'A-Z' 'a-z'); arch=$$(uname -m); ext=""; \
 	case "$$os" in darwin) ;; linux) ;; mingw*|msys*|cygwin*) os=windows; ext=".exe" ;; \

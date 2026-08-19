@@ -92,6 +92,10 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 	if err != nil {
 		return 2, err
 	}
+	// 運んだ検査データと検査の中身が同じ新しさか。
+	if !checkStagedSubs(out, errOut, opts) && code == 0 {
+		code = 1
+	}
 	return code, nil
 }
 
