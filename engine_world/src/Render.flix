@@ -601,6 +601,8 @@ mod Render {
     /// これではなく boxAt のサイズや sprite の scale を変えること。正しく見えるのは、at にも
     /// 同じ倍率を掛ける camera 経路（CameraRig.centerOn）だけ。
     pub def scaled(factor: Float64, item: Item): Item =
+        // 等倍は恒等 — zoom 1.0 の camera 経路で全 item を作り直さない。
+        if (factor == 1.0) item else
         onLeaf(leaf -> match leaf {
             case Item.Sprite(s) =>
                 // maskPolys はクアッドのローカル px なので、クアッドと一緒に伸縮しないと

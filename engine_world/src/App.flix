@@ -597,7 +597,11 @@ mod App {
         };
         let lifted = items#hud |> List.map(placed ->
             { item = Render.zMapped(ZBand.liftHud, placed#item) | placed });
-        List.append(shifted, lifted)
+        // 片方が空のフレームで List.append にもう片方を丸ごと cons し直させない
+        // （hud 無しのゲームでは world 全件の作り直しが毎フレーム消える）。
+        if (List.isEmpty(lifted)) shifted
+        else if (List.isEmpty(shifted)) lifted
+        else List.append(shifted, lifted)
 
     /// camera 無しでも zoom があれば「画面中央の world 点 = design/2」を軸に据える正規化。
     /// composeScene と visibleOf が同じ規則を共有するための1点
@@ -1301,7 +1305,9 @@ mod App {
                 let design = GameEngine.Game.getViewportRect()#size;
                 let passList = (app#passes)(world);
                 renderPasses(design, passList);
-                let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
+                // fpsOverlay は本番ビルドで Nil — 空の append で本編全件を cons し直さない。
+                let scene = sceneItems(app, atlas, world, toItems);
+                let items = if (List.isEmpty(fpsOverlay)) scene else List.append(scene, fpsOverlay);
                 // 字の欠け照合はレンダーターゲットの中の字も一緒に見る（ターゲットも本編と
                 // 同じ「初めて出る字は 1 コマ遅れる」に乗せる）。
                 let itemsForGlyphs = List.append(List.flatMap(p -> p#items, passList), items);
@@ -1328,13 +1334,21 @@ mod App {
                 // drawWith(getTextureInfo): regionRect 付き Sprite(PxSprite.drawQuad の
                 // アトラス 1 クアッド等)の UV を registry の寸法で解決する。regionRect 無しの
                 // 絵は draw と同一の Drawable になる(挙動不変)。
+                // シェーダー面 0 枚なら withoutShaders（filter が全件を作り直す）を通さない —
+                // drawShaders と withoutShaders は同じ unwrapClip で面を見るので、
+                // shaderCmds が空 = 外す物も無い。
+                let itemsToDraw = if (List.isEmpty(shaderCmds)) items
+                                  else Render.withoutShaders(items);
                 let (sprites, polygons) = Render.drawWith(
-                    name -> GameEngine.Game.getTextureInfo(name), Render.withoutShaders(items));
+                    name -> GameEngine.Game.getTextureInfo(name), itemsToDraw);
                 GameEngine.Game.renderCommands(sprites, tileCmds, polygons, staticLayerCmd(app, world));
                 // 数えるのは itemsForGlyphs（本編 + レンダーターゲットの中）— headless の
                 // 検査と同じ量にそろえる。タイル層・静的層は GPU 側で 1 層 1 draw call に
                 // なるので、ここには最初から乗っていない（= 正しく静的化した絵は安いまま）。
-                (nextCache, nextSeen, warnOverBudget(List.length(itemsForGlyphs), budgetWarned))
+                // 知らせた後は数えない — List.length も毎フレームの一巡で、答えはもう使われない。
+                (nextCache, nextSeen,
+                 if (budgetWarned) true
+                 else warnOverBudget(List.length(itemsForGlyphs), budgetWarned))
         }
 
     /// レンダーターゲットの列を本編より先に描く（宣言順）。ターゲットの中は design 座標

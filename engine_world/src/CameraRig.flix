@@ -29,8 +29,11 @@ mod CameraRig {
     pub def centerOn(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2},
                      items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         let z = safeZoom(zoom#zoom);
+        // 式は toScreenPos と同一。item ごとに safeZoom と design/2 を引き直させないため、
+        // ループの外で 1 回だけ求めて展開して掛ける。
+        let half = Vec2.div(design#design, 2.0);
         List.map(placed ->
-            { at = toScreenPos(center, zoom, design, { world = placed#at }),
+            { at = Vec2.add(Vec2.mul(Vec2.sub(placed#at, center), z), half),
               item = Render.scaled(z, placed#item) }, items)
 
     /// world 座標 → 画面座標（centerOn が各 item の置き場所に使う式そのもの）:

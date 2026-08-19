@@ -23,16 +23,28 @@ mod Triangulate {
     /// 反時計回りに正規化済みの多角形が凸か。全ての連続する3点の曲がりが左回り（外積>=0）なら凸。
     /// ちょうど0（一直線）は凸に含める — ファンでは退化三角形（面積0）になり塗りに影響しない。
     /// 少しの負まで許すのは、隣り合う辺がほぼ一直線のときの丸め誤差で凹と誤判定しないため。
+    /// Vector や添字の列を作らないのは、毎フレーム多角形ごとに呼ばれる入口で、
+    /// 判定 1 回のための一時確保が多角形の数だけ積み上がるため（1 巡の再帰で同じ角を見る）。
     def isConvex(ps: List[Vec2.Vec2]): Bool =
-        let n = List.length(ps);
-        if (n < 3) true
-        else {
-            let verts = List.toVector(ps);
-            List.range(0, n) |> List.forAll(i ->
-                cross(Vector.get(i, verts),
-                      Vector.get(Int32.modulo(i + 1, n), verts),
-                      Vector.get(Int32.modulo(i + 2, n), verts)) >= -0.000000001)
+        match ps {
+            case p0 :: p1 :: rest => convexFrom(p0, p1, p0, p1, rest)
+            case _                => true
         }
+
+    /// 隣り合う 3 点 (a, b, c) の角を先頭から 1 巡見る。first0 / first1 は列の先頭 2 点で、
+    /// 末尾まで来たら (末尾−1, 末尾, first0) と (末尾, first0, first1) の巻き戻りの 2 角を見る
+    /// （添字の modulo で一周するのと同じ角の集合）。
+    def convexFrom(first0: Vec2.Vec2, first1: Vec2.Vec2, a: Vec2.Vec2, b: Vec2.Vec2,
+                   rest: List[Vec2.Vec2]): Bool =
+        match rest {
+            case c :: more =>
+                if (leftTurn(a, b, c)) convexFrom(first0, first1, b, c, more) else false
+            case Nil       => leftTurn(a, b, first0) and leftTurn(b, first0, first1)
+        }
+
+    /// 曲がりが左回り（一直線と丸め誤差ぶんの負まで含む）か。
+    def leftTurn(a: Vec2.Vec2, b: Vec2.Vec2, c: Vec2.Vec2): Bool =
+        cross(a, b, c) >= -0.000000001
 
     /// 耳切り本体。先頭3点 (a, b, c) が耳なら b を落として三角形を積み、
     /// 耳でなければ列を1つ回して次の候補を見る。guard が一周ぶん回ったら退化とみなす。
@@ -69,11 +81,11 @@ mod Triangulate {
     /// 符号付き面積（靴ひも公式）。正なら run が使う向き。
     pub def signedArea(points: List[Vec2.Vec2]): Float64 =
         match points {
-            case p0 :: _ =>
+            case p0 :: rest =>
                 let (sum, last) = List.foldLeft((acc0, p) -> {
                     let (s, prev) = acc0;
                     (s + (prev#x * p#y - p#x * prev#y), p)
-                }, (0.0, p0), List.drop(1, points));
+                }, (0.0, p0), rest);
                 (sum + (last#x * p0#y - p0#x * last#y)) / 2.0
             case Nil => 0.0
         }
