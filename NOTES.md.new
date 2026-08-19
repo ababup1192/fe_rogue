@@ -1,0 +1,21 @@
+# 次やること（2026-08-19 更新）
+
+1. **未コミット（段階 4 完了）** — `fge upgrade-game` を Go へ移し、順番を
+   `flix.toml+lib → check → 緑なら sync-agents` に組み替え、条件付き巻き戻しを入れた。
+   レビュー 72 点の must-fix は全部反映済み。Go 594 本緑・負の見本 142/0。
+   `testdata` の `expected.txt` 13 枚は「独自語が 33 → 34 語」の 1 行だけの変更。
+2. **Studio の self-update は「engine を `.app` の外へ出す」で決まった**（人の判断）。
+   `~/.flix_ge_studio/engines/<バージョン>/` に置き、指し先は `engine-current.txt` の 1 行
+   （symlink にしないのは Windows で管理者権限が要るため）。これで codesign の seal・
+   書き込み権限・App Translocation・rename の窓・起動時修復が**全部要らなくなる**。
+   計画は `plans/studio-self-update.md` の D 節（書き直し済み）。見積もり 4.25 日。
+   D0（置き場を外へ）と engine バージョンの表示は着手済み（flix_ge_studio 側）。
+3. **Windows は第 1 段では更新の実行をしない** — `make bundle-zip` が作る zip は
+   macOS 向けだけ（bash のラッパ・1 つだけの `fge-go`）。帯の案内までにする。
+   作るなら CI の windows ジョブで engine zip も作る形。
+4. **「焼く」を独自語の一覧に足した。** 新しく書く行はコミット時に止まる。
+   既存は engine_world/App.flix だけで 36 か所ある。全掃きは別仕事
+   （一括置換は jargon 自身のテストデータを 2 度壊した前科があるので慎重に）。
+5. **update-plan / upgrade-game の残った指摘**（入れた後でよい）— `use Mod.{name}` で
+   持ち込んだ裸の呼び出しを取りこぼす（今のゲーム群は関数の use が 0 件なので実害なし）・
+   追随例に量の上限が無い・`hitsFor` が非互換の数だけファイルを開き直す。

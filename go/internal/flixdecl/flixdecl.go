@@ -44,7 +44,7 @@ type ModDecls struct {
 	Decls []Decl
 }
 
-// FileDecls は .flix 1 本の走査結果。Rel はリポジトリの根からの相対パス（posix）。
+// FileDecls は .flix 1 本の走査結果。Rel はリポジトリのルートからの相対パス（posix）。
 type FileDecls struct {
 	Path string
 	Rel  string

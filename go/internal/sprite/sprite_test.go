@@ -233,7 +233,7 @@ func TestSelfTestPasses(t *testing.T) {
 // 出力の退行を捕まえられるようにするため。
 func TestFixturesMatchExpected(t *testing.T) {
 	root := repoRoot(t)
-	// 見本の expected.txt は「リポジトリの根から相対パスで呼ぶ」形で記録されている。
+	// 見本の expected.txt は「リポジトリのルートから相対パスで呼ぶ」形で記録されている。
 	t.Chdir(root)
 	dirs, err := os.ReadDir(filepath.Join(root, "testdata", "lint", "sprite"))
 	if err != nil {

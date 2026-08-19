@@ -13,7 +13,7 @@ func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
-		t.Fatalf("リポジトリの根が分かりません: %v", err)
+		t.Fatalf("リポジトリのルートが分かりません: %v", err)
 	}
 	return root
 }

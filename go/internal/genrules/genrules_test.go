@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// repoRoot はテストから見たリポジトリの根 (go/internal/genrules の 3 つ上)。
+// repoRoot はテストから見たリポジトリのルート (go/internal/genrules の 3 つ上)。
 func repoRoot() string { return filepath.Join("..", "..", "..") }
 
 // fixture はリポの規約データを写した使い捨ての根を作り、docs を置いて返す。

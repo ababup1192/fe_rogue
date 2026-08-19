@@ -13,10 +13,10 @@
 |---|---|---|
 | `.app` の中は署名で触れない | 誤り。アドホック署名。`make swap-engine` が既に差し替えている | `codesign -dv`・`flix_ge_studio/Makefile:112-125` |
 | `apireleased` の骨で差分が取れる | 誤り。1 行しか見ず `Sprite` の `loop`→`clips` は原理的に出ない | `apireleased.go:41-43` |
-| リリース zip = 同梱の木 | 誤り。`bin/flix` が別物・`lib/external` と `lib/cache` が zip に無い | `stage-engine.json:125-132`・実測 |
+| リリース zip = 同梱しているソース | 誤り。`bin/flix` が別物・`lib/external` と `lib/cache` が zip に無い | `stage-engine.json:125-132`・実測 |
 | internet_dungeon で追随の検証ができる | **半分誤り。** 追随コミット `37a24c3` は src/ 変更ゼロ＝正解のエラー集合が空 | `git show --stat` |
 | 1〜3 の追随は実装済み | 正しい。`make upgrade-game` がある | `Makefile:931-952` |
-| `api-digest --root/--out` で任意の木に当てられる | 正しい | `apidigest.go` 冒頭 |
+| `api-digest --root/--out` で任意のフォルダに当てられる | 正しい | `apidigest.go` 冒頭 |
 
 ---
 
@@ -28,19 +28,19 @@
 | 2 | `lib/` へ新しい fpkg を種付け | 同上 |
 | 3 | agents-pack の再配布 | 同上 |
 | 4 | **壊れた API への追随**（`Sprite` の `loop` → `clips`） | **無い。ここを作る** |
-| 5 | `reference/` の焼き直し | 判断が要る（4 の後） |
+| 5 | `reference/` の作り直し | 判断が要る（4 の後） |
 
 ---
 
-# A. 追随の材料を、リリース時に engine 側で焼く
+# A. 追随の材料を、リリース時に engine 側で作る
 
 **肝**: 材料を作れるのは engine のリポの中だけ（git の履歴と全ソースがある）。
-ゲーム側・Studio 同梱の木には `.git` が無い。だからリリースの流れで焼いて配る。
+ゲーム側・Studio が同梱しているソースには `.git` が無い。だからリリースの流れで生成して配る。
 ゲーム側は読むだけ。
 
 ## A1. `fge api-diff --from <ver> --to <ver>`
 
-**md を diff しない。`flixdecl.ScanPackage` を両方の木へ直接当て、構造で比べる。**
+**md を diff しない。`flixdecl.ScanPackage` を両方のソースへ直接当て、構造で比べる。**
 （md の行比較だと doc コメントの書き直しが全部「変わった」に化ける・
 `pub def draw` が 2 つある現状で取り違える）
 
@@ -48,7 +48,7 @@
 - type alias / enum は中身を浅く割り、**フィールド・variant の増減**まで出す。
   純追加（variant 追加・フィールド追加）は「壊さない変更」の別の棚に出す
   — update-plan に偽陽性の「直す物」を積まないため
-- バージョンの木は **`git archive <tag> engine/src engine_world/src engine_tools/src docs/*.json | tar -x`**
+- バージョンごとのソースは **`git archive <tag> engine/src engine_world/src engine_tools/src docs/*.json | tar -x`**
   の部分展開（worktree は `.git/worktrees/` に残骸とロックが残る。archive は読み取り専用・
   掃除はテンポラリ 1 個）。展開先はスクラッチに置き、必ず消す
 - **from の決め方**: 先に `git fetch --tags origin` を必須にする（この clone のローカルタグは
@@ -60,12 +60,12 @@
 - `docs/*.schema.json` の差分も出す。ただし schema は fx / sprite / ui の 3 枚しか無いので、
   **schema の無い Doc 種（shader ほか）は診られない**と生成物に明記する（網があると思わせない）
 
-## A2. `make bump` が `docs/migrations/<version>.auto.md` を焼く
+## A2. `make bump` が `docs/migrations/<version>.auto.md` を生成する
 
-**release の中ではなく bump の中。** release の途中で焼くと、未コミットの生成物が
-zip にだけ入り**タグの木に入らない**（後から `git archive v0.31.0` しても存在しない）。
+**release の中ではなく bump の中。** release の途中で生成すると、未コミットの生成物が
+zip にだけ入り**タグのソースに入らない**（後から `git archive v0.31.0` しても存在しない）。
 bump は既に api-digest を再生成してコミット対象に載せているので、同じ棚に乗せる。
-release-guard には `api-digest --check` と同型の「焼き直して一致するか」を足し、
+release-guard には `api-digest --check` と同型の「作り直して一致するか」を足し、
 bump 後に API を触るコミットが入ったら止める。
 
 中身は 2 つ。**どちらも機械が作る。人は書かない。**
@@ -94,10 +94,10 @@ bump 後に API を触るコミットが入ったら止める。
 B→C で `clips`→`animations` と改名が連鎖すると、連結を読んだエージェントは
 **一度死んだ中間状態へ直してしまう**。
 
-- 同梱の木に入れるのは ①各バージョンの宣言スナップショット（JSON・schema のバージョン付き）
+- 同梱するのは ①各バージョンの宣言スナップショット（JSON・schema のバージョン付き）
   ②各バージョンの `.auto.md`（追随例の器として）
 - **API 差分は常に from→to の 2 点比較**をその場で取る（from = ゲームの flix.toml の現在値）
-- スナップショットの schema バージョンが合わない古い物は、ソース木からの再生成へフォールバック
+- スナップショットの schema バージョンが合わない古い物は、同梱ソースからの再生成へフォールバック
 - 跨ぎの追随例は、名前ごとに**最新バージョンの hunk だけ**残し、古い物は
   「後のバージョンでさらに変わっています」と印を付ける
 - 材料の置き場は同梱エンジン 1 か所（ゲームの lib/ へは写さない — 二重管理を作らない）。
@@ -159,81 +159,165 @@ make check → make test → make reference-check
 
 # D. Studio の self-update
 
-`make swap-engine` が既にやっている「`.app` の中の engine を差し替える」を、
-Studio 自身が走らせる。**主語は editor_server（JVM）**
-— 同梱 JRE で HTTPS が引ける・Progress の口が既にある・止める物を自分が知っている。
-（ランチャー main.rs は起動と道連れ kill しか持っていない）
+engine を **`.app` の中から外へ出す**。Studio は `~/.flix_ge_studio/engines/<バージョン>/` に
+置いた engine を指し、self-update はそこへ新しいフォルダを 1 つ増やして指し先を変えるだけにする。
+`.app` は読み取り専用のまま一切触らない。
 
-## D0. 差し替え前の検査と停止（ここがv2に無かった穴）
+```
+~/.flix_ge_studio/
+  engines/
+    0.31.0/            今使っている
+    0.32.0/            落として展開した物
+  engine-current.txt   "0.32.0" の 1 行（指し先）
+  engine -> engines/0.32.0   （macOS だけ・空白を含まないパスをゲームへ渡すため）
+```
 
-1. **残骸掃除**: 前回の `engine.old` / `engine.new` が残っていたら先に消す
-   （残ったままだと rename が ENOTEMPTY で**永久に更新できなくなる**）
-2. **書けるか検査**: 自分の `Resources/` 直下に touch できるか。書けなければ
-   （App Translocation の読み取り専用マウント・/Applications の権限）更新を諦め、
-   「Finder で一度移動してから開き直す / アプリごと入れ直し」の案内へ倒す
-3. **空き容量検査**（zip 40MB＋展開 100MB 超）
-4. **止める物 3 種**:
-   - 走行中のゲームプロセス（`list_running_games`）→ 停止を促す
-   - **checkd の常駐 repl** — headless なのでゲーム一覧に映らない。古い flix.jar の
-     inode を掴んだまま「古いコンパイラで新しい規約を判定する」新旧混在になる。殺して、
-     更新後の初回保存で立ち直らせる
-   - server 自身のタスク受付（Runner / BakeHost / new-game）を更新中は塞ぐ
+**主語は editor_server（Flix）** — 同梱 JRE で HTTPS が引ける（`java.net.http` と
+`jdk.crypto.ec` と cacerts が入っていることを実測済み）・長い仕事を裏で走らせて
+進み具合を出す口が既にある（`Runner.launchWork`）・止める物を自分が知っている。
+
+## なぜ外へ出すか（中でやると要る物が、全部要らなくなる）
+
+| `.app` の中でやる場合に要る物 | 外に出した場合 |
+|---|---|
+| `codesign` の seal（741 ファイル）が古くなる問題 | 無関係（`.app` を触らない） |
+| `Resources/` へ書けるかの検査（権限・App Translocation） | 無関係（ホーム配下） |
+| `engine` → `engine.old` → `engine.new` の rename 2 回と、その間の窓 | 無し（別フォルダへ展開してから指し先を変える） |
+| ランチャー起動時の「engine が無く engine.old が有る」修復 | 無し |
+| 前回の残骸（`engine.old` / `engine.new`）の掃除 | `*.partial` を消すだけ |
+| 走行中のゲームが掴んでいる engine を消してしまう問題 | 無し（古いバージョンのフォルダを消さない） |
+| 持ち越し（`bin/flix`・Maven の種） | **やはり要る** |
+
+**残るのは持ち越しだけ**で、そこは `stage-engine.json` の `owner: "studio"` から導く（D2）。
+
+代わりに受け入れる性質: アプリを消しても engine が残る・手元にバージョンが溜まる
+（1 つ前まで残して、それより古いのは消す）。
+
+## D0. 置き場を外に移す（最初の 1 段。self-update より前に効く）
+
+1. **種まき**: `~/.flix_ge_studio/engines/<同梱バージョン>/` が無ければ、`.app` の
+   `Contents/Resources/engine` をそこへ写す（`NewGame.copyTree` / `copyFile` と同型。
+   **実行ビットを写すこと** — `bin/flix` と `bin/fge-go` が走らなくなる）。
+   同梱バージョンは同梱 engine の `Makefile` の `VERSION :=` を読む
+   （`NewGame.versionFromMakefile` が既に `pub`）
+2. `engine-current.txt` にそのバージョンを書く
+3. `EngineHome.dir()` の解決順を **`engine-current.txt` → `EDITOR_ENGINE` → 開発時の既定**
+   に変える。ランチャーが渡す `EDITOR_ENGINE`（`.app` の中）は種まきの元としてだけ使う
+4. macOS の別名（`EngineHome.linkedAlias`）の指し先を `engines/<バージョン>` に向ける
+
+**指し先を symlink にしないのは Windows のため。** Windows の symlink は管理者権限か
+開発者モードが要る。テキスト 1 行なら両 OS で同じに書け、テンプファイル → rename で
+不可分に差し替えられる。macOS の別名は**空白を含まないパスをゲームの Makefile へ渡す**
+ための物なので、そのまま残す（`FLIX := $(ENGINE)/bin/flix` が空白で千切れる）。
 
 ## D1. 差し替えの手順
 
 1. バージョンの確認は GitHub API 1 回（ETag 付き条件付き GET・1 日 1 回。未認証 60 回/h を枯らさない）。
    ダウンロードは **タグ固定の `browser_download_url`**（latest だと表示したバージョンと落ちるバージョンがずれ得る）
-2. zip と **`SHA256SUMS.txt`** を落として照合。
-   **SHA256SUMS.txt は `make bundle-zip` が焼いてリリースへ添付する**（今は存在しない。
-   作らないと「照合」は実装時に無言のスキップへ退化する）
-3. `Contents/Resources/engine.new/` へ展開
-4. **持ち越し**: 今の木から写す。一覧は手で持たず、**`stage-engine.json` から導出**する
-   — 「src が `@` 始まり（外から来る物）かつ bundle-zip が引数で渡さない物」＝持ち越し対象。
-   現時点で `bin/flix`（`../jre` を見るラッパ）・`lib/external`・**`lib/cache`**（v2は
-   これを列挙から漏らしていた — 列挙は必ず漏れる、の実証）。
-   組み立て後の照合に「`bin/flix` の中身が `../jre` を見るラッパか」の**中身検査**も足す
-   （存在照合だけでは devbox ラッパの上書き忘れを拾えない）
-5. **世代ゲート**: zip の中に「要求する Studio 側部品（ラッパ / JRE モジュール）の世代番号」を
-   1 行入れておき、自分の持ち物が満たさなければ差し替えを**拒んで**「アプリごと入れ直し」へ倒す
-   — ラッパと JRE の source of truth は Studio リポ側にあり、engine の self-update では更新できないため
-6. `engine` → `engine.old`、`engine.new` → `engine` の **rename 2 回**。
-   間に窓があるので、**ランチャー起動時に「engine が無く engine.old が有る」を検出したら
-   戻す修復**を入れる（数行）。「不可分」とは言わない
-7. **`codesign` は打たない。** 走行中の自分の実行ファイルの署名を書き換えると以後の
-   ページインで SIGKILL され得る。アドホック署名で実行ファイル未変更なら起動は通る。
-   打つなら「再起動の案内 → 再起動の直前」に順序を変える
-8. `engine.old` と zip を消す。更新完了イベントで Elm にバージョン表示とテンプレ一覧を読み直させる
+2. zip と **`SHA256SUMS.txt`** を落として照合（`make bundle-zip` が作ってリリースへ添付する。
+   v0.31.0 の時点ではまだ添付されていないので、実際に動くのは次のリリースから）
+3. `engines/<新バージョン>.partial/` へ展開
+4. **持ち越し**: 今の `engines/<今のバージョン>/` から写す。一覧は手で持たず、
+   **展開した側の `bin/lint-rules/stage-engine.json` から導出**する
+   — 新しい engine が「自分は何を運ばないか」を宣言している側だから。
+   軸は「その項目の中身をどちらのリポが決めるか」（`owner`）。
 
-戻したいときは 1 つ前のリリース zip を指定して同じ手順（別の仕組みは作らない）。
-/Applications と ~/Applications の両方に入っている場合、上がるのは自分の実パスの方だけ
-（その旨を表示に 1 行）。
+   | dest | owner | zip の中身 | 差し替え時 |
+   |---|---|---|---|
+   | `bin/flix` | **studio** | engine リポの devbox ラッパ（PATH と nix store を探す） | **持ち越す** |
+   | `lib/cache` | **studio** | 無し（bundle-zip は `--maven-seed` を渡さない） | **持ち越す** |
+   | `lib/external` | **studio** | 無し（同上） | **持ち越す** |
+   | `bin/flix.jar` | engine | 有り（33.8 MB） | 上書き |
+   | `bin/fge-go` | engine | 有り | 上書き |
+   | 残り 22 項目 | engine | 有り | 上書き |
 
-## D2. ゲーム側への接続
+   **「`@` 始まりか」でも「bundle-zip が引数で渡すか」でもない。** `bin/flix` は
+   bundle-zip が `--flix-wrapper bin/flix` を渡すが、渡している実体は engine リポの
+   devbox ラッパで、Studio の手元には nix も devbox も PATH 上の java も無い。
+   上書きするとゲームのビルドが一切通らなくなる。逆に `bin/fge-go` は引数を渡していないが、
+   中身を決めるのは engine 側なので上書きするのが正しい。引数で渡すかどうかは
+   「engine リポの外に実体があるか」でしかなく、**どちらのリポが中身を決めるか**とは別の軸。
 
-- 押した後: 開いているゲームに `upgrade-game` → update-plan。呼ぶときは
-  **`~/.flix_ge_studio/engine` の別名経由**（同梱の木の実パスは空白入りで、
-  `FLIX := $(ENGINE)/bin/flix` が千切れる。EngineHome の既存経路に乗せる）
-- 開いていない 10 リポへは新しい配線を作らない — **`bin/fge status` の
-  「engine バージョンズレ」表示が同梱 engine 更新直後に必ず点く**ことを検証に入れる。
-  status は全ゲーム配線済みなので、次に触った瞬間に案内が出る
-- checkd はバージョンズレを見たら自ら再起動する（か「再起動して」と言う）1 行を足す
-- エンジンだけ上がってゲームが古い期間、`make check` は古い fpkg で普通に緑
-  （flix.toml のバージョンで解決するので嘘ではない）。案内は status の仕事とする
+   `skipOnWindows` は尊重する。新しい engine が studio 持ちの項目を増やしたときは
+   写す元が無いので、そこは 5 の世代ゲートで拒む。
+5. **組み立て後の中身検査**（存在照合だけでは足りない）:
+   - `bin/flix` が `../jre` を見るラッパか（devbox ラッパで上書きしていないか）
+   - `bin/fge-go --version` が走るか。**`make bundle-zip` は `--fge-go` を渡さないので、
+     zip に入るのは zip を作ったマシンの OS/CPU 向けの 1 つ**。走らなければここで止める
+   - **世代ゲート**: zip の中に「要求する Studio 側部品の世代番号」を 1 行入れておき、
+     自分の持ち物が満たさなければ拒んで「アプリごと入れ直し」へ倒す
+6. `engines/<新>.partial/` → `engines/<新>/` へ rename（ファイルの rename と違い
+   フォルダの rename も同じ場所なら不可分）
+7. `engine-current.txt` を書き替える（テンプファイル → rename）。macOS の別名も張り直す
+8. **古いバージョンは消さない。** 1 つ前まで残し、それより古い物だけ消す
+   （走行中のゲームが掴んでいても壊れない・戻したいときは指し先を戻すだけ）
+9. 更新完了イベントで Elm にバージョン表示とテンプレ一覧を読み直させる
+
+**`codesign` は打たない。`.app` を触らないので署名の対象が何も変わらない。**
+
+## D2. 更新の前に止める物
+
+外に置くと「使っている物を消す」場面が無くなるので、止める物は **1 つだけ**になる。
+
+- **checkd の常駐**（`bin/fge checkd --stop-all`）— 古い `flix.jar` を掴んだまま
+  新しい規約を判定する新旧混在になる。**Studio は checkd を管理していない**
+  （起こしているのは Claude Code のフックだけで、サーバは pid も掴んでいない）ので、
+  これは新しい配線になる。同梱 engine の `bin/fge` を 1 回叩く形
+- 走行中のゲームは**止めなくてよい**（古いフォルダを消さないため）。
+  ただし「今動いているゲームは古い engine のままです」の 1 行は出す
+- 受付を塞ぐ門は**作らない**。差し替えは別フォルダの中で完結し、
+  指し先を変える瞬間だけが切り替わりなので、塞ぐ意味が小さい。
+  同時に 2 回押されるのだけ `Runner.launchWork` の走行権で防ぐ（既にある）
 
 ## D3. Windows
 
-`ci/package-windows.ps1` が別の木を組む（bash ラッパ無し・`fge-go.exe`）。mac 機の
-`make release` の zip は Windows 向けにならない。**第 1 段では作らない** —
-帯で「新しいバージョンが出ています」＋アプリごと入れ直しの案内だけ。
-作るなら CI の windows ジョブで engine zip も焼く形。
+置き場の設計（`engine-current.txt`）は Windows でもそのまま動く。残る壁は **zip の側**:
+`make bundle-zip` が作るのは macOS 向けだけで（bash のラッパ・1 つだけの `fge-go`）、
+Windows の Studio が落とせる物が無い。`ci/package-windows.ps1` は別の組み方をする。
+
+→ **第 1 段では Windows は帯の案内だけ**（「新しいバージョンが出ています」＋
+アプリごと入れ直し）。更新の実行は macOS のみ。作るなら CI の windows ジョブで
+engine zip も作る形。
 
 ## D4. UI
 
-「engine 0.31.0 → 0.32.0 が出ています」＋ボタン 1 つ。進み具合は `Progress.elm`。
-**開いた瞬間に自動で上げない** — バージョン上げは絵と挙動まで変わる「人が選ぶ側」の変更
-（`upgrade-game` のコメントの明文）。人が押すのはこの 1 回だけ。
+「engine 0.31.0 → 0.32.0 が出ています」＋ボタン 1 つ。**開いた瞬間に自動で上げない**
+— バージョン上げは絵と挙動まで変わる「人が選ぶ側」の変更。人が押すのはこの 1 回だけ。
 
----
+進み具合は **`Runner.launchWork` に乗せる**（`Runner.flix:122-123`）。任意の仕事を
+走行権つきで裏走らせる口が既にあり、`GET /engine/update/log` を
+`Runner.logJson` に繋ぐ 1 行で進み具合の口が完成する。Elm 側は `Time.every` で
+1 秒ごとに引く（ゲーム起動の経路がそのまま写経元）。
+
+**engine のバージョンは今どこにも表示されていない**（`/health` の `version` は
+editor_server 自身の `"0.1.0"` で、Elm はデコードしてから捨てている）。
+帯を書く前に「今のバージョンを出す」1 段が要る。
+
+## D5. ゲーム側への接続
+
+- 押した後: 開いているゲームに `upgrade-game` → `update-plan`。呼ぶときは
+  **別名経由**（`engines/` の実パスは空白を含まないが、別名の既存経路にそのまま乗る）
+- **`upgrade-game` は `--json` を持つ**ので、Studio は
+  `{swapped, checkGreen, planCount, planPath, rolledBack}` を読んで
+  「上げ切った / 追随待ち / 失敗」を出し分けられる（終了コードは 0/3/1/2）
+- 開いていない 10 リポへは新しい配線を作らない — **`bin/fge status` の
+  「engine バージョンズレ」表示**が次に触った瞬間に案内を出す
+- エンジンだけ上がってゲームが古い期間、`make check` は古い fpkg で普通に緑
+  （flix.toml のバージョンで解決するので嘘ではない）。案内は status の仕事とする
+
+## 段階と見積もり（実績ベースの日数）
+
+| 段階 | 中身 | 日数 |
+|---|---|---|
+| D0 | 置き場を外へ（種まき・`engine-current.txt`・`EngineHome` の解決順・別名） | 0.5 |
+| — | engine のバージョンを `/engine/version` で出し、画面へ（帯の土台） | 0.5 |
+| D1 | GitHub API（ETag）・zip と SHA-256・展開・持ち越し・中身検査・指し先の差し替え | 1.5 |
+| D2 | checkd を止める配線 | 0.25 |
+| D4 | 帯とボタンと進み具合（Elm。ゲーム起動の経路を写経） | 1 |
+| D5 | `upgrade-game` / `update-plan` へ繋ぐ（CLI は既にある） | 0.5 |
+| **合計** | | **4.25** |
+
+`.app` の中でやる案（5 日＋ codesign の未知）より小さく、未知が 1 つ減る。
 
 # 検証（機械判定）
 
@@ -255,7 +339,7 @@ Studio 自身が走らせる。**主語は editor_server（JVM）**
 | 段階 | 中身 | 日数 | 人の手 |
 |---|---|---|---|
 | 1 | A1 `fge api-diff`（flixdecl 直・archive 部分展開・fetch --tags） | 2 | 0 |
-| 2 | A2〜A3（bump で焼く・絞り規則・スナップショット JSON・28 点照合へ） | 1.5 | 0 |
+| 2 | A2〜A3（bump で生成・絞り規則・スナップショット JSON・28 点照合へ） | 1.5 | 0 |
 | 3 | B `update-plan` ＋ templates 正解データの機械検証 | 1.5 | 0 |
 | 4 | C `upgrade-game` の順番組み替え＋条件付き巻き戻し | 0.5 | 0 |
 | 5 | D0〜D1 Studio の差し替え（mac のみ・SHA256SUMS を先に） | 1.5 | 0 |

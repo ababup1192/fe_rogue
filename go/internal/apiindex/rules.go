@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-// RulesPath は規約データの置き場（リポジトリの根からの相対）。
+// RulesPath は規約データの置き場（リポジトリのルートからの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "check-api-index.json")
 
 // Target は「ソースの根」と「そこを案内する索引」の対。索引の粒度はモジュール単位。

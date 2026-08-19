@@ -2,7 +2,7 @@ package updateplan
 
 // What: ゲームの flix.toml からバージョンを読むこと、当たり所の絞り込み
 // （識別子の切れ目・JSON はフィールド名・生成物は探さない）、当たらなかった数を言うこと、
-// 焼いた材料から追随例を引くこと（新しいバージョンが勝つ・跨いだ範囲だけ）、
+// 生成した材料から追随例を引くこと（新しいバージョンが勝つ・跨いだ範囲だけ）、
 // 出す口と終了コード。
 
 import (
@@ -271,5 +271,64 @@ func TestAddedEffOpIsKeptEvenWithoutHits(t *testing.T) {
 	body := build("0.1.0", res, items, missed, "")
 	if !strings.Contains(body, "機械では出せません") {
 		t.Errorf("出せない旨が書かれていません:\n%s", body)
+	}
+}
+
+// Studio が同梱している engine には .git が無い。そこで諦めると、Studio から呼んだ
+// ときだけ「当たる非互換の数で赤の意味を分ける」仕組みがまるごと働かない。
+func TestFallsBackToTheBundledMaterialsWithoutGit(t *testing.T) {
+	root := migrationsTree(t)
+	game := t.TempDir()
+	write(t, game, "flix.toml", "[dependencies]\n"+
+		`"github:ababup1192/flix_game_engine" = { version = "0.28.0" }`+"\n")
+	write(t, game, "src/World.flix", "mod W {\n    def f(): Unit = M.f(1)\n}\n")
+
+	plan, err := Build(root, game, "")
+	if err != nil {
+		t.Fatalf("材料があるのに諦めています: %v", err)
+	}
+	if plan.Count != 1 {
+		t.Errorf("当たる数=%d body=%s", plan.Count, plan.Body)
+	}
+	if !strings.Contains(plan.Body, "src/World.flix:2") {
+		t.Errorf("当たり所が出ていません: %s", plan.Body)
+	}
+	if !strings.Contains(plan.Body, "new30") {
+		t.Errorf("追随例が貼られていません: %s", plan.Body)
+	}
+	// 突き合わせより弱い出し方だと分かる印が要る（JSON の Doc は出ない）。
+	if !strings.Contains(plan.Body, "名前だけで探しています") {
+		t.Errorf("弱い出し方だと言っていません: %s", plan.Body)
+	}
+}
+
+// 使っていない名前まで数えると、直す物が 0 件でも「正常系」に見えて巻き戻しが働かない。
+func TestFallbackCountsOnlyWhatTheGameUses(t *testing.T) {
+	root := migrationsTree(t)
+	game := t.TempDir()
+	write(t, game, "flix.toml", "[dependencies]\n"+
+		`"github:ababup1192/flix_game_engine" = { version = "0.28.0" }`+"\n")
+	write(t, game, "src/World.flix", "mod W {\n    def f(): Unit = ()\n}\n")
+
+	plan, err := Build(root, game, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Count != 0 {
+		t.Errorf("使っていないのに数えています: %d", plan.Count)
+	}
+	if !strings.Contains(plan.Body, "他に 1 件") {
+		t.Errorf("当たらなかった数が出ていません: %s", plan.Body)
+	}
+}
+
+// 材料も git も無いときは、数えられないことを言う（0 件と混ぜない）。
+func TestFallbackStillFailsWithoutMaterials(t *testing.T) {
+	root := t.TempDir()
+	game := t.TempDir()
+	write(t, game, "flix.toml", "[dependencies]\n"+
+		`"github:ababup1192/flix_game_engine" = { version = "0.28.0" }`+"\n")
+	if _, err := Build(root, game, ""); err == nil {
+		t.Error("材料が無いのに数えられたことにしています")
 	}
 }

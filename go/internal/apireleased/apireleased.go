@@ -5,7 +5,7 @@ package apireleased
 //
 //	fge-go check-api-released              未リリースの宣言を一覧する
 //	fge-go check-api-released <語>         その語に当たる宣言だけ見る
-//	fge-go check-api-released --root DIR   リポジトリの根を差し替える
+//	fge-go check-api-released --root DIR   リポジトリのルートを差し替える
 //
 // 作業ツリーの pub 宣言のうち、`v<VERSION>` のタグのソースに無い名前を挙げる。
 // タグが取れないとき（浅い clone など）は何も言わずに 0 で終わる。

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-// RulesPath は規約データの置き場（リポジトリの根からの相対）。
+// RulesPath は規約データの置き場（リポジトリのルートからの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "check-api-released.json")
 
 type rulesFile struct {

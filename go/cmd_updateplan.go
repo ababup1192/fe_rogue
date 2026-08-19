@@ -8,7 +8,7 @@ import (
 
 func init() {
 	// WhyNot: engineOnly にするのは、古いバージョンの pub 面を git のタグから取り出すため。
-	// ゲームのリポにも Studio 同梱の木にも .git が無いので、そこでは走らない。
+	// ゲームのリポにも Studio が同梱しているソースにも .git が無いので、そこでは走らない。
 	// （バージョンごとのスナップショットを配れば外でも走るが、それはまだ無い）
 	registerEngineOnly("update-plan",
 		"ゲーム 1 本を新しい engine へ載せ替える指示書を書く", cmdUpdatePlan)

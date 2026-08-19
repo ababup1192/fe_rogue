@@ -4,7 +4,7 @@ package f32
 //
 //	fge-go f32                       pub 面ぜんぶを検査
 //	fge-go f32 --self-test           抽出が複数行の宣言と eff の op を拾えるかだけ見る
-//	fge-go f32 --root DIR            リポジトリの根を差し替える
+//	fge-go f32 --root DIR            リポジトリのルートを差し替える
 //	fge-go f32 [path/to/X.flix ...]  ファイルを名指しで検査する
 //
 // 規則は 1 本だけ: engine / engine_world / engine_tools の pub 面（型・関数・eff の op）に

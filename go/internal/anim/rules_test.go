@@ -14,7 +14,7 @@ import (
 // WhyNot: 目視の約束にしないのは、閾値を JSON 側だけ直したときにコードが
 // 古い判定のまま緑を出すため。
 
-// repoRoot はテストから見たリポジトリの根 (go/internal/anim の 3 つ上)。
+// repoRoot はテストから見たリポジトリのルート (go/internal/anim の 3 つ上)。
 func repoRoot() string { return filepath.Join("..", "..", "..") }
 
 var pyStrLiteral = regexp.MustCompile(`"([^"]*)"`)

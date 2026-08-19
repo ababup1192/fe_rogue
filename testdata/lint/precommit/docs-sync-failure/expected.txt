@@ -1,4 +1,4 @@
-[lint-jargon] OK (33 語で検査)
+[lint-jargon] OK (34 語で検査)
 配線がずれています
 make: *** [Makefile:4: check-docs-sync] Error 1
 [pre-commit] 止めました。直してから再コミット (どうしても通すなら git commit --no-verify)

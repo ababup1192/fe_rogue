@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// repoRoot はテストから見たリポジトリの根 (go/internal/renderbudget の 3 つ上)。
+// repoRoot はテストから見たリポジトリのルート (go/internal/renderbudget の 3 つ上)。
 func repoRoot() string { return filepath.Join("..", "..", "..") }
 
 // fixture は 1 ケース分の偽ゲームを作り、その根を返す。

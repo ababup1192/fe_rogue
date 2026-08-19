@@ -14,7 +14,7 @@ func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
-		t.Fatalf("リポジトリの根を求められない: %v", err)
+		t.Fatalf("リポジトリのルートを求められない: %v", err)
 	}
 	return root
 }

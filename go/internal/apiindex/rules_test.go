@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// repoRoot はこのテストから見たリポジトリの根。
+// repoRoot はこのテストから見たリポジトリのルート。
 const repoRoot = "../../.."
 
 func TestLoadRulesReadsRepoRules(t *testing.T) {

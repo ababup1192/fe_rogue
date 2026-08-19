@@ -13,8 +13,8 @@ package updateplan
 // WhyNot: 自分で直しにいかないのは、当たり所を読み違えたときに何も知らせずに壊すため。
 // 直すのはこれを読むエージェントの仕事にして、こちらは材料を渡すことに徹する。
 //
-// WhyNot: 追随例を git から取り直さないのは、ゲームの手元にも Studio 同梱の木にも
-// .git が無いため。リリースのときに焼いた docs/migrations/*.auto.md から持ってくる。
+// WhyNot: 追随例を git から取り直さないのは、ゲームの手元にも Studio が同梱しているソースにも
+// .git が無いため。リリースのときに生成した docs/migrations/*.auto.md から持ってくる。
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ const usage = "使い方: fge update-plan --game /path/to/game [--to <バージ�
 var depRe = regexp.MustCompile(
 	`"github:ababup1192/flix_game_engine"\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"`)
 
-// sectionRe は焼いた材料の見出し（### 1. Mod.名前（パッケージ））。
+// sectionRe は生成した材料の見出し（### 1. Mod.名前（パッケージ））。
 var sectionRe = regexp.MustCompile(`^### \d+\. (\S+?)（`)
 
 // scanSuffixes はゲームの中で当たり所を探すファイル。
@@ -103,33 +103,148 @@ func Run(out, errOut *strings.Builder, root string, args []string) (int, error) 
 		return 2, fmt.Errorf("ゲームのフォルダが見つかりません: %s", game)
 	}
 
+	plan, err := Build(root, game, to)
+	if err != nil {
+		return 2, err
+	}
+
+	if outPath != "" {
+		if err := os.WriteFile(outPath, []byte(plan.Body), 0o644); err != nil {
+			return 2, err
+		}
+		fmt.Fprintf(out, "[update-plan] %s を書きました（直す物 %d 件）\n", outPath, plan.Count)
+		return 0, nil
+	}
+	out.WriteString(plan.Body)
+	return 0, nil
+}
+
+// Plan は 1 本のゲーム向けの指示書と、そこに載った直す物の数。
+type Plan struct {
+	From  string
+	To    string
+	Count int
+	Body  string
+}
+
+// Build は指示書を組む。upgrade-game が巻き戻すかどうかを Count で決める。
+func Build(root, game, to string) (Plan, error) {
 	from, err := gameEngineVersion(game)
 	if err != nil {
-		return 2, err
+		return Plan{}, err
 	}
-
 	res, err := apidiff.Compute(root, "v"+from, versionTag(to))
 	if err != nil {
-		return 2, err
+		// WhyNot: ここで諦めないのは、Studio が同梱している engine には .git が無く、
+		// pub 面を古いタグから取り出せないため。そこで諦めると Studio から呼んだときは
+		// 常に「数えられません」になり、当たる非互換の数で赤の意味を分ける仕組みが
+		// まるごと働かない。同梱している材料には名前が載っているので、そちらで数える。
+		return buildFromMaterials(root, game, from, to, err)
 	}
-
 	items, missed := narrow(game, res)
-	// 焼いた材料から、名前ごとの追随例を貼る（新しいバージョンの物が勝つ）。
+	// 生成した材料から、名前ごとの追随例を貼る（新しいバージョンの物が勝つ）。
 	examples, notice := FollowUpExamples(root, from, to)
 	for i := range items {
 		items[i].Example = examples[items[i].Name]
 	}
-	body := build(from, res, items, missed, notice)
+	return Plan{
+		From:  from,
+		To:    strings.TrimPrefix(res.To, "v"),
+		Count: len(items),
+		Body:  build(from, res, items, missed, notice),
+	}, nil
+}
 
-	if outPath != "" {
-		if err := os.WriteFile(outPath, []byte(body), 0o644); err != nil {
-			return 2, err
-		}
-		fmt.Fprintf(out, "[update-plan] %s を書きました（直す物 %d 件）\n", outPath, len(items))
-		return 0, nil
+// buildFromMaterials は pub 面を突き合わせられないときに、同梱している
+// docs/migrations の材料だけで指示書を組む。
+//
+// WhyNot: 名前でしか当てないのは、材料に載っているのが「どの名前が変わったか」と
+// engine 自身の追随例だけで、レコードの中身の増減までは書かれていないため。
+// JSON の Doc は名前が出てこないので、この経路では当たらない（その旨を本文に書く）。
+func buildFromMaterials(root, game, from, to string, cause error) (Plan, error) {
+	examples, notice := FollowUpExamples(root, from, to)
+	if notice != "" {
+		return Plan{}, fmt.Errorf("%v（材料も見つかりません）", cause)
 	}
-	out.WriteString(body)
-	return 0, nil
+	names := make([]string, 0, len(examples))
+	for name := range examples {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	files := scanFiles(game)
+	var items []Item
+	missed := 0
+	for _, name := range names {
+		hits := hitsForName(game, files, name)
+		if len(hits) == 0 {
+			missed++
+			continue
+		}
+		items = append(items, Item{Name: name, Hits: hits, Example: examples[name]})
+	}
+	to = strings.TrimPrefix(to, "v")
+	if to == "" {
+		to = "新しいバージョン"
+	}
+	return Plan{
+		From: from, To: to, Count: len(items),
+		Body: buildFromNames(from, to, items, missed),
+	}, nil
+}
+
+// hitsForName は名前だけで当たり所を探す。
+func hitsForName(game string, files []string, name string) []Hit {
+	var hits []Hit
+	for _, path := range files {
+		text, err := pxlib.ReadTextReplace(path)
+		if err != nil {
+			continue
+		}
+		for i, line := range pxlib.SplitLines(text) {
+			if strings.HasPrefix(strings.TrimSpace(line), "//") {
+				continue
+			}
+			if !containsIdent(line, name) {
+				continue
+			}
+			rel, relErr := filepath.Rel(game, path)
+			if relErr != nil {
+				rel = path
+			}
+			hits = append(hits, Hit{
+				File: filepath.ToSlash(rel), Line: i + 1, Text: strings.TrimSpace(line),
+			})
+		}
+	}
+	return hits
+}
+
+// buildFromNames は材料だけで組んだときの本文。
+func buildFromNames(from, to string, items []Item, missed int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# engine %s → %s への追随\n\n", from, to)
+	b.WriteString("> 宣言そのものを突き合わせられなかったので（engine のソースに .git がありません）、" +
+		"リリースのときに生成した材料の名前だけで探しています。" +
+		"JSON の Doc の中身の変更は、この出し方では出ません。\n\n")
+	if len(items) == 0 {
+		b.WriteString("## 直す物\n\nこのゲームで当たる名前はありません。\n\n")
+	} else {
+		fmt.Fprintf(&b, "## 直す物（このゲームで当たる %d 件）\n\n", len(items))
+		for i, it := range items {
+			fmt.Fprintf(&b, "### %d. %s\n\n", i+1, it.Name)
+			writeHits(&b, it.Hits)
+			if it.Example != "" {
+				fmt.Fprintf(&b, "engine 自身はこう直しました:\n\n%s\n\n", it.Example)
+			}
+		}
+	}
+	if missed > 0 {
+		fmt.Fprintf(&b, "engine 側の非互換は他に %d 件ありますが、"+
+			"このゲームでは使っていないので直す必要はありません。\n\n", missed)
+	}
+	b.WriteString("## 確かめ方\n\n```\nmake check\nmake test\nmake reference-check\n```\n")
+	return b.String()
 }
 
 // versionTag は --to をタグの形にする（空なら作業ツリーのまま）。
@@ -356,7 +471,7 @@ func build(from string, res apidiff.Result, items []Item, missed int, notice str
 	b.WriteString("## 確かめ方\n\n")
 	b.WriteString("```\nmake check\nmake test\nmake reference-check\n```\n\n")
 	b.WriteString("`reference-check` の差は絵が変わった印です。" +
-		"変わってよい差かは人が見て決めます（自動で基準を焼き直さないこと）。\n")
+		"変わってよい差かは人が見て決めます（自動で基準の絵を作り直さないこと）。\n")
 	return b.String()
 }
 
@@ -398,7 +513,7 @@ func writeHits(b *strings.Builder, hits []Hit) {
 	b.WriteString("\n")
 }
 
-// FollowUpExamples は焼いた材料から、名前ごとの追随例を読む。
+// FollowUpExamples は生成した材料から、名前ごとの追随例を読む。
 //
 // WhyNot: 新しいバージョンの物を勝てるようにするのは、改名が連鎖したときに
 // 途中で死んだ書き方へ直させないため（A→B で clips、B→C で animations なら C を渡す）。
@@ -461,7 +576,7 @@ func inRange(padded, from, to string) bool {
 	return to == "" || padded <= padVersion(to)
 }
 
-// sectionsOf は焼いた材料から「名前 → 追随例の本文」を取る。
+// sectionsOf は生成した材料から「名前 → 追随例の本文」を取る。
 func sectionsOf(text string) map[string]string {
 	out := map[string]string{}
 	name, keep := "", false

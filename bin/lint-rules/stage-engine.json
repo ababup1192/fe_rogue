@@ -11,7 +11,8 @@
       "dest": "bin/flix",
       "exec": true,
       "skipOnWindows": true,
-      "why": "同梱 JRE と隣の flix.jar だけを見るラッパ (bash 前提)"
+      "owner": "studio",
+      "why": "同梱 JRE と隣の flix.jar だけを見るラッパ (bash 前提)。中身を決めるのは Studio 側なので、engine の self-update では上書きせず持ち越す"
     },
     {
       "src": "bin/reference-update.sh",
@@ -130,12 +131,14 @@
       "src": "@maven-seed/cache",
       "dest": "lib/cache",
       "optional": true,
-      "why": "lwjgl (Maven) の取り寄せ済みの種。無いと生まれたゲームの初回ビルドが取りに行く"
+      "owner": "studio",
+      "why": "lwjgl (Maven) の取り寄せ済みの種。無いと生まれたゲームの初回ビルドが取りに行く。engine の zip には入らないので self-update では持ち越す"
     },
     {
       "src": "@maven-seed/external",
       "dest": "lib/external",
       "optional": true,
+      "owner": "studio",
       "why": "同上"
     }
   ]

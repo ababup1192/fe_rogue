@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// RulesPath は規約データの置き場（リポジトリの根からの相対）。
+// RulesPath は規約データの置き場（リポジトリのルートからの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "precommit.json")
 
 // Matcher はステージしたパスの絞り込み。1 つの Matcher の中は AND

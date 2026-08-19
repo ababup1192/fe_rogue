@@ -5,7 +5,7 @@ package apidigest
 //	fge-go api-digest              docs/api-digest.md と docs/api-digest/*.md を書く
 //	fge-go api-digest --check      書かずに、ソースとずれていないかだけ見る
 //	fge-go api-digest --out DIR    docs/ の代わりに DIR へ書く
-//	fge-go api-digest --root DIR   リポジトリの根を差し替える
+//	fge-go api-digest --root DIR   リポジトリのルートを差し替える
 //
 // AI エージェントが「この関数、型はどんな形だっけ」を調べるたびにソースを grep して
 // 丸読みすると、トークンも時間も食う。宣言だけを 1 ファイルにまとめておけば足りる。

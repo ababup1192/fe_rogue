@@ -15,6 +15,7 @@
     { "word": "壁時計", "pattern": null, "better": "実時間（並列で走る物は CPU 時間 / コンパイル時間と分けて書く）", "english": "wall-clock time", "stage": "error" },
     { "word": "降ろす", "pattern": "降ろす|降ろさ|降ろし(?!物)", "better": "取り下げる / やめる / 対象から外す", "english": "drop (a proposal)", "stage": "error" },
     { "word": "焼き置き", "pattern": null, "better": "事前生成したデータ", "english": "prebaked data", "stage": "error" },
+    { "word": "焼く", "pattern": "焼い[たてておく]|焼き直|焼き出|焼く|焼ける|焼か", "better": "生成する / 書き出す / 作る", "english": "generate / write out", "stage": "error" },
     { "word": "帯", "pattern": "(?<![一-龥])帯(?![電び])", "better": "z-index の範囲 / 走査線 / 階調ステップ", "english": "z range / scanline / gradient step", "stage": "warn" },
     { "word": "段", "pattern": "(?<![一-龥])段(?![階])", "better": "段階 / レベル / 行", "english": "step / level / row", "stage": "warn" },
     { "word": "窓", "pattern": "(?<![一-龥])窓(?![口])", "better": "ウィンドウ / パネル / 範囲", "english": "window / panel / range", "stage": "warn" },

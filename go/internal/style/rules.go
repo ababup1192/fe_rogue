@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-// RulesPath は規約データの置き場（リポジトリの根からの相対）。
+// RulesPath は規約データの置き場（リポジトリのルートからの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "style.json")
 
 // HandLimits は画素で描く 2 本（coarse / fine）のしきい値。

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// repoRoot はこのテストから見たリポジトリの根。
+// repoRoot はこのテストから見たリポジトリのルート。
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -17,7 +17,7 @@ func repoRoot(t *testing.T) string {
 	}
 	root := filepath.Join(wd, "..", "..", "..")
 	if _, err := os.Stat(filepath.Join(root, "bin", "lint-rules", "check-refs.json")); err != nil {
-		t.Fatalf("リポジトリの根が見つかりません: %v", err)
+		t.Fatalf("リポジトリのルートが見つかりません: %v", err)
 	}
 	return root
 }

@@ -11,7 +11,7 @@ import (
 // WhyNot: 目視の約束にしないのは、語を JSON 側だけ直したときにコードが
 // 古い語彙のまま緑を出すため。
 
-// repoRoot はテストから見たリポジトリの根 (go/internal/jargon の 3 つ上)。
+// repoRoot はテストから見たリポジトリのルート (go/internal/jargon の 3 つ上)。
 func repoRoot() string { return filepath.Join("..", "..", "..") }
 
 func loadJSONWords(t *testing.T) rulesFile {

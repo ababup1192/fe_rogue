@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// repoRoot はテストから見たリポジトリの根 (go/internal/uioverflow の 3 つ上)。
+// repoRoot はテストから見たリポジトリのルート (go/internal/uioverflow の 3 つ上)。
 func repoRoot() string { return filepath.Join("..", "..", "..") }
 
 // fixture は 1 ケース分の入れ子を作り、その根を返す。

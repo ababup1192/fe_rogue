@@ -4,7 +4,7 @@ package apiindex
 // 検査するゲート。
 //
 //	fge-go check-api-index              リポジトリ全体を検査
-//	fge-go check-api-index --root DIR   リポジトリの根を差し替える
+//	fge-go check-api-index --root DIR   リポジトリのルートを差し替える
 //
 // 検査は 2 方向:
 //  1. engine/src・engine_world/src の pub def を持つモジュールが、対応する索引に

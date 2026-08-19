@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// RulesPath は規約データの置き場（リポジトリの根からの相対）。
+// RulesPath は規約データの置き場（リポジトリのルートからの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "stage-engine.json")
 
 // Item は運ぶ物 1 つ。
@@ -22,8 +22,17 @@ type Item struct {
 	SkipOnWindows bool     `json:"skipOnWindows"`
 	Optional      bool     `json:"optional"`
 	PruneDirs     []string `json:"pruneDirs"`
+	Owner         string   `json:"owner"`
 	Why           string   `json:"why"`
 }
+
+// OwnedByStudio はその中身を決めているのが Studio のリポか（既定は engine）。
+//
+// WhyNot: 「src が @ で始まるか」「bundle-zip が引数で渡すか」で決めないのは、
+// それが「engine のリポの外に実体があるか」でしかないため。bin/flix は引数で渡すが
+// 中身は Studio が決める（同梱 JRE を見るラッパ）ので、self-update で engine の
+// devbox ラッパに上書きすると、その Studio ではゲームのビルドが一切通らなくなる。
+func (it Item) OwnedByStudio() bool { return it.Owner == "studio" }
 
 // DestOf は行き先（バンドルの中の相対パス）。Windows 用の名前があればそちら。
 func (it Item) DestOf(windows bool) string {

@@ -394,14 +394,14 @@ lint-f32:
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
-# 焼き直す。fpkg は .flix しか運べないので、生成物はコミットする。
+# 作り直す。fpkg は .flix しか運べないので、生成物はコミットする。
 # 起動画面の文言に新しい字を足したとき・ロゴを差し替えたときだけ回す。
-# PREVIEW=<dir> を付けると、焼いた結果を目視用の PNG でも書き出す。
+# PREVIEW=<dir> を付けると、作った結果を目視用の PNG でも書き出す。
 boot-font:
 	@java bin/BootFontGen.java $(if $(PREVIEW),--preview $(PREVIEW))
 
-# フォントの焼き上がりのキャッシュを捨てる (次の起動は焼き直しになる)。
-# 焼き方を変えた・容量が気になる・焼き直しを確かめたいときに。
+# フォントの生成結果のキャッシュを捨てる (次の起動は作り直しになる)。
+# 作り方を変えた・容量が気になる・作り直しを確かめたいときに。
 clean-font-cache:
 	@rm -rf "$${FLIX_GE_CACHE_DIR:-$$HOME/.cache/flix_game_engine/font}"
 	@echo "[clean-font-cache] キャッシュを捨てました"
@@ -467,7 +467,7 @@ sync-engine-full:
 RELEASE_SHA := $(shell git rev-parse HEAD)
 TEST := test-par
 release-guard:
-	@# WhyNot: 追随の材料も未コミット検査に入れるのは、bump が焼いた物をコミットし
+	@# WhyNot: 追随の材料も未コミット検査に入れるのは、bump が生成した物をコミットし
 	@# 忘れるとタグの中身に材料が入らず、後からそのバージョンを取り出しても空になるため。
 	@dirty=$$(git status --porcelain -- $(ROOT_SRC_PKGS) docs/migrations); \
 	 if [ -n "$$dirty" ]; then \
@@ -523,7 +523,7 @@ bundle-zip:
 	  --flix-jar "$(BUNDLE_FLIX_JAR)" \
 	  --flix-wrapper "$(BUNDLE_FLIX_WRAPPER)"
 	cd build/bundle && zip -qry "../../$(BUNDLE_ZIP)" engine
-	@# WhyNot: 照合の相手を release でなく bundle-zip で焼くのは、zip と対で作れば
+	@# WhyNot: 照合の相手を release でなく bundle-zip で作るのは、zip と対で作れば
 	@# ズレが原理的に起きないため。Studio の self-update はこれと突き合わせてから差し替える。
 	shasum -a 256 "$(BUNDLE_ZIP)" > "$(BUNDLE_SUMS)"
 	@echo "[bundle-zip] $(BUNDLE_ZIP) ($$(du -h $(BUNDLE_ZIP) | cut -f1))"
@@ -543,13 +543,13 @@ bump:
 	done
 	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
 	@$(MAKE) --no-print-directory api-digest VERSION=$(TO)
-	@# WhyNot: リリースの中でなく bump で焼くのは、release の途中で作ると未コミットの
+	@# WhyNot: リリースの中でなく bump で作るのは、release の途中で作ると未コミットの
 	@# 生成物が同梱 zip にだけ入り、タグの中身には入らないため（後からそのバージョンを
 	@# 取り出しても追随の材料が無い、という形になる）。
 	@$(MAKE) --no-print-directory migration-notes
 	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧バージョンどれでも TO へ・flix-random と flix コンパイラのバージョンは据え置き。api-digest も再生成済み)。"
 
-# 1 つ前のリリースからの非互換と、engine 自身の追随例を 1 枚へ焼く。
+# 1 つ前のリリースからの非互換と、engine 自身の追随例を 1 枚にまとめて書き出す。
 # make bump が呼ぶので普段は直に打たない（作り直したいときだけ）。
 .PHONY: migration-notes
 migration-notes:
@@ -951,20 +951,22 @@ new-game: engine-full-fresh
 # lib/ に対応する fpkg + toml を置き、agents-pack も配り直す。bin/fge status の
 # 「engine バージョンズレ」を見た人が 1 手で追随する入口 (テンプレの make engine-upgrade が
 # ここへ委譲する)。自動では走らせない — バージョン上げは挙動・リファレンス画像まで変わりうる
-# 「人が選ぶ側」の変更。終わったら check だけ回して生存確認する。
+# 「人が選ぶ側」の変更。
+# 中身は bin/fge upgrade-game (順番・巻き戻し・指示書の書き出し)。ここは engine 側にしか
+# 無い置き場 (fpkg の在り処・lib/ の中の名前) を渡すだけにして、二重管理を作らない。
+#
+# 終了コードの意味 (0 上げ切った / 3 追随待ち / 1 想定外 / 2 引数と入出力)。
+# 非互換のあるバージョン上げでは、エージェントが直すまで check は必ず赤なので、
+# 3 はここで 0 に潰す — ただし「上げ切った」ではない。何をすべきかは道具が画面に書く
+# (ゲームの直下の UPDATE_PLAN.md)。CI や Studio から区別したいときは bin/fge を直に呼ぶ。
+#
+# REFERENCE=1 で絵の比較 (reference-check) も回す。既定で回さないのは render-all を
+# 連れてきて数分かかり、得られるのが指示書の 1 行だけのため。
 .PHONY: upgrade-game
 upgrade-game: engine-full-fresh
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make upgrade-game GAME=/abs/path)"; exit 1; fi
-	@test -f "$(GAME)/flix.toml" || { echo "error: $(GAME)/flix.toml がありません"; exit 1; }
-	@set -e; \
-	old=$$(perl -ne 'print $$1 if /"github:ababup1192\/flix_game_engine"\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"/' "$(GAME)/flix.toml"); \
-	if [ -z "$$old" ]; then echo "error: $(GAME)/flix.toml に flix_game_engine の依存行が見つかりません"; exit 1; fi; \
-	if [ "$$old" = "$(VERSION)" ]; then echo "[upgrade-game] 既に v$(VERSION) です。何もしません"; exit 0; fi; \
-	echo "[upgrade-game] $(GAME): v$$old -> v$(VERSION)"; \
-	perl -pi -e 's|("github:ababup1192/flix_game_engine"\s*=\s*\{[^}]*version\s*=\s*)"[^"]+"|$${1}"$(VERSION)"|' "$(GAME)/flix.toml"; \
-	mkdir -p "$(GAME)/$(ENGINE_FULL_SUBPATH)"; \
-	cp "$(ENGINE_FULL_FPKG_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_FPKG_NAME)"; \
-	cp "$(ENGINE_FULL_TOML_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_TOML_NAME)"; \
-	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
-	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
-	echo "[upgrade-game] check OK。続きは自分の目で: make test と make reference-check (リファレンス画像とのピクセル差の確認)"
+	@bin/fge upgrade-game --game "$(GAME)" --version "$(VERSION)" \
+	  --fpkg "$(ENGINE_FULL_FPKG_SRC)" --toml "$(ENGINE_FULL_TOML_SRC)" \
+	  --dest "$(ENGINE_FULL_SUBPATH)" --make "$(MAKE)" \
+	  --fpkg-name "$(ENGINE_FULL_FPKG_NAME)" --toml-name "$(ENGINE_FULL_TOML_NAME)" \
+	  $(if $(REFERENCE),--reference,) || [ $$? -eq 3 ]

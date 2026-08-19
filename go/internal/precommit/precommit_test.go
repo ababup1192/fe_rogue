@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// repoRoot はこのリポジトリの根（テストの cwd は go/internal/precommit）。
+// repoRoot はこのリポジトリのルート（テストの cwd は go/internal/precommit）。
 // WhyNot: 相対のまま持ち回らないのは、Run が根へ chdir するため。
 func repoRoot(t *testing.T) string {
 	t.Helper()

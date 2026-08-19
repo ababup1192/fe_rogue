@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-// RulesPath は規約データの置き場（リポジトリの根からの相対）。
+// RulesPath は規約データの置き場（リポジトリのルートからの相対）。
 var RulesPath = filepath.Join("bin", "lint-rules", "gen-rules.json")
 
 // RuleSpec は 1 本のルール。out が出力名・src が元の doc・globs が効かせたいファイル。

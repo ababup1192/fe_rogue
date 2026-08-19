@@ -1,3 +1,3 @@
-[lint-jargon] OK (33 語で検査)
+[lint-jargon] OK (34 語で検査)
 [pre-commit] make check-docs-sync が無いので配線検査は飛ばします
 [exit=0]

@@ -26,7 +26,7 @@ type Lint func(out, errOut *strings.Builder, args []string) int
 
 // Options は Run に渡す道具立て。
 type Options struct {
-	// Root はリポジトリの根 (絶対パスに直してから使う)。
+	// Root はリポジトリのルート (絶対パスに直してから使う)。
 	Root string
 	// Args はコマンド名より後ろの引数 (--root は取り除いた後)。
 	Args []string

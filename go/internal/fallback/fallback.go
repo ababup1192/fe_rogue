@@ -189,7 +189,7 @@ func isFile(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// readFile は指定パス、無ければリポジトリの根からの相対で読む。
+// readFile は指定パス、無ければリポジトリのルートからの相対で読む。
 func readFile(root, path string) ([]string, bool) {
 	full := path
 	if !isFile(full) {
