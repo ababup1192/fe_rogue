@@ -17,7 +17,7 @@ mod HeadlessRender {
     ///
     /// `shapeAntialias` は面の縁のなめらかさ。**画素の格子に乗せる絵（ドット絵）は false にする** —
     /// true のままだと、宣言したパレットに無い中間色が面の縁に湧く。
-    /// 実測（同じ 1 枚を焼いた PNG の実色数 / 宣言した色数）:
+    /// 実測（同じ 1 枚を生成した PNG の実色数 / 宣言した色数）:
     /// 矩形だけの画面は 25 → 19 で収まるが、多角形を使うと 25 → 506、
     /// 台形（疑似 3D）だと 13 → 2884 になる。**矩形以外で描いた瞬間にドット絵でなくなる**。
     ///
@@ -180,7 +180,7 @@ mod HeadlessRender {
     pub enum SilhouetteScope {
         case WorldBand
         case All
-        /// z の窓（lo 以上 hi 未満）だけ。Depth.Bands で仕切った帯を 1 本ずつ焼き出して、
+        /// z の窓（lo 以上 hi 未満）だけ。Depth.Bands で仕切った帯を 1 本ずつ描き出して、
         /// 地面・主役・手前を別の絵として見比べるための絞り。
         case ZWindow({ lo = Int32, hi = Int32 })
     }

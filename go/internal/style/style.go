@@ -1,4 +1,4 @@
-// Package style は焼いた PNG を測って「画風の軸がズレていないか」を言う検査。
+// Package style は生成した PNG を測って「画風の軸がズレていないか」を言う検査。
 package style
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 // docHead は引数が無いときに出す 1 行の説明。
-const docHead = "焼いた PNG を測って「画風の軸がズレていないか」を言う。"
+const docHead = "生成した PNG を測って「画風の軸がズレていないか」を言う。"
 
 // baseName は最後の / より後ろを返す（区切りで終わるなら空文字）。
 // WhyNot: filepath.Base を使わないのは、末尾が区切りのときに "." や親の名前を返し、
@@ -97,7 +97,7 @@ func (r *Rules) judge(st *Stats, hand string) (bad, warn []string) {
 		case !st.HasGrid:
 			warn = append(warn, fmt.Sprintf(
 				"%s: 画素の目が見つかりません (unit=1) — "+
-					"出力を等倍で焼いているか、段が格子に乗っていません", name))
+					"出力を等倍で生成しているか、段が格子に乗っていません", name))
 		case st.Grid < t.GridBad:
 			bad = append(bad, fmt.Sprintf(
 				"%s: 格子適合 %.0f%% (unit=%d) — 輪郭の段が画素の目に"+

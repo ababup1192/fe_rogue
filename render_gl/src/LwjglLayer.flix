@@ -247,7 +247,7 @@ mod LwjglLayer {
           w = roundToInt(rect#size#x * sx),
           h = roundToInt(rect#size#y * sy) }
 
-    /// 画像に注釈矩形の赤枠を焼き込む（人間が見てすぐ分かる用。書き込み先は上書き）。
+    /// 画像に注釈矩形の赤枠を描き込む（人間が見てすぐ分かる用。書き込み先は上書き）。
     def burnHighlight(image: BufferedImage, rectPx: {x = Int32, y = Int32, w = Int32, h = Int32}): Unit \ IO =
         let g = image.createGraphics();
         g.setColor(new AwtColor(255, 32, 32));
@@ -478,7 +478,7 @@ mod LwjglLayer {
         // GLSL ソース文字列 → コンパイル済みプログラム（+ uniform location）のキャッシュ。
         // buildProgram は毎フレーム呼ばれ得るので、同じ Spec の再コンパイルをここで防ぐ。
         let shaderProgramCache: Ref[Map[String, RenderShaderCache.ProgramEntry], Static] = Ref.fresh(Static, Map.empty());
-        // 描いたフレームの通し番号。ShaderGen.compile は Doc の数値を GLSL に焼き込むので、
+        // 描いたフレームの通し番号。ShaderGen.compile は Doc の数値を GLSL に書き込むので、
         // shader.json を保存し直すたびに別の鍵になる — LRU で古い方を追い出すために、
         // 「どの program をいつ使ったか」を数えるものさしが要る。
         let frameGenHolder = Array#{0i64} @ Static;
@@ -502,7 +502,7 @@ mod LwjglLayer {
         // 「画面へのフレーム」と「ターゲットへのフレーム」を切り替える。
         let activeTargetHolder = Array#{(None: Option[(Int32, Int32, RenderTarget.LoadOp)])} @ Static;
 
-        // テクスチャ表は実行時に増える（ensureTexture が焼いたアトラスを足す）ので可変で持つ。
+        // テクスチャ表は実行時に増える（ensureTexture が生成したアトラスを足す）ので可変で持つ。
         // 起動画面が読み込みの最中に絵を出すため、ゲームのテクスチャより先に作って
         // 組み込みフォントとロゴだけを入れておく。
         // 併せて「名前 → 最後に上げた key」を持ち、同じ key の再アップロードを弾く。
@@ -514,7 +514,7 @@ mod LwjglLayer {
         // フレームごとに作り直すと、同じ知らせが 60 回/秒 出てしまう。
         let missingTextureRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
 
-        // 静的多角形バッファのキャッシュ（キー → 焼いた VBO とレンジ目次）。テクスチャ registry と
+        // 静的多角形バッファのキャッシュ（キー → 生成した VBO とレンジ目次）。テクスチャ registry と
         // 同じくエンジン内部に隠し、ゲームは GameEngine.StaticLayerCmd のキーと中身を宣言するだけ。
         // キー一致で使い回し・不一致で古い VBO を free して作り直す（RenderStatic.resolve）。
         let staticCacheCell = Array#{(None: Option[RenderStatic.Entry])} @ Static;
@@ -667,7 +667,7 @@ mod LwjglLayer {
             texWarnLog = missingTextureRef
         };
         // 画面への 1 フレーム。静的レイヤーはここで resolve（キャッシュ照合・必要なら
-        // 焼き直し）し、レンジ列を FrameArgs に載せる。None なら Nil（従来と同じ経路）。
+        // 作り直し）し、レンジ列を FrameArgs に載せる。None なら Nil（従来と同じ経路）。
         let renderFrame = (fbW: Int32, fbH: Int32,
                             sprites: List[GameEngine.Drawable],
                             tileMaps: List[GameEngine.TileMapRenderCmd],
@@ -749,7 +749,7 @@ mod LwjglLayer {
         let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest,
             (done, total) -> splash("loading images...", done, total));
 
-        // このゲームが出しうる字を先に集める（数十ミリ秒）。フォントが持つ字を全部焼くと
+        // このゲームが出しうる字を先に集める（数十ミリ秒）。フォントが持つ字を全部用意すると
         // 日本語 1 本で数千〜2万字になり、起動が数十秒止まる。
         let wantedGlyphs = RenderFont.startupGlyphs(config#rootDir, config#glyphs);
         Option.forEach(cps -> println("[RenderFont] このゲームが出しうる字: ${Set.size(cps)} 字"),
@@ -768,21 +768,21 @@ mod LwjglLayer {
         let (gameAtlases, registry) = RenderFont.bakeFontAtlases(config#fontManifest, registry0,
             wantedGlyphs, (name, done, total) -> splash(fontPhaseOf(name), done, total));
         // 組み込みフォントも名前で引けるようにする（fps 表示・フォント名が合わないときの受け皿）。
-        // アトラスは実行中に育つ（起動時に焼かなかった字を後から足す）ので可変で持つ。
+        // アトラスは実行中に育つ（起動時に用意しなかった字を後から足す）ので可変で持つ。
         let fontAtlasesRef = Ref.fresh(Static,
             Map.insert(BootFont.name(), BootFont.atlas(), gameAtlases));
         let growTable = RenderGlyphGrow.newTable();
         List.forEach(entry -> {
             match Map.get(entry#name, gameAtlases) {
                 case None =>
-                    Log.warn("font: フォント '${entry#name}' のアトラスが焼けていない"
-                        + " — 起動時に焼かなかった字は後から足せない（project.json の fonts の path を確認）")
+                    Log.warn("font: フォント '${entry#name}' のアトラスが用意できていない"
+                        + " — 起動時に用意しなかった字は後から足せない（project.json の fonts の path を確認）")
                 case Some(atlas) =>
                     match Map.get(atlas#textureName, registry) {
                         case None =>
                             Log.warn("font: フォント '${entry#name}' のアトラス画像"
                                 + " '${atlas#textureName}' が registry に無い"
-                                + " — 起動時に焼かなかった字は後から足せない")
+                                + " — 起動時に用意しなかった字は後から足せない")
                         case Some(texInfo) =>
                             RenderGlyphGrow.register(growTable, atlas,
                                 { path = entry#path, texId = GpuHandle.textureIdInt(texInfo#id) })
@@ -1052,7 +1052,7 @@ mod LwjglLayer {
                         Array.put(Nil, 0, pendingShaderHolder);
                         Array.put((sprites, tileMaps, polygons, staticLayer, surfaces), 0, renderStateHolder);
                         // 進めるのはここ 1 箇所だけ。上のレンダーターゲットへの分岐でも進めると、
-                        // Pass を N 枚焼くゲームでは絵 1 枚あたり N+1 回進み、「現世代 = いま描いて
+                        // Pass を N 枚描くゲームでは絵 1 枚あたり N+1 回進み、「現世代 = いま描いて
                         // いる面」という数え方が壊れる。
                         Array.put(Array.get(0, frameGenHolder) + 1i64, 0, frameGenHolder);
                         let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
@@ -1077,7 +1077,7 @@ mod LwjglLayer {
                         k((vaoId, List.length(instances)))
                     }
                     case None => {
-                        // レジストリに無い VAO（理論上来ない）: 新規に焼いて返す。
+                        // レジストリに無い VAO（理論上来ない）: 新規に作って返す。
                         let instanceVBO = RenderSprite.buildTileInstanceVBO(instances);
                         let fresh = RenderSprite.buildTileMapVAO(quadVBO, instanceVBO);
                         Ref.put(Map.insert(fresh, instanceVBO, Ref.get(tileVboRegistry)), tileVboRegistry);
@@ -1149,7 +1149,7 @@ mod LwjglLayer {
                 k(v)
             }
             def ensureGlyphs(textureName, codepoints, k) = {
-                // 起動時に焼かなかった字を出そうとした。いま焼いて足す（無ければ何も起きない）。
+                // 起動時に用意しなかった字を出そうとした。いま作って足す（無ければ何も起きない）。
                 let atlases = Ref.get(fontAtlasesRef);
                 let hit = atlases |> Map.findLeft((_n, a) -> a#textureName == textureName);
                 match hit {
@@ -1191,7 +1191,7 @@ mod LwjglLayer {
                             and info#height == Int32.toFloat64(height), prev);
                     // 辺長が同じなら画素だけ差し替える（GL ハンドルを作り直さない）。
                     // 名前の取り違え避け: マニフェストで読んだ絵と同じ名前だと、辺長が同じ
-                    // ときに元の絵の中身を上書きしてしまう。key を持たない名前 = 焼いた
+                    // ときに元の絵の中身を上書きしてしまう。key を持たない名前 = 生成した
                     // アトラスではないので、そこへは書かない。
                     let taken = not Option.isEmpty(prev)
                         and Option.isEmpty(Map.get(name, Ref.get(textureKeyRef)));
@@ -1205,7 +1205,7 @@ mod LwjglLayer {
                                 RenderTexture.updateTexturePixels(old, width, height, argb);
                                 old
                             } else {
-                                // 辺長が変わったので作り直す。古い方は捨てる（漏らすと焼き直す
+                                // 辺長が変わったので作り直す。古い方は捨てる（漏らすと作り直す
                                 // たびに GPU のメモリが増え続ける）。
                                 RenderTexture.deleteTexture(old);
                                 RenderTexture.loadTextureFromPixels(width, height, argb)
@@ -1293,7 +1293,7 @@ mod LwjglLayer {
                     discard MemoryStack.stackPop();
                     // 注釈のスクリーンショットにも静的レイヤーを含める（壁が消えないように）。
                     // AnnotationRequest は静的レイヤーを運ばないので、直近フレームの依頼を使う
-                    // （キャッシュ済みなので焼き直しは起きない）。シェーダー面は本物を使わず、
+                    // （キャッシュ済みなので作り直しは起きない）。シェーダー面は本物を使わず、
                     // req#sprites に含まれる代表色ベタ塗り（App が Render.draw で出す・スクラブ中の
                     // 表示中の瞬間に一致）を使う。live の面を混ぜると巻き戻し位置とズレるため空で渡す。
                     let (_, _, _, lastStatic, _) = Array.get(0, renderStateHolder);

@@ -240,7 +240,7 @@ mod RenderFrame {
         sprites = List[RenderType.Drawable],
         tileMaps = List[RenderType.TileMapRenderCmd],
         polygons = List[RenderType.PolygonCmd],
-        // 1 度だけ GPU に焼いて使い回す静的多角形のレンジ列（無ければ Nil）。動的 polygons と
+        // 1 度だけ GPU に生成して使い回す静的多角形のレンジ列（無ければ Nil）。動的 polygons と
         // 同じ z 安定ソート列に混ぜて描くので重なり順は壊れない。camera（viewOffset/viewScale）
         // は各レンジが持ち、halfDesign は design/2 をここで計算して当てる。
         staticRanges = List[RenderStatic.Range],
@@ -740,7 +740,7 @@ mod RenderFrame {
                             emitSprite(st, instData, scaleX, scaleY, registry, targetNames,
                                        warnLog, drawable)
                         else {
-                            // mask 付きはステンシルの焼き込みが draw の前後に要るため、
+                            // mask 付きはステンシルへの描き込みが draw の前後に要るため、
                             // 一括 run に混ぜられない — 自分の run も吐いてから単発で描く。
                             flushSprites(st, instData);
                             emitSpriteMasked(st, instData, scaleX, scaleY, registry, targetNames,
@@ -859,7 +859,7 @@ mod RenderFrame {
             RenderBuf.ensure(polyBuf, Int32.max(3, polyVertCap(polygons)) * 6);
             let instData = RenderBuf.buffer(instBuf);
             let polyData = RenderBuf.buffer(polyBuf);
-            // run 状態と GL ハンドル定数を Int32 配列 1 本へ焼く（スロット順は stateSize 上のコメント）。
+            // run 状態と GL ハンドル定数を Int32 配列 1 本へ詰める（スロット順は stateSize 上のコメント）。
             // 1 フレーム 1 回の小さな割り当てで、以降の 1 item ごとの組・クロージャの
             // 作り直しが消える。
             let st: Array[Int32, Static] = Array.empty(Static, stateSize());

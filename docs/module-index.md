@@ -127,7 +127,7 @@
 | world 座標を画面へ落とす・戻す（横視点・見下ろし・斜め見下ろし・一人称の 4 通り） | ViewProjection（横視点と見下ろしは CameraRig へ委譲・一人称は Persp・見下ろしの前後は Depth） |
 | 「画面のここを 16px 直したい」を配置 Doc の数字へ翻訳する | ViewProjection.inverseOf → toWorldDelta（斜め見下ろしでは x だけ動かしても world は 2 軸とも動く） |
 | 斜め見下ろしで画面を覆うマスを列挙する（外接だけでは四隅と高いマスが落ちる） | ViewProjection.quarterOf → coveringCells（軸に平行な盤は Grid.cellsIn） |
-| 焼いた 1 枚に「この塊は何として描いたか」の目録を添える（材質の色の潰れ・主役の埋没を数で出す） | RenderManifest（検査を鳴らす条件は intent。実行中の矩形の記録は Annotate、UI の幾何破綻は RenderLint） |
+| 描き出した 1 枚に「この塊は何として描いたか」の目録を添える（材質の色の潰れ・主役の埋没を数で出す） | RenderManifest（検査を鳴らす条件は intent。実行中の矩形の記録は Annotate、UI の幾何破綻は RenderLint） |
 | 距離の遠→近の描画順（zIndex）を振る（疑似 3D の上塗り） | Painter（見下ろしの前後は Depth） |
 | 壁越しに見えるか（視線の遮蔽）を判定する（壁の向こうの松明を消す・敵から見えるか） | GridRay |
 | ゲームの中の時計と暦を回す（分・時・日・季節・年） | Calendar |
@@ -176,7 +176,7 @@
 - **WallFaces** — マス目の迷路から「カメラに見える壁の境界面」だけを集める純幾何。壁どうしの内部面と、カメラに背を向けた裏面は落とす。solid の判定は関数で注入する（MapDoc の形を知らない）。
 - **Painter** — カメラからの距離で遠→近に並べ、zBase から zStride 刻みの zIndex を振る（画家の順）。疑似 3D は z バッファを持たないので、遠い物から上塗りして前後を作る。見下ろしの前後は Depth（別物）。
 - **ViewProjection** — world 座標を画面（design px）へ写す 4 通り（Side / TopDown / Quarter / FirstPerson）と、その逆算。**斜め見下ろし（Quarter）の world↔screen はここにしかない**（横視点・見下ろしは CameraRig の centerOn / toWorldPos へそのまま渡す・一人称は Persp・見下ろしの前後は Depth）。**「その写し方にその操作が有るか」は Option で返さず、持ち物を取り出す口（quarterOf / firstPersonOf / inverseOf）で 1 回だけ捌く** — 取り出した後の toWorld / toWorldDelta / coveringCells / yawOf / distanceOf / visibleFraction / wallQuad は Option を返さない。Option が残るのは toScreen（カメラの後ろに来た点）だけ。画面を覆うマスの列挙は coveringCells（外接だけでは落ちるマスがある。契約は Grid.cellsIn とそろえてあり、cols / rows で盤の外を落とし margin で余分を足す）。壁の台形は wallQuad（四隅 + 描画順の dist + 模様を世界に固定する t0 / t1）。タイルの大きさ・カメラ・焦点距離は既定値を持たない（ゲーム側の意見）。
-- **RenderManifest** — 焼いた 1 枚の「目録」を JSON にする。1 行（Claim）は kind / material / role（4 つで閉じた enum） / layer / world 座標 / src / intent を持ち、画面ぜんたいの下地の色は design の隣にトップレベルで出る。PNG からは読めない欠陥（材質どうしの色が同じに潰れた・主役が背景に溶けた・地形が Doc と違う高さで描かれた）が数で出る。**検査は作者が intent に書いたことについてだけ動き、書かなかった行は undeclared に id を並べる**（沈黙もさせず、止めもしない）。**aabb と colors は作者の申告であって焼いた画素の計測ではない** — build が unmeasured にその断りを必ず 1 本足す。書き出し（write）は失敗を Result で返す（PaletteExport と同じ形）。
+- **RenderManifest** — 描き出した 1 枚の「目録」を JSON にする。1 行（Claim）は kind / material / role（4 つで閉じた enum） / layer / world 座標 / src / intent を持ち、画面ぜんたいの下地の色は design の隣にトップレベルで出る。PNG からは読めない欠陥（材質どうしの色が同じに潰れた・主役が背景に溶けた・地形が Doc と違う高さで描かれた）が数で出る。**検査は作者が intent に書いたことについてだけ動き、書かなかった行は undeclared に id を並べる**（沈黙もさせず、止めもしない）。**aabb と colors は作者の申告であって描き出した画素の計測ではない** — build が unmeasured にその断りを必ず 1 本足す。書き出し（write）は失敗を Result で返す（PaletteExport と同じ形）。
 - **Daylight** — 1 日の進み（0〜1）から「空気の色」と「太陽の位置」を決める。色は画面全体に乗算で薄く掛け、太陽からは影の向き・長さ（shadowAt）とドット絵に当てる光の向き（lightStepAt）を導く。暗さ（darkness）を読めば、明かりの点灯と空の色が食い違わない。落ち影は見下ろしが groundShadow（円 1 つ）、横視点が sideShadow（横半径と縦半径を別に取り、足元の高さから左右へだけ伸びる）。
 - **TextDraw** — 文字列を「中心をここに置きたい」で配置する。
 - **RichText** — 一部だけ色や太さの違う文章をスパンの列として持ち、描画アイテムへ組む。

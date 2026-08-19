@@ -1,5 +1,5 @@
 // Light — 簡易2D光源から見せる絵の列を導く純関数。光は状態を持たない値（位置・半径・色・ハロの強さ）。
-// maskSprite（Multiply専用の暗くするオーバーレイ）と haloSprite（Add専用の暖色グロー）は RadialGlow が焼いた
+// maskSprite（Multiply専用の暗くするオーバーレイ）と haloSprite（Add専用の暖色グロー）は RadialGlow が生成した
 // 別規約のテクスチャで、Light はその2枚をどこに・どれだけ拡大して置くかだけを決める。
 mod Light {
 
@@ -7,7 +7,7 @@ mod Light {
     /// halo=Addハロの強さ0..1。
     pub type alias Light = { at = Vec2.Vec2, radius = Float64, color = Color, halo = Float64 }
 
-    /// RadialGlow で焼いた既定テクスチャの参照一式。sprite 名・元 px サイズ・穴の広さは
+    /// RadialGlow で生成した既定テクスチャの参照一式。sprite 名・元 px サイズ・穴の広さは
     /// 「描き出す側（RadialGlow の呼び出し）」と「読む側（items のスケール計算）」で
     /// 値が揃っていないと穴のサイズがずれるため、1 レコードにまとめて受け渡しの分裂を防ぐ。
     pub type alias GlowAssets = {
@@ -15,11 +15,11 @@ mod Light {
         haloSprite = String, haloSourceSize = Float64
     }
 
-    /// RadialGlow の既定値で焼いたときの GlowAssets（sprite名は描き出し側の慣習
-    /// "glow_mask"/"glow_halo" 固定）。別名のテクスチャを焼いたゲームは自分で
+    /// RadialGlow の既定値で生成したときの GlowAssets（sprite名は描き出し側の慣習
+    /// "glow_mask"/"glow_halo" 固定）。別名のテクスチャを生成したゲームは自分で
     /// GlowAssets を組み立てて items に渡せばよい。
     /// maskHoleFrac=0.5 は engine_tools（描き出し専用パッケージ、engine_world から依存できない）
-    /// の RadialGlow.defaultHoleFrac() と同じ値 — 焼く側を変えたらここも合わせて直すこと。
+    /// の RadialGlow.defaultHoleFrac() と同じ値 — 生成する側を変えたらここも合わせて直すこと。
     pub def defaultGlowAssets(): GlowAssets =
         { maskSprite = "glow_mask", maskSourceSize = 512.0, maskHoleFrac = 0.5,
           haloSprite = "glow_halo", haloSourceSize = 256.0 }
@@ -99,11 +99,11 @@ mod Light {
     // ── 低レベル口（通常は items を使う。影や haloDiameterFactor が要らず、
     //    穴あきオーバーレイ+ハロだけをピンポイントに組みたいときに使う） ──
 
-    /// singleLightItems の設定。maskSprite/haloSprite は RadialGlow で焼いたテクスチャ名、
+    /// singleLightItems の設定。maskSprite/haloSprite は RadialGlow で生成したテクスチャ名、
     /// maskSourceSize/haloSourceSize はそれぞれの元 px サイズ（正方形前提）。
-    /// maskHoleFrac は maskSprite を焼いた RadialGlow.maskCurveWithHole の holeFrac と
+    /// maskHoleFrac は maskSprite を生成した RadialGlow.maskCurveWithHole の holeFrac と
     /// 同じ値（既定は RadialGlow.defaultHoleFrac()）— 「穴の実寸半径 = light#radius」を
-    /// 逆算するのに使うため、焼く側と読む側で値が揃っていないと穴のサイズがずれる。
+    /// 逆算するのに使うため、生成する側と読む側で値が揃っていないと穴のサイズがずれる。
     /// darkness は mask 全体の暗さ0..1（1で穴の外が完全な黒。既定0.95）— 周囲4枚の黒帯と
     /// 同じ値を使うことで、mask の縁（完全減衰）と黒帯の濃度が連続する。
     /// z はオーバーレイ→ハロの土台（cfg#z がオーバーレイ、cfg#z + 1 がハロ）。

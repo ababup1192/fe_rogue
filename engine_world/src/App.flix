@@ -1,7 +1,7 @@
 // App — ゲームを「宣言」で組み立てて走らせるランナー。ゲーム側は初期 World にシステムと
 // 絵と音を繋いで launch を呼ぶだけで、ウィンドウ・時計・入力・描画・ループはすべてここが引き受ける。
 // 外の世界に触れる処理（effect）をこのモジュールが独占するので、ゲームのシステムは
-// (Frame, w) -> w の純粋関数として書ける（毎フレームの入力と dt は Frame に焼いて渡す）。
+// (Frame, w) -> w の純粋関数として書ける（毎フレームの入力と dt は Frame に埋め込んで渡す）。
 //
 // 更新系（addSystem）が World を進め、描画（withView）は進んだ後の World を読むだけで
 // 変えない — 1 フレームは必ずこの順（1 周の全手順は下の loop の doc を見る）。
@@ -68,9 +68,9 @@ mod App {
         { atlas = atlas, fontOf = fontOf,
           visible = { position = { x = 0.0, y = 0.0 }, size = design } }
 
-    /// 焼いたドット絵アトラス 1 枚ぶんの受け渡し。
+    /// 生成したドット絵アトラス 1 枚ぶんの受け渡し。
     /// texture = 絵を引くときの名前、key = その画素の中身を決める全入力を 1 文字列にまとめた物
-    /// （同じ key の間は GPU へ上げ直さない）、baked = PxSpriteAtlas.bake の焼き上がり。
+    /// （同じ key の間は GPU へ上げ直さない）、baked = PxSpriteAtlas.bake の生成結果。
     pub type alias AtlasUpload = { texture = String, key = String, baked = PxSpriteAtlas.Baked }
 
     /// ゲーム 1 本の宣言。make で空を作り、addStartup / addSystem / reloadOn / withView /
@@ -122,21 +122,21 @@ mod App {
         // 注釈の矩形（デザイン座標）と表示中の瞬間の World からテキストを組む。
         // 注釈チケットに world.json として同梱され、リモートデバッグの view=full にもなる。
         worldDump = Option[(Rect2.Rect2, w) -> String \ ef],
-        // 「1 度だけ GPU に焼いて使い回す静的な絵」の宣言（無ければ None）。key = 静的な中身を
+        // 「1 度だけ GPU に生成して使い回す静的な絵」の宣言（無ければ None）。key = 静的な中身を
         // 決める全入力を 1 文字列にまとめたキャッシュキー（フロア id・テーマ・作り直しの世代など。
-        // これが変わるとエンジンが古い VBO を捨てて焼き直す）、build = ワールド座標の静的 PlacedItem を
-        // 組む純粋関数（camera はエンジンが uniform で当てるので触らない。多角形だけが焼かれ、
+        // これが変わるとエンジンが古い VBO を捨てて作り直す）、build = ワールド座標の静的 PlacedItem を
+        // 組む純粋関数（camera はエンジンが uniform で当てるので触らない。多角形だけが生成の対象になり、
         // それ以外の item は無視される）。GL ハンドルも無効化ロジックもゲームは持たない。
         // 純粋関数に限るのは renderCommands の op を効果多相にしないため（静的な絵は World の
         // 純粋な投影から作れる）。
         staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }],
-        // 「1 度だけ GPU に焼いて 1 draw call で敷くタイルの層」の宣言（無ければ None）。
-        // Spec の key が変わるとエンジンが焼き直す。純粋関数に限る理由は staticLayer と同じ。
+        // 「1 度だけ GPU に生成して 1 draw call で敷くタイルの層」の宣言（無ければ None）。
+        // Spec の key が変わるとエンジンが作り直す。純粋関数に限る理由は staticLayer と同じ。
         // タイル層は動的な絵より必ず奥に描かれる — キャラを隠す絵（屋根・庇）は置けない。
         tileLayers = Option[w -> List[TileLayerSpec]],
-        // ドット絵を焼いたアトラス（1 体 = 1 枚のクアッドで描くための下ごしらえ）。
-        // 毎フレーム「同じ key なら何もしない」で呼ばれるので、焼く仕事は World 側で 1 度だけ
-        // 済ませ、ここは焼き上がりを渡すだけにする。
+        // ドット絵を生成したアトラス（1 体 = 1 枚のクアッドで描くための下ごしらえ）。
+        // 毎フレーム「同じ key なら何もしない」で呼ばれるので、生成する仕事は World 側で 1 度だけ
+        // 済ませ、ここは生成結果を渡すだけにする。
         spriteAtlases = w -> List[AtlasUpload],
         // カメラを何 px の升目に吸着させるか（0 = 吸着しない）。ドット絵のゲームは 1 にする。
         // World から読むので、Doc を保存して値が変わればその場で効く。
@@ -271,16 +271,16 @@ mod App {
     pub def withPixelSnap(f: w -> Float64, app: App[w, ef]): App[w, ef] =
         { pixelSnap = f | app }
 
-    /// ドット絵のアトラス（PxSpriteAtlas.bake の焼き上がり）を、名前付きテクスチャとして
+    /// ドット絵のアトラス（PxSpriteAtlas.bake の生成結果）を、名前付きテクスチャとして
     /// 使えるようにする。これを繋いだうえで PxSprite.drawQuad を使うと、1 体が画素ごとの
     /// 矩形の列ではなく 1 枚のクアッドになる — 草や作物のように画面に何百と出る絵で効く。
     /// key はその画素の中身を決める全入力（色票・世代番号など）を 1 文字列にまとめた物。
     /// 同じ key の間は何も起きないので、毎フレーム呼ばれる前提でよい。
-    /// 焼く仕事（bake）は World 側で 1 度だけ済ませ、ここには焼き上がりを渡すこと。
+    /// 生成する仕事（bake）は World 側で 1 度だけ済ませ、ここには生成結果を渡すこと。
     pub def withSpriteAtlases(f: w -> List[AtlasUpload], app: App[w, ef]): App[w, ef] =
         { spriteAtlases = f | app }
 
-    /// 焼いたアトラスを描画部へ渡しておく（同じ key の間は何も起きない）。
+    /// 生成したアトラスを描画部へ渡しておく（同じ key の間は何も起きない）。
     /// 同じ名前が 2 つ来たら後の方だけを使う — 両方渡すと毎フレーム key が入れ替わり、
     /// 大きさが違えば 1 枚ずつ GPU に置き去りになる。
     def uploadAtlases(uploads: List[AtlasUpload]): Unit \ GameEngine.Game =
@@ -292,11 +292,11 @@ mod App {
                         a#baked#side, a#baked#side, a#baked#pixels)
                 else ())
 
-    /// 「1 度だけ GPU に焼いて使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
+    /// 「1 度だけ GPU に生成して使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
     /// 1 文字列にまとめたキャッシュキー（フロア id・テーマ・作り直しの世代番号など） — これが
-    /// 変わったときだけエンジンが古い VBO を捨てて焼き直す（テクスチャを名前で 1 度上げるのと同じ
+    /// 変わったときだけエンジンが古い VBO を捨てて作り直す（テクスチャを名前で 1 度上げるのと同じ
     /// 隠蔽で、ゲームは GL ハンドルを持たない）。build はワールド座標の静的 PlacedItem を組む
-    /// 純粋関数（camera はエンジンが uniform で当てるので触らない）。多角形（Poly）だけが焼かれ、
+    /// 純粋関数（camera はエンジンが uniform で当てるので触らない）。多角形（Poly）だけが生成の対象になり、
     /// それ以外の item は無視される。松明の炎・水面の粒・影・プレイヤーのように毎フレーム変わる
     /// 物は必ず withView 側（動的）に残すこと — 「本当に不変な物だけ」を静的層に入れる。
     /// view = None のゲームでは効かない（App が描画しないため）。
@@ -306,14 +306,14 @@ mod App {
         { staticLayer = Some({ key = key, build = build }) | app }
 
     /// タイルの層（床・壁 1 行目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
-    /// 1 度だけ GPU に焼き、以後は毎フレーム 1 draw call で敷く（数百〜千マスでも軽い）。
+    /// 1 度だけ GPU に生成し、以後は毎フレーム 1 draw call で敷く（数百〜千マスでも軽い）。
     /// Spec の tiles はサンク — 毎フレーム呼ばれるのは宣言（key の比較）だけで、
-    /// 中身のリスト構築は key が変わった焼き直しの時にしか走らない。
-    /// key が変わったとき、または watchFile / reloadOn の読み直しが起きたときに焼き直す —
+    /// 中身のリスト構築は key が変わった作り直しの時にしか走らない。
+    /// key が変わったとき、または watchFile / reloadOn の読み直しが起きたときに作り直す —
     /// key は素のまま（マップ id 等）でよく、Doc の世代番号を key へ混ぜ込む必要はない。
     /// key は頻繁に転がってもよい（照明・カメラのバケツを混ぜた地形など）— GPU バッファは
-    /// 層のスロット（リストの並び順）に 1 本で、焼き直しは同じ VAO への入れ直しになる。
-    /// そのぶん層は毎フレーム同じ並び・同じ本数で宣言すること（スロットがずれると無駄に焼き直る）。
+    /// 層のスロット（リストの並び順）に 1 本で、作り直しは同じ VAO への入れ直しになる。
+    /// そのぶん層は毎フレーム同じ並び・同じ本数で宣言すること（スロットがずれると無駄に作り直しが起きる）。
     /// f は純粋関数に限る — 理由は withStaticLayer と同じ（renderCommands の op を
     /// 効果多相にしないため）。camera は動的な絵と同じ値でエンジンが掛ける。
     /// zIndex は動的な絵と同じ z 空間で解釈される — キャラより大きい zIndex を与えれば、
@@ -646,7 +646,7 @@ mod App {
                                    init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
                      else None;
-        // 起動時点の更新時刻を「発火なしで」焼いておく — 焼かないと最初のポーリングが
+        // 起動時点の更新時刻を「発火なしで」用意しておく — 用意しないと最初のポーリングが
         // 全パスを新規出現と見なし、init 直後にもう一度リロードが走ってしまう。
         let watch0 = if (app#debug and not List.isEmpty(app#watch))
                          { sincePoll = 0.0, mtimes = statMtimes(List.map(fst, app#watch)) }
@@ -712,7 +712,7 @@ mod App {
                      else Branch.Running;
         { branch = branch, toggled = toggled }
 
-    /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リモートコマンド → リロード →
+    /// 毎フレーム: キーを読み Frame に埋め込む → 終了判定 → リモートコマンド → リロード →
     /// 更新系システム（advanceFrame。World を進める）→ 音（進んだ World から）→
     /// 描画（renderFrame。進んだ World を絵に写す）→ 末尾再帰。前フレームのキー集合・
     /// アノテーション状態・直近の World 履歴は引数で次のフレームへ渡し続ける。
@@ -793,7 +793,7 @@ mod App {
                             let nextSustaining = applySustained(app, st#sustaining, advanced);
                             // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
                             let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, st#anno) else st#anno;
-                            // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
+                            // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも作り直す。
                             let (cache1, seen1, warned1) = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
                                                               bumpTileGen(watchFired or reloadFired, st#tileCache),
                                                               st#glyphSeen, st#budgetWarned);
@@ -855,7 +855,7 @@ mod App {
                       leftDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
                       middleDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle),
                       spaceDown = isDown(GameEngine.Key.Space, frame),
-                      // ホイールは loop が Frame へ焼いた後なので、二度読みせず frame から引く
+                      // ホイールは loop が Frame へ埋め込んだ後なので、二度読みせず frame から引く
                       scroll = frame#wheel,
                       design = design };
         let (next, emitted) = Annotate.step(input, scrubbed);
@@ -945,8 +945,8 @@ mod App {
             case None        => Nil
         };
         let (overlaySprites, overlayPolygons) = Render.draw(overlay);
-        // デバッグの小物はゲームのフォントを使わない。ゲームのフォントは「出た字から順に焼く」
-        // ので、まだ焼かれていない字は出せず、しかもこの停止中の経路は焼き足しを頼まない。
+        // デバッグの小物はゲームのフォントを使わない。ゲームのフォントは「出た字から順に用意する」
+        // ので、まだ用意されていない字は出せず、しかもこの停止中の経路は追加で作ることを頼まない。
         // 組み込みフォント（常に全部そろっているドット絵の字）を決め打ちで使う。
         let debugAtlas = BootFont.atlas();
         let debugSize = debugAtlas#fontSize;
@@ -1129,7 +1129,7 @@ mod App {
         else {
             let atlas = GameEngine.Game.getFontAtlas(BootFont.name());
             let design = GameEngine.Game.getViewportRect()#size;
-            // 組み込みフォントはドット絵なので、焼いた大きさの等倍で出す。
+            // 組み込みフォントはドット絵なので、作った大きさの等倍で出す。
             Annotate.fpsItems(atlas, atlas#fontSize, design, Annotate.fpsOf(anno))
         }
 
@@ -1162,29 +1162,29 @@ mod App {
                 let key = (sl#key)(world);
                 let build = sl#build;
                 Some({ key = key,
-                       // 箱で組んだ絵（ドット絵の走りなど）も焼けるよう、飾りの無い箱は
-                       // 多角形へ直してから渡す — 静的層が焼くのは多角形チャンネルだけ。
+                       // 箱で組んだ絵（ドット絵の走りなど）も生成できるよう、飾りの無い箱は
+                       // 多角形へ直してから渡す — 静的層が生成するのは多角形チャンネルだけ。
                        polys = () -> {
                            let (_, polys) = Render.draw(Render.boxesAsPolys(build(world)));
                            polys },
                        viewOffset = viewOffset, viewScale = viewScale, halfDesign = halfDesign })
         }
 
-    /// タイル層の GPU 焼きの持ち回し。ループが引数で持ち回す。
+    /// タイル層の GPU 生成結果の持ち回し。ループが引数で持ち回す。
     /// gen は「Doc の読み直し（watchFile / reloadOn）が起きた回数」= タイル層の世代。
-    /// entries は層のスロット（宣言リストの並び順）→ (焼いた時点の世代, 焼いた時の key, VAO, 数)。
-    /// スロットで引くので、key が頻繁に転がる層（照明・カメラ追随で焼き直る地形など）でも
-    /// VAO は 1 層に 1 本のまま — 焼き直しは updateTileBuffer の入れ直しで済む。
+    /// entries は層のスロット（宣言リストの並び順）→ (生成した時点の世代, 生成した時の key, VAO, 数)。
+    /// スロットで引くので、key が頻繁に転がる層（照明・カメラ追随で作り直しが多い地形など）でも
+    /// VAO は 1 層に 1 本のまま — 作り直しは updateTileBuffer の入れ直しで済む。
     pub type alias TileCache =
         { gen = Int32, entries = Map[String, (Int32, String, GpuHandle.TileVao, Int32)] }
 
-    /// まだ何も焼いていない起動時の持ち回し。
+    /// まだ何も生成していない起動時の持ち回し。
     pub def freshTileCache(): TileCache = { gen = 0, entries = Map.empty() }
 
     /// Doc の読み直しが起きたフレームで世代を進める。ゲームの書く key は素のまま、
-    /// 世代の不一致が「焼き直しが要る」の判定になる（tileCacheHit が見る）。
+    /// 世代の不一致が「作り直しが要る」の判定になる（tileCacheHit が見る）。
     // どの Doc がどのタイル層に効くかの依存表は持たない — 無関係な Doc の保存でも全層が
-    // 焼き直されるが、保存は人の手の速さでしか起きず、焼き直しは 1 回のバッファ転送で済む。
+    // 作り直されるが、保存は人の手の速さでしか起きず、作り直しは 1 回のバッファ転送で済む。
     pub def bumpTileGen(fired: Bool, cache: TileCache): TileCache =
         if (fired) { gen = cache#gen + 1 | cache } else cache
 
@@ -1268,7 +1268,7 @@ mod App {
         }
 
     /// view の投影した絵を描画命令にしてエンジンへ渡す。タイルマップは withTileLayers の
-    /// 宣言があるときだけ焼いて添える（持ち回しの TileCache を返す）。
+    /// 宣言があるときだけ生成して添える（持ち回しの TileCache を返す）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
     /// camera / hudView もこの場合は効かない）。
     /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
@@ -1279,7 +1279,7 @@ mod App {
 
     /// 予算を超えていたら標準エラーへ 1 回だけ知らせる（戻り値は「もう知らせたか」）。
     /// headless の検査（reference-check の予算判定）は代表フレーム 1 枚しか見ないので、
-    /// Fx の最悪化・場面の切り替わり・GIF でしか焼かない場面はここでしか捕まらない。
+    /// Fx の最悪化・場面の切り替わり・GIF でしか作らない場面はここでしか捕まらない。
     /// WhyNot: 毎フレーム出さない — 遅い画面をさらに遅くし、ログも読めなくなる。
     def warnOverBudget(count: Int32, warned: Bool): Bool \ IO =
         if (warned or count < budgetCap()) warned
@@ -1305,12 +1305,12 @@ mod App {
                 // 字の欠け照合はレンダーターゲットの中の字も一緒に見る（ターゲットも本編と
                 // 同じ「初めて出る字は 1 コマ遅れる」に乗せる）。
                 let itemsForGlyphs = List.append(List.flatMap(p -> p#items, passList), items);
-                // アトラスに無い字があれば、描く前に焼いてもらう（初めて出る字は 1 コマ遅れる）。
+                // アトラスに無い字があれば、描く前に用意してもらう（初めて出る字は 1 コマ遅れる）。
                 // たいていは空振りで、そのときは何も起きない。glyphSeen は「欠けが無かった
                 // フレームの字の指紋」— 同じ指紋の間は 1 字ずつの照合を引き直さない。
                 // アトラスは ensureGlyphs でしか育たず、育つのは欠けが出たフレームだけなので、
                 // 欠けゼロの指紋を覚えても古い答えを返す余地が無い。欠けが出たフレームは
-                // 覚えない（焼いた直後にアトラスが育ち、同じ字でも答えが変わるため）。
+                // 覚えない（作った直後にアトラスが育ち、同じ字でも答えが変わるため）。
                 let fp = Render.glyphFingerprint(itemsForGlyphs);
                 let nextSeen = if (glyphSeen == Some(fp)) glyphSeen else {
                     let missing = Render.missingGlyphs(itemsForGlyphs);

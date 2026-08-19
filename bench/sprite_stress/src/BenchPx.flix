@@ -2,7 +2,7 @@
 // 同数・同 sprite・同軌道で A/B する負荷世界。区間ごとにモードを交互に切り替えるので、
 // 1 回の実行で背中合わせのペアが取れる(RESULTS.md の計測の流儀)。
 // 実行:
-//   ../../bin/flix run --entrypoint BenchPx.bakeAtlas   … アトラス PNG を焼く(1 回だけ)
+//   ../../bin/flix run --entrypoint BenchPx.bakeAtlas   … アトラス PNG を作る(1 回だけ)
 //   ../../bin/flix run --entrypoint BenchPx.bench          … ベンチ本体(6 区間・自動終了)
 // アトラスは project.json の "px_atlas"(assets/sprites/px_atlas.png)として起動時に
 // 読み込まれる — GL 実行時とヘッドレス(bakeAtlas の PNG)が同一ソース(PxSpriteAtlas.bake)。
@@ -31,7 +31,7 @@ mod BenchPx {
             case _      => { r = 0.24, g = 0.36, b = 0.60 }
         }
 
-    /// アトラス PNG を焼く(決定的)。project.json がこれを起動時に読む。
+    /// アトラス PNG を作る(決定的)。project.json がこれを起動時に読む。
     pub def bakeAtlas(): Unit \ IO =
         let doc = run { PxSpriteDoc.load(spritePath()) } with Fs.FileRead.runWithIO;
         let baked = PxSpriteAtlas.bake(doc, resolver);

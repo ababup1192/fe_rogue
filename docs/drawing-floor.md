@@ -70,7 +70,7 @@ sprite Doc 直下の `palette` のどれかに**実体が無いと Studio が仮
   自分で選んで手を広げない（一度に直すのは 1 つだけ）
 - **壊れている物だけは聴かずに先に直す** — 落ちる・黒い穴・スナップショットの退行は好みの問題ではない
 
-焼いた絵を自分で批評してから見せる手順は `.claude/skills/critique-render/SKILL.md`。
+描き出した絵を自分で批評してから見せる手順は `.claude/skills/critique-render/SKILL.md`。
 
 ## 機械で確かめる（人に見せる前の下ごしらえ）
 

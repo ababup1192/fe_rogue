@@ -36,7 +36,7 @@ mod DocTable {
     /// 名乗り(表示中)には出続ける。
     pub def withoutWatch(e: Entry[w]): Entry[w] = { reloadOn = ReloadOn.ReloadAll | e }
 
-    /// F1 の一括では読み直さない。別の行の読み直しが巻き添えで焼き直す Doc に使う
+    /// F1 の一括では読み直さない。別の行の読み直しが巻き添えで作り直す Doc に使う
     /// (一括で二重に読むと同じ物を数回読みに行く)。名乗り(表示中)には出続ける。
     pub def withoutReloadAll(e: Entry[w]): Entry[w] = { reloadOn = ReloadOn.Watch | e }
 
@@ -51,7 +51,7 @@ mod DocTable {
              |> List.map(r -> (r#path, r#reload))
 
     /// テーブルの並び順に Doc を読み直す(App.reloadOn の一括リロードへ渡す形)。
-    /// Watch(保存即反映だけ)の行は出ない。導出 Doc(他の Doc の値から焼き直す物)は、
+    /// Watch(保存即反映だけ)の行は出ない。導出 Doc(他の Doc の値から作り直す物)は、
     /// 依存先より後ろの行に置くこと。
     pub def reloadAll(rows: List[Entry[w]], world: w): w \ Fs.FileRead =
         rows |> List.filter(r -> r#reloadOn != ReloadOn.Watch)

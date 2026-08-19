@@ -148,7 +148,7 @@ mod SceneRender {
                     let w = loadWorld();
                     let sprites = run { PxSpriteDoc.load(World.spritePath()) }
                         with Fs.FileRead.runWithIO;
-                    // 候補テーマは配色ごと変わる = アトラスの画素も変わるので、候補ごとに焼き直す。
+                    // 候補テーマは配色ごと変わる = アトラスの画素も変わるので、候補ごとに作り直す。
                     let candWorld = World.withTheme(cand, sprites, w);
                     let (candCfg, candTex) = withAtlasOf({ background = cand#bg | cfg }, candWorld);
                     discard shoot(candCfg, candTex, ctx, candWorld, stripJson(f))

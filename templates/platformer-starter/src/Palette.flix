@@ -8,7 +8,7 @@
 // Studio が並び順から作った仮色で塗るので、編集画面と実機で配色が食い違う
 // (しかも見ただけでは気付けない)。だから解決の結果をここへ書き出して読ませる。
 //
-// 生成物なので手で直さない(`make palette`)。テーマの色や legend を変えたら焼き直す。
+// 生成物なので手で直さない(`make palette`)。テーマの色や legend を変えたら作り直す。
 mod Palette {
 
     pub def path(): String = "assets/px.palette.json"

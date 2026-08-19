@@ -229,7 +229,7 @@ func TestNoSidecarsIsNoteOnly(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("終了コードが %d (期待 0)", code)
 	}
-	if out != "[budget] town: 予算 未計測（古い engine で焼いた絵）\n" {
+	if out != "[budget] town: 予算 未計測（古い engine で生成した絵）\n" {
 		t.Errorf("stdout が違う: %q", out)
 	}
 	if errOut != "" {
@@ -247,7 +247,7 @@ func TestEmptyStaticSidecarIsTreatedAsAbsent(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("終了コードが %d (期待 0)\n%s", code, errOut)
 	}
-	if out != "[budget] town: 予算 未計測（古い engine で焼いた絵）\n" {
+	if out != "[budget] town: 予算 未計測（古い engine で生成した絵）\n" {
 		t.Errorf("stdout が違う: %q", out)
 	}
 }

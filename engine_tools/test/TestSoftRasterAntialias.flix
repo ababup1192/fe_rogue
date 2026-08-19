@@ -34,7 +34,7 @@ mod TestSoftRasterAntialias {
           outDir = outDir(), frameW = 64, frameH = 48,
           shapeAntialias = shapes, textAntialias = text | HeadlessRender.defaults() }
 
-    /// 焼いた PNG の実色数（RGB の種類）。
+    /// 生成した PNG の実色数（RGB の種類）。
     def distinctColors(path: String): Int32 \ IO =
         let img = ImageIO.read(new File(path));
         if (Object.isNull(img)) -1

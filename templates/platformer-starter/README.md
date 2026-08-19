@@ -47,7 +47,7 @@ make debug   # 保存即反映(watchFile)+ F1 一括リロード + F8 付きで�
 どれも `*.schema.json` を持ち、`project.json` の `editor.resources[]` に宣言してあるので
 Studio(エディタ)のフォームからも編集できる。ドット絵の意味色キーの実色は
 `assets/px.palette.json`(`make palette` の生成物)が Studio に教える —
-**色を変えたら焼き直す**(`make render-all` の前に自動で走る)。忘れると編集画面だけ仮色になり、
+**色を変えたら作り直す**(`make render-all` の前に自動で走る)。忘れると編集画面だけ仮色になり、
 実機と配色が食い違う。
 
 ## 検証

@@ -6,7 +6,7 @@
 //     (洞窟の松明の暖色が 1 draw call のまま 1 マスごとに乗る)。
 //   - View.tileItems(描き出し・全動的経路)は同じ記述を PlacedItem に解釈する。
 // 面は固定サイズ・松明も静的なので、key はステージとアトラスの世代だけ —
-// 層の焼き直しは面の切替と Doc 読み直しの時にしか起きない。
+// 層の作り直しは面の切替と Doc 読み直しの時にしか起きない。
 mod TerrainLayers {
 
     /// 1 枚のクアッド(スプライト名 + コマ名)。
@@ -62,7 +62,7 @@ mod TerrainLayers {
 
     /// 実機の GPU タイル層 2 枚(背後壁 z=zWall / 前景 z=zFore)。App.withTileLayers に渡す。
     /// tiles はサンク — 毎フレーム評価されるのは key の比較だけで、リスト構築は
-    /// key(面・アトラスの世代)が変わった焼き直しの時にしか走らない。
+    /// key(面・アトラスの世代)が変わった作り直しの時にしか走らない。
     pub def specs(w: World.World): List[TileLayerSpec] =
         let side = Int32.toFloat64(w#atlas#side);
         let set: Tileset = { atlasSource = {

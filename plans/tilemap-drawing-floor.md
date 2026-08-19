@@ -43,14 +43,14 @@ avg < 8ms / p99 < 12ms」。
   box 列（`templates/game-starter/src/View.flix:61`）
 - 実機 View の内訳: box 3 本（game / novel / rpg のキャラ）: quad 2 本（platformer / rpg の町）
 - **タイル層の見本は platformer と rpg にしか無く、既定テンプレには無い**
-- game-starter は `reference/SHA256SUMS.txt` を持たない = **reference の焼き直しゼロで直せる**
+- game-starter は `reference/SHA256SUMS.txt` を持たない = **reference の作り直しゼロで直せる**
   唯一のテンプレ（`Makefile:171` の `TEMPLATE_DIRS` からも除外）
 
 ### 却下した案と、その理由（同じ道を 2 度通らないため）
 
 **案 B「アトラスを App が持つ・配線ゼロの quad 経路」— 却下。**
 
-1. 焼き直しの合図が取れない。`watchFile` は `App.flix:213`「**監視は withDebug 有効時のみ**」で、
+1. 作り直しの合図が取れない。`watchFile` は `App.flix:213`「**監視は withDebug 有効時のみ**」で、
    リリースビルドでは初回フレームしか合図が来ない。key を engine が持つ設計だと、
    走行中に色が変わるゲームの絵が永久に固まり、**ゲーム側から要求する手段もゼロ**になる
 2. 合図は `Branch.Running`（`App.flix:785-795`）にしか無く、Paused / Resuming / Remote が抜ける
@@ -123,10 +123,10 @@ JSON 由来なので原理的に検出できない。
 ### 足す物（engine_world に 2 つ・既存 pub は 1 行も触らない）
 
 ```flix
-// PxSpriteAtlas に足す — 焼き上がりと、それを指す名前・key を 1 つの値にまとめる
+// PxSpriteAtlas に足す — 生成結果と、それを指す名前・key を 1 つの値にまとめる
 pub type alias Sheet = { texture = String, key = String, baked = Baked }
 
-/// アトラスを焼いて Sheet にする。key は焼いた画素から導くので、ゲームは世代番号を持たない
+/// アトラスを生成して Sheet にする。key は生成した画素から導くので、ゲームは世代番号を持たない
 /// （前例: templates/rpg-starter/src/World.flix:145-148）。resolver が何で変わっても、
 /// 画素が変われば key が変わる = GPU のテクスチャが必ず追随する。
 pub def toSheet(texture: String, doc: PxSpriteDoc.Doc, resolver: String -> Color): Sheet
@@ -161,7 +161,7 @@ tileSize = 16.0, origin = …, zIndex = 0, layers = floorLayer :: shoreLayer :: 
 ### 毎フレームの費用（ここを間違えると意味が無い）
 
 - `layersOf` は**段の数だけ**レコードを組む（2〜3 個）。マスは 1 つも回さない
-- マスを回すのは `TileLayerSpec#tiles` のサンクの中だけで、**key が変わった焼き直しの時しか
+- マスを回すのは `TileLayerSpec#tiles` のサンクの中だけで、**key が変わって作り直す時しか
   走らない**（`TileScene.flix:14-16` の規約どおり）
 - だから `rows` を渡す（`List[Grid.Cell]` を渡さない）。呼ぶ側が `Grid.cellsOfRows` を
   宣言の中に書くと 252 マスを毎フレーム組んでしまう
@@ -197,7 +197,7 @@ Terrain でも、同じ 1 つの網に掛かる。`.claude/rules/error-handling.
 
 - **game-starter に「陸は静的タイル層・動く物だけ動的」の見本を置く**（既定テンプレであり、
   reference の拘束が無い）
-- novel / rpg のキャラの box 列を quad へ（reference 焼き直し: novel 3 枚・rpg 6 枚）
+- novel / rpg のキャラの box 列を quad へ（reference 作り直し: novel 3 枚・rpg 6 枚）
 - `module-index.md` の逆引きを「盤を敷く → タイル層」へ向ける
 
 ### 保留
@@ -299,11 +299,11 @@ fi
    桁で来るので誤検知と漏れの間に十分な幅。基準の無い場面（新名・改名後）は ① のみ
 ③ sanity: static > total → 赤・items.tsv 無しの static.tsv → 赤（残骸か順序違反）
 
-サイドカー欠け（古い engine で焼いた gallery）は「予算: 未計測」の 1 行（黙らせない・
+サイドカー欠け（古い engine で生成した gallery）は「予算: 未計測」の 1 行（黙らせない・
 落としもしない）。基準 ITEMS.tsv 無しは ① のみ判定 + 作成の促し。
-**status にも出す**: agents-pack の bin/status.py に予算の節を追加 — 最後に焼いた
+**status にも出す**: agents-pack の bin/status.py に予算の節を追加 — 最後に生成した
 gallery/*.items.tsv と reference/ITEMS.tsv を check-render-budget.py の subprocess 呼びで
-照合（二重実装しない）。render はしない（SHA 節と同じ「最後に焼いた gallery」を見る流儀）。
+照合（二重実装しない）。render はしない（SHA 節と同じ「最後に生成した gallery」を見る流儀）。
 engine リポ自身では既存節と同様にスキップ（`status.py:172-173` の流儀）。
 
 ### 4.4 記録と更新 — 生成物と手書きを分ける・update に門を置く
@@ -316,7 +316,7 @@ engine リポ自身では既存節と同様にスキップ（`status.py:172-173`
 - **reference-update の門**（`reference-update.sh` の **cp/SHA 書き込みより前**に判定 —
   拒否時に PNG/SHA だけ更新された割れた状態を作らない。実装は
   `check-render-budget.py --gate 旧ITEMS.tsv` を呼ぶ形で判定ロジックを一本化）:
-  (a) 新しい動的数が cap 超の場面 → **拒否**（上限超の値は基準として焼けない —
+  (a) 新しい動的数が cap 超の場面 → **拒否**（上限超の値は基準として書き出せない —
       box 列が初回実装でも基準にする所で止まる）
   (b) 旧基準からドリフト閾値超の増加 → 増加表を出して**拒否**。通すには
       `make reference-update BUDGET=accept` と明示する（GNU make はコマンドライン変数を
@@ -330,7 +330,7 @@ engine リポ自身では既存節と同様にスキップ（`status.py:172-173`
 App.renderFrame（`App.flix:1271-`）で、本編 items + passes の items（`App.flix:1286` の
 itemsForGlyphs と同じ量）の長さが cap を超えたら**初回 1 回だけ** Log.warn（private・
 ~10 行）。headless の代表フレームに無い瞬間（Fx の最悪化・遷移スパイク・GIF でしか
-焼かない場面・renderPassImage 直呼びの pass）を実機側で拾う最後の網。
+生成しない場面・renderPassImage 直呼びの pass）を実機側で拾う最後の網。
 
 ### 4.6 7 つの問いへの答え
 
@@ -409,7 +409,7 @@ cap 2000 を超える場面（候補: rpg-starter terrainShot の粒）は caps.
 - **caps.tsv の濫用**: note の中身は機械が裁けない — cap=30000 と理由を書けば門は開く。
   BUDGET=accept と同格の「明示した迂回」で、git 差分に残ることだけが抑止
 - 動的な物を noteStaticItems へ意図的に渡す虚偽申告（sanity static≤total までしか裁けない）
-- GIF でしか焼かない場面・renderPassImage 直呼びの手動合成・headless に乗らないゲーム
+- GIF でしか生成しない場面・renderPassImage 直呼びの手動合成・headless に乗らないゲーム
   （view=None）— 実行時 warn のみ
 - シェーダー面の画素コスト・大きな polygon 1 枚のような「1 item の重さ」
 - Fx の最悪フレームが実機でも cap 未満に収まる範囲の悪化
@@ -420,7 +420,7 @@ cap 2000 を超える場面（候補: rpg-starter terrainShot の粒）は caps.
 
 | 順 | 実物 | 確かめ方 |
 |---|---|---|
-| 1 | `engine_tools/src/HeadlessRender.flix` の `writeItemStats` / `noteStaticItems` / Core 分離 | flix check 緑・焼くと `gallery/<場面>.items.tsv` が出る |
+| 1 | `engine_tools/src/HeadlessRender.flix` の `writeItemStats` / `noteStaticItems` / Core 分離 | flix check 緑・生成すると `gallery/<場面>.items.tsv` が出る |
 | 2 | `bin/check-render-budget.py`（`--gate` / `--brief`） | 下の「赤の実測」 |
 | 3 | `bin/reference-check.sh`（if/else で非 0 を伝播） | cap を下げると exit 2 で make が止まる |
 | 4 | `bin/reference-update.sh`（門を cp より前・ITEMS.tsv 生成） | race / tetris で基準を作成 |
@@ -432,7 +432,7 @@ cap 2000 を超える場面（候補: rpg-starter terrainShot の粒）は caps.
 `s4_over: 動的 564 個 ≥ 上限 100 個` で exit 2、make が停止（設計の唯一の急所だった
 「門が一度も閉まらない」配線が閉まることを実物で確認）。
 
-### 棚卸しの結果（全テンプレを焼いた）
+### 棚卸しの結果（全テンプレを生成した）
 
 | テンプレ | 結果 |
 |---|---|
@@ -441,10 +441,10 @@ cap 2000 を超える場面（候補: rpg-starter terrainShot の粒）は caps.
 | rpg-starter `terrain_grain` | 2398 個で赤 → **noteStaticItems で申告**（静的 2283 / 動的 115）。テンプレ側の実使用例も兼ねる |
 | race-starter `s1_drift` | 2218 個で赤 → **caps.tsv で cap=3000**（擬似 3D の道は毎フレーム形が変わり、タイル層にも静的層にも載らない） |
 
-基準（ITEMS.tsv）を焼いたのは **race-starter と tetris-starter だけ**。
+基準（ITEMS.tsv）を生成したのは **race-starter と tetris-starter だけ**。
 novel / platformer / rpg は**この作業と無関係に PNG のリファレンスが古い**
 （engine の絵まわりの変更は 08-14〜08-15、それらの SHA256SUMS.txt は 08-13 で止まっている）。
-`reference-update` を通すと未確認の画素の上に基準を焼き直すことになるので触っていない。
+`reference-update` を通すと未確認の画素の上に基準を作り直すことになるので触っていない。
 **先に人が絵を見て reference-update してから、ITEMS.tsv を作る。**
 硬い上限①は基準が無くても効くので、この間も検出器は生きている。
 
@@ -459,7 +459,7 @@ dq_map の `ENGINE` は Studio 同梱の engine（`/Applications/Flix GE Studio.
 
 ## 6. テンプレの box 列 → quad（2026-08-15）
 
-実機 View の 3 本を「焼いたアトラスから 1 コマ = 1 クアッド」へ移した。
+実機 View の 3 本を「生成したアトラスから 1 コマ = 1 クアッド」へ移した。
 描き出しスクリプト（各 `render/SceneRender.flix` のコンタクトシート）は box のまま —
 N が小さく毎フレームでもないので、そこは box が正しい。
 
@@ -470,7 +470,7 @@ N が小さく毎フレームでもないので、そこは box が正しい。
 | rpg-starter | 人と物の 2 枚目のアトラス（charAtlas / bakeCharAtlas / "chars"）・spriteAt・Main・headless 6 か所 | 7 場面中 6 枚が一致。**door.png だけ 12 画素**（下記） |
 
 配線は 4 か所で 1 組（新しいゲームもこの形で写す）:
-World が焼いて持つ → Main が `withSpriteAtlases` で GPU へ上げる → View が `drawQuad` で貼る →
+World が生成して持つ → Main が `withSpriteAtlases` で GPU へ上げる → View が `drawQuad` で貼る →
 headless が `PxSpriteAtlas.asImages` + `HeadlessRender.imagePngs` + `Render.drawWith(texInfo,…)` で
 同じ絵を PNG から貼る。アトラスの PNG は **debug/ に固定**して落とす（gallery/ に落とすと
 絵の顔ぶれを突き合わせる reference-check が「増えた絵」で落ちる）。

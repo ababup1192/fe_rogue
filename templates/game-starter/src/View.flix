@@ -55,9 +55,9 @@ mod View {
     /// PxShade で乗せている（走行中の負荷は増えない）。
     /// 立ち止まっていても少し上下する — 画面を完全に静止させないため。
     ///
-    /// 描くのは drawQuad（焼いたアトラスから 1 コマ = 1 クアッド）。画素ぶんの四角に開く
+    /// 描くのは drawQuad（作ったアトラスから 1 コマ = 1 クアッド）。画素ぶんの四角に開く
     /// PxSprite.draw もあるが、そちらは組む数が絵の大きさに比例するので、キャラが増えた
-    /// 瞬間に重くなる。焼く所と、なぜ焼くかは World.bakedOf。
+    /// 瞬間に重くなる。作る所と、なぜ作るかは World.bakedOf。
     def hero(w: World.World): List[Render.PlacedItem] =
         let box = World.heroBox(w);
         let bob = Sway.wave(w#t, 0.0, 1.7) * 1.5;

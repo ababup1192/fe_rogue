@@ -24,9 +24,9 @@ mod RenderFont {
     import java.io.File
     import java.nio.file.Files
 
-    /// 焼く字。フォントが持っている字のうち、焼くと決めた物だけ。
+    /// 用意する字。フォントが持っている字のうち、用意すると決めた物だけ。
     ///
-    /// `wanted` が None なら、そのフォントが持つ BMP の字を全部焼く。日本語フォントでは
+    /// `wanted` が None なら、そのフォントが持つ BMP の字を全部用意する。日本語フォントでは
     /// 数千〜2万字になり、1 字あたり約 2 ミリ秒かかるので起動が数十秒止まる。
     /// `wanted` を渡すと（project.json の `fonts[].charset`）その中の字だけになり、
     /// 見た目を 1 画素も変えずに 1 桁以上速くなる。
@@ -40,7 +40,7 @@ mod RenderFont {
         };
         candidates |> List.filter(cp -> STBTruetype.stbtt_FindGlyphIndex(fontInfo, cp) != 0)
 
-    /// 起動時に焼く字を決める。mode は project.json の `glyphs`（"used" / "all" / "auto"）。
+    /// 起動時に用意する字を決める。mode は project.json の `glyphs`（"used" / "all" / "auto"）。
     /// 環境変数 FLIX_GE_GLYPHS があればそちらが勝つ（作り替えずに試せるように）。
     /// None を返すと「フォントが持つ字を全部」の意味になる。
     pub def startupGlyphs(rootDir: String, mode: String): Option[Set[Int32]] \ IO =
@@ -49,12 +49,12 @@ mod RenderFont {
         match chosen {
             case "all"  => None
             case "auto" =>
-                println("[RenderFont] 起動時は焼かず、出た字から順に焼きます");
+                println("[RenderFont] 起動時は用意せず、出た字から順に用意します");
                 Some(Set.empty())
             case "used" => loadUsedGlyphs(rootDir)
             case other  =>
                 println("[RenderFont] glyphs に知らない値 '${other}' が指定されたので "
-                    + "'auto'（出た字から順に焼く）として扱います");
+                    + "'auto'（出た字から順に用意する）として扱います");
                 Some(Set.empty())
         }
 
@@ -67,8 +67,8 @@ mod RenderFont {
     /// ASCII は常に入れる。得点や残り時間のように、文字列として書かれていなくても
     /// 実行中に組み立てられて画面に出る字があるため。
     ///
-    /// 1 字も拾えなければ None を返す（＝フォントの字を全部焼く）。走査に失敗しても
-    /// 焼き直しが遅いだけで、字が消えることはない。
+    /// 1 字も拾えなければ None を返す（＝フォントの字を全部用意する）。走査に失敗しても
+    /// 用意し直しが遅いだけで、字が消えることはない。
     pub def loadUsedGlyphs(rootDir: String): Option[Set[Int32]] \ IO =
         try {
             let found = Ref.fresh(Static, Set.empty());
@@ -84,8 +84,8 @@ mod RenderFont {
     /// 説明書（.md）は読まない — 人に読ませる文で、ゲームが画面に出す物ではない。
     def textSuffixes(): List[String] = ".flix" :: ".json" :: ".txt" :: ".csv" :: Nil
 
-    /// 入らない場所。取り込んだライブラリ・ビルド成果物・焼いた絵・説明書には、
-    /// このゲームが画面に出さない字が大量に入っている（拾うと焼く量が跳ね上がる）。
+    /// 入らない場所。取り込んだライブラリ・ビルド成果物・生成した絵・説明書には、
+    /// このゲームが画面に出さない字が大量に入っている（拾うと用意する量が跳ね上がる）。
     def skipDirs(): List[String] =
         "lib" :: "build" :: "target" :: ".git" :: ".devbox" :: "node_modules"
             :: "docs" :: "debug" :: "gallery" :: "reference" :: Nil
@@ -120,7 +120,7 @@ mod RenderFont {
             let raw = Files.readString(file.toPath());
             // まるごと注釈の行は読まない。画面に出す文が「// で始まる行そのもの」に
             // なることはないので、落としても字は消えない。日本語で説明を書く流儀だと
-            // 注釈の字の方が多く、拾うと焼く量が倍増する。
+            // 注釈の字の方が多く、拾うと用意する量が倍増する。
             let text = if (String.endsWith({ suffix = ".flix" }, file.getName()))
                            String.lines(raw)
                                |> List.filter(line -> not String.startsWith({ prefix = "//" }, String.trimLeft(line)))
@@ -128,7 +128,7 @@ mod RenderFont {
                        else raw;
             let cps = text |> String.toList |> List.filterMap(ch -> {
                 let cp = Char.toBmpCodePoint(ch);
-                // 空白と制御文字は焼く意味が無い。ASCII は後でまとめて足す。
+                // 空白と制御文字は用意する意味が無い。ASCII は後でまとめて足す。
                 if (cp <= 0x7F) None else Some(Int32.bitwiseAnd(cp, 0xFFFF))
             });
             Ref.put(Set.union(Ref.get(found), List.toSet(cps)), found)
@@ -237,11 +237,11 @@ mod RenderFont {
         { xOff = 0.0, yOff = 0.0, glyphW = 0.0, glyphH = 0.0,
           advance = advance, s0 = 0.0, t0 = 0.0, s1 = 0.0, t1 = 0.0 }
 
-    /// 焼き方のバージョン。SDF の詰め方・padding・oversample・焼く字の選び方を変えたら 1 つ上げる。
-    /// 上げないと、前の焼き方で取っておいた物をそのまま読んでしまう。
+    /// 作り方のバージョン。SDF の詰め方・padding・oversample・用意する字の選び方を変えたら 1 つ上げる。
+    /// 上げないと、前の作り方で取っておいた物をそのまま読んでしまう。
     pub def bakeVersion(): Int32 = 1
 
-    /// 距離場の焼き方。起動時にまとめて焼く道と、あとから 1 字ずつ足す道
+    /// 距離場の作り方。起動時にまとめて用意する道と、あとから 1 字ずつ足す道
     /// （RenderGlyphGrow）が同じ見た目になるよう、決め事はここ 1 か所だけに置く。
     ///
     /// oversample: 距離場を焼きサイズの倍率ぶん高い解像度でラスタ化する。集 のように横線が
@@ -253,8 +253,8 @@ mod RenderFont {
     pub def onedge(): Int8 = 127i8
     pub def pixDist(): Float32 = RenderUtil.f32(127.0 / 5.0)
 
-    /// 1 字ぶんの寸法と切り出し位置。距離場を焼いた結果（画素の大きさ・はみ出し量・送り幅）と
-    /// 置いた場所から組む。**起動時の焼きと焼き足しで同じ式を使う** — ずれると、
+    /// 1 字ぶんの寸法と切り出し位置。距離場を作った結果（画素の大きさ・はみ出し量・送り幅）と
+    /// 置いた場所から組む。**起動時に用意するときと後から足すときで同じ式を使う** — ずれると、
     /// あとから足した字だけ位置がおかしい、という気付きにくい壊れ方をする。
     pub def glyphMetricsOf(place: { px = Int32, py = Int32, gw = Int32, gh = Int32 },
                            shape: { xoff = Int32, yoff = Int32, advance = Float64 },
@@ -316,7 +316,7 @@ mod RenderFont {
         let fontInfo = STBTTFontinfo.malloc();
         discard STBTruetype.stbtt_InitFont(fontInfo, fontBuffer);
 
-        // 焼き方の決め事は共有（焼き足しと同じ見た目にするため）。
+        // 作り方の決め事は共有（後から足すときと同じ見た目にするため）。
         let oversample = oversample();
         let padding = padding();
         let onedge = onedge();
@@ -462,7 +462,7 @@ mod RenderFont {
 
     /// 全 FontEntry をベイクし、(名前→FontAtlas) と更新済み TextureRegistry を返す。
     /// onProgress には「フォント名・焼き終えた字数・全字数」を渡す。
-    /// wanted は「このゲームが出しうる字」。None なら各フォントが持つ字を全部焼く。
+    /// wanted は「このゲームが出しうる字」。None なら各フォントが持つ字を全部用意する。
     pub def bakeFontAtlases(manifest: List[RenderAsset.FontEntry],
                             registry: RenderAsset.TextureRegistry,
                             wanted: Option[Set[Int32]],

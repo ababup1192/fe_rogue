@@ -31,7 +31,7 @@ def main(): Unit \ IO =
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 // 会話窓・本文・エラーバナーは withHudView — world 側の z に隠されない。
                 |> App.withHudView((ctx, w) -> checked_ecast(View.hud(ctx, w)))
-                // ドット絵を焼いた 1 枚を GPU へ上げる（View はこの名前で 1 コマ 1 クアッドを貼る）。
+                // ドット絵を作った 1 枚を GPU へ上げる（View はこの名前で 1 コマ 1 クアッドを貼る）。
                 // 鍵が同じ間は上げ直さないので、毎フレームの費用はゼロ。
                 |> App.withSpriteAtlases(w ->
                     { texture = World.atlasName(), key = w#atlasKey, baked = w#atlas } :: Nil)

@@ -1,9 +1,9 @@
 // RenderFontCache — 焼き上がったフォントアトラスをディスクに取っておき、次の起動で読むだけにする。
 //
 // 日本語フォントは 1 本で数千字あり、全部を距離場にするのに十数秒かかる。焼き上がりは
-// 同じ TTF・同じ大きさ・同じ焼き方なら毎回まったく同じなので、1 度焼いたら取っておけばよい。
+// 同じ TTF・同じ大きさ・同じ作り方なら毎回まったく同じなので、1 度作ったら取っておけばよい。
 //
-// **読めないときは黙って焼き直す。** 取っておいた物が壊れていても・古くても・書き込めなくても、
+// **読めないときは黙って作り直す。** 取っておいた物が壊れていても・古くても・書き込めなくても、
 // 起動が止まることは無い（遅くなるだけ）。
 mod RenderFontCache {
     import org.lwjgl.BufferUtils
@@ -38,16 +38,16 @@ mod RenderFontCache {
         else if (not Object.isNull(custom)) custom
         else "${System.getProperty("user.home")}/.cache/flix_game_engine/font"
 
-    /// FLIX_GE_NO_FONT_CACHE=1 で取っておくのをやめる（焼き直しを確かめたいとき）。
+    /// FLIX_GE_NO_FONT_CACHE=1 で取っておくのをやめる（作り直しを確かめたいとき）。
     pub def enabled(): Bool \ IO =
         let value = System.getenv("FLIX_GE_NO_FONT_CACHE");
         Object.isNull(value) or value == "0"
 
-    /// 取ってあれば読み、無ければ焼いて取っておく。
+    /// 取ってあれば読み、無ければ生成して取っておく。
     pub def loadOrBake(entry: RenderAsset.FontEntry, wanted: Option[Set[Int32]],
                        onGlyph: (Int32, Int32) -> Unit \ IO): RenderFont.BakedFont \ IO =
         let fontBytes = readAllBytes(entry#path);
-        // 焼く字も鍵に混ぜる。混ぜないと、文言を足したのに前の焼き上がりを読んでしまい、
+        // 用意する字も鍵に混ぜる。混ぜないと、文言を足したのに前に生成した物を読んでしまい、
         // 足したはずの字が出ないまま気付けない。
         let key = keyOf(fontBytes, entry#fontSize, wanted);
         let useCache = enabled();
@@ -62,7 +62,7 @@ mod RenderFontCache {
                 baked
         }
 
-    /// TTF の中身・焼く大きさ・焼き方のバージョンから決まる見分けの印。ファイルの置き場所は含めない —
+    /// TTF の中身・用意する大きさ・作り方のバージョンから決まる見分けの印。ファイルの置き場所は含めない —
     /// 同じ字形なら、どこに置いてあっても同じ物を使い回せる。
     /// 中身から作るので、起動のたびに TTF を読み直して数え直す手間はかかる（10MB 級で数十 ms）。
     pub def keyOf(fontBytes: Array[Int8, Static], fontSize: Float64,
@@ -89,7 +89,7 @@ mod RenderFontCache {
     def sanitize(s: String): String =
         s |> String.map(c -> if (Char.isLetter(c) or Char.isDigit(c)) c else 'x')
 
-    /// 読めたら Some。無い・壊れている・食い違うときは None（そのまま焼き直せばよい）。
+    /// 読めたら Some。無い・壊れている・食い違うときは None（そのまま作り直せばよい）。
     pub def load(key: String, entry: RenderAsset.FontEntry): Option[RenderFont.BakedFont] \ IO =
         try {
             let path = pathOf(key);
@@ -221,7 +221,7 @@ mod RenderFontCache {
         crc.update(bytes);
         crc.getValue()
 
-    /// 同じフォントの、前の焼く大きさ・前の焼き方でできたファイルを片付ける。
+    /// 同じフォントの、前の大きさ・前の作り方でできたファイルを片付ける。
     /// アトラス 1 枚は最大 64MB あり、project.json の大きさをいじるたびに積み上がると
     /// すぐ数百 MB になる。今しがた置いた物だけを残す。
     def dropStaleSiblings(key: String, keep: String): Unit \ IO =

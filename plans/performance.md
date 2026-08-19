@@ -290,7 +290,7 @@ O(N log N) の倍率 2.3 から閾値 3.0 までの余裕（3 割）より**ノ�
 
 - 置き場所は `bench/hotspots` の新設に戻る（決定的でないのでテストには置けない）
 - `make bench-hotspots` を **`sync-engine-full` に依存させる**。
-  `bench/*/lib/` は焼いて配った copy なので、sync を忘れると**直す前と同じコードを測る**
+  `bench/*/lib/` は生成して配った copy なので、sync を忘れると**直す前と同じコードを測る**
 - 日数が **+0.25〜0.5 日**（パッケージ・Makefile ターゲット・`RESULTS.md` の新設ぶん）
 
 ### 測る対象は pub の入口へ読み替える

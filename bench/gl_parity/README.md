@@ -1,7 +1,7 @@
 # gl_parity — GL と SoftRaster の突き合わせ harness
 
 同じ描画指定（`Render.PlacedItem` の列）を GL（実機の絵）と SoftRaster（bake・スナップショットの絵）の
-両方で 1 コマ焼き、画素を機械で突き合わせる。スナップショットは作らない — 基準は「もう片方の経路」。
+両方で 1 コマ描き出し、画素を機械で突き合わせる。スナップショットは作らない — 基準は「もう片方の経路」。
 
 ## 回し方
 
@@ -10,7 +10,7 @@ make gl-parity            # リポジトリのルートから
 make -C bench/gl_parity run   # ここから直接でも同じ
 ```
 
-- 隠しウィンドウ（`FLIX_GE_HIDDEN=1`）で GL を焼くので画面には何も出ない。
+- 隠しウィンドウ（`FLIX_GE_HIDDEN=1`）で GL に描き出すので画面には何も出ない。
   ウィンドウを見たいときは `FLIX_GE_HIDDEN` を立てずに `../../bin/flix run`。
 - 結果は 1 行 1 scene の表（`[parity] <scene> <段階> <一致 or 差>`）。
   A 段階（バイト一致を保証する層）に不一致があると exit 1。

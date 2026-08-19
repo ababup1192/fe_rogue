@@ -44,7 +44,7 @@ mod World {
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
-        // ドット絵を 1 枚に焼いたアトラスと、その画素から導いた鍵（下の bakedOf を参照）。
+        // ドット絵を 1 枚にまとめたアトラスと、その画素から導いた鍵（下の bakedOf を参照）。
         atlas = PxSpriteAtlas.Baked,
         atlasKey = String,
         t = Float64,
@@ -69,12 +69,12 @@ mod World {
     /// この名前で待ち合わせる）。
     pub def atlasName(): String = "px"
 
-    /// ドット絵を 1 枚のアトラスに焼き、GPU キャッシュ用の鍵と対で返す。
+    /// ドット絵を 1 枚のアトラスにまとめ、GPU キャッシュ用の鍵と対で返す。
     ///
-    /// **なぜ焼くか**: 画面に出すとき 1 コマ = 1 クアッドで貼れる（PxSprite.drawQuad）。
-    /// 焼かずに描く PxSprite.draw は 1 コマを画素ぶんの四角に開くので、額縁 1 枚でも
+    /// **なぜまとめるか**: 画面に出すとき 1 コマ = 1 クアッドで貼れる（PxSprite.drawQuad）。
+    /// まとめずに描く PxSprite.draw は 1 コマを画素ぶんの四角に開くので、額縁 1 枚でも
     /// 毎フレーム百個規模の四角を組み直すことになる（予算と検査は engine の
-    /// docs/performance.md §9）。焼くのは読み込みの 1 回だけ。
+    /// docs/performance.md §9）。まとめるのは読み込みの 1 回だけ。
     ///
     /// **なぜ鍵に画素のハッシュを混ぜるか**: Doc や色票を保存し直して絵が変わったとき、
     /// 鍵が同じままだと GPU に古いテクスチャが残って画面が更新されない。
@@ -204,8 +204,8 @@ mod World {
 
     pub def withKind(kind: KindDoc.Doc, w: World): World = { kind = kind | w }
 
-    /// 色か絵が変わったら、アトラスも焼き直す（色は絵の中の意味色キーを解く材料なので、
-    /// テーマだけ替えても焼いた画素は変わる）。
+    /// 色か絵が変わったら、アトラスも作り直す（色は絵の中の意味色キーを解く材料なので、
+    /// テーマだけ替えても作った画素は変わる）。
     pub def withTheme(theme: ThemeDoc.Doc, w: World): World =
         let (baked, key) = bakedOf(theme, w#sprites);
         { theme = theme, atlas = baked, atlasKey = key | w }

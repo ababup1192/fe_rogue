@@ -1,4 +1,4 @@
-// RenderManifest（焼いた 1 枚の目録）— 未宣言が id で出ること・申告であることの断りが必ず
+// RenderManifest（生成した 1 枚の目録）— 未宣言が id で出ること・申告であることの断りが必ず
 // 載ること・下地の色がトップレベルに出ること・写し方によって変わるのは world の長さと
 // FirstPerson の 3 欄だけであること。
 mod TestRenderManifest {

@@ -10,7 +10,7 @@
     "windowScale":   { "kind": "field", "type": "int", "label": "ウィンドウの拡大率（等倍 = 1。ドットの粗さが変わる）", "group": "題と画面", "order": 6, "min": 1, "max": 8, "default": 2 },
 
     "maxDeltaTime":  { "kind": "field", "type": "float", "label": "1 フレームで進める秒の上限（重いときにすり抜けないための天井）", "group": "動きと文字", "order": 10, "min": 0.01, "max": 0.5, "default": 0.05 },
-    "glyphs":        { "kind": "field", "type": "text", "label": "起動時に焼く字（auto=出た字から / used=ソースとアセットの字を先に / all=全字）", "group": "動きと文字", "order": 11, "default": "auto" },
+    "glyphs":        { "kind": "field", "type": "text", "label": "起動時に用意する字（auto=出た字から / used=ソースとアセットの字を先に / all=全字）", "group": "動きと文字", "order": 11, "default": "auto" },
 
     "clearColor": {
       "kind": "record",
@@ -30,7 +30,7 @@
       "fields": {
         "name":     { "type": "text",  "label": "コードから呼ぶ名前（default が既定のフォント）", "order": 1, "required": true },
         "path":     { "type": "text",  "label": "ファイルの場所（assets/ からの相対）", "order": 2, "required": true },
-        "fontSize": { "type": "float", "label": "焼く大きさ（大きいほど拡大に強い・起動は遅い）", "order": 3, "min": 8, "max": 200, "default": 60 }
+        "fontSize": { "type": "float", "label": "用意する大きさ（大きいほど拡大に強い・起動は遅い）", "order": 3, "min": 8, "max": 200, "default": 60 }
       }
     },
 

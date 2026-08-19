@@ -104,7 +104,7 @@
   `pub def viewCtxOf(atlas: FontAtlas, design: Vec2.Vec2): ViewCtx`
 - viewCtxOf の複数フォント版。fontOf には実機と同じ名前で引ける関数を渡す
   `pub def viewCtxOfFonts(atlas: FontAtlas, fontOf: String -> FontAtlas, design: Vec2.Vec2): ViewCtx`
-- 焼いたドット絵アトラス 1 枚ぶんの受け渡し。
+- 生成したドット絵アトラス 1 枚ぶんの受け渡し。
   `pub type alias AtlasUpload = { texture = String, key = String, baked = PxSpriteAtlas.Baked }`
 - ゲーム 1 本の宣言。make で空を作り、addStartup / addSystem / reloadOn / withView /
   `pub type alias App[w: Type, ef: Eff] = { init = Vec2.Vec2 -> w \ ef, startupSystems = List[w -> w \ ef], updateSystems = List[(Frame, w) -> w \ ef], reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], watch = List[(String, w -> w \ {Fs.FileRead})], view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef], passes = w -> List[Render.Pass] \ ef, fonts = List[String], camera = Option[w -> Vec2.Vec2 \ ef], zoom = Option[w -> Float64 \ ef], cameraBounds = Option[w -> Rect2.Rect2 \ ef], parallaxLayers = List[(Float64, (ViewCtx, w) -> List[Render.PlacedItem] \ ef)], hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef], audio = { before = w, after = w } -> List[String] \ ef, sustained = w -> List[Sustain] \ ef, quit = (Frame, w) -> Bool \ ef, debug = Bool, debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)], worldDump = Option[(Rect2.Rect2, w) -> String \ ef], staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }], tileLayers = Option[w -> List[TileLayerSpec]], spriteAtlases = w -> List[AtlasUpload], pixelSnap = w -> Float64, statusLine = Option[w -> String \ ef], remoteRender = Option[Unit -> List[String] \ IO], remoteHandlers = List[(String, (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead})], fixedStep = Option[Float64] }`
@@ -130,9 +130,9 @@
   `pub def game(spec: { init = w, update = (Frame, w) -> w \ ef, view = (ViewCtx, w) -> List[Render.PlacedItem] \ ef, reloads = List[(String, w -> w \ {Fs.FileRead})] }): App[w, ef]`
 - カメラを何 px の升目に吸着させるかを World から読む（ドット絵のゲームは 1.0・0 で切る）。
   `pub def withPixelSnap(f: w -> Float64, app: App[w, ef]): App[w, ef]`
-- ドット絵のアトラス（PxSpriteAtlas.bake の焼き上がり）を、名前付きテクスチャとして
+- ドット絵のアトラス（PxSpriteAtlas.bake の生成結果）を、名前付きテクスチャとして
   `pub def withSpriteAtlases(f: w -> List[AtlasUpload], app: App[w, ef]): App[w, ef]`
-- 「1 度だけ GPU に焼いて使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
+- 「1 度だけ GPU に生成して使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
   `pub def withStaticLayer(key: w -> GameEngine.StaticKey, build: w -> List[Render.PlacedItem], app: App[w, ef]): App[w, ef]`
 - タイルの層（床・壁 1 行目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
   `pub def withTileLayers(f: w -> List[TileLayerSpec], app: App[w, ef]): App[w, ef]`
@@ -214,9 +214,9 @@
   `pub def applyReload(app: App[w, ef], frame: Frame, world: w): (w, Bool) \ {Fs.FileRead}`
 - RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
   `pub def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w, toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef): List[Render.PlacedItem] \ (ef + GameEngine.Game)`
-- タイル層の GPU 焼きの持ち回し。ループが引数で持ち回す。
+- タイル層の GPU 生成結果の持ち回し。ループが引数で持ち回す。
   `pub type alias TileCache =`
-- まだ何も焼いていない起動時の持ち回し。
+- まだ何も生成していない起動時の持ち回し。
   `pub def freshTileCache(): TileCache`
 - `pub def bumpTileGen(fired: Bool, cache: TileCache): TileCache`
 - スロットに取ってある生成結果を引く。生成した時点の世代と key が今と一致した時だけ使い回せる。
@@ -494,7 +494,7 @@
   `pub def unnamedRow(path: String, reload: w -> w \ {Fs.FileRead}): Entry[w]`
 - 保存を検知しても読み直さない。読み直すと今の表示が壊れる Doc に使う
   `pub def withoutWatch(e: Entry[w]): Entry[w]`
-- F1 の一括では読み直さない。別の行の読み直しが巻き添えで焼き直す Doc に使う
+- F1 の一括では読み直さない。別の行の読み直しが巻き添えで作り直す Doc に使う
   `pub def withoutReloadAll(e: Entry[w]): Entry[w]`
 - 表示中を名乗る条件。場面によって画面から消える Doc に使う
   `pub def withActiveWhen(pred: w -> Bool, e: Entry[w]): Entry[w]`
@@ -857,9 +857,9 @@
 ## Light — `engine_world/src/Light.flix`
 - 簡易2D光源1個の値。at=位置、radius=光の届く目安半径、color=光の色、
   `pub type alias Light = { at = Vec2.Vec2, radius = Float64, color = Color, halo = Float64 }`
-- RadialGlow で焼いた既定テクスチャの参照一式。sprite 名・元 px サイズ・穴の広さは
+- RadialGlow で生成した既定テクスチャの参照一式。sprite 名・元 px サイズ・穴の広さは
   `pub type alias GlowAssets = { maskSprite = String, maskSourceSize = Float64, maskHoleFrac = Float64, haloSprite = String, haloSourceSize = Float64 }`
-- RadialGlow の既定値で焼いたときの GlowAssets（sprite名は描き出し側の慣習
+- RadialGlow の既定値で生成したときの GlowAssets（sprite名は描き出し側の慣習
   `pub def defaultGlowAssets(): GlowAssets`
 - シーン全体の光源設定（items の唯一の入口）。lights は 0〜N 個、occluders は
   `pub type alias SceneLightConfig = { lights = List[Light], occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2, glow = GlowAssets, darkness = Float64, z = Int32, rimWidth = Float64, rimStrength = Float64, haloDiameterFactor = Float64 }`
@@ -867,7 +867,7 @@
   `pub def defaultHaloDiameterFactor(): Float64`
 - シーンの光源一式を絵にする唯一の入口。lights が
   `pub def items(cfg: SceneLightConfig): List[Render.PlacedItem]`
-- singleLightItems の設定。maskSprite/haloSprite は RadialGlow で焼いたテクスチャ名、
+- singleLightItems の設定。maskSprite/haloSprite は RadialGlow で生成したテクスチャ名、
   `pub type alias SingleLightConfig = { light = Light, viewport = Vec2.Vec2, maskSprite = String, maskSourceSize = Float64, maskHoleFrac = Float64, haloSprite = String, haloSourceSize = Float64, darkness = Float64, z = Int32 }`
 - 単一光源の真の穴あき描画。中心の穴あきオーバーレイ（Multiply, maskSprite）を「穴の実寸半径が
   `pub def singleLightItems(cfg: SingleLightConfig): List[Render.PlacedItem]`

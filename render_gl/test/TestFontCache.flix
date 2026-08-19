@@ -65,7 +65,7 @@ mod TestFontCache {
                 Assert.assertTrue(same)
         }
 
-    /// 中身が壊れていたら「無かったこと」にする（焼き直せば済むので、起動は止めない）。
+    /// 中身が壊れていたら「無かったこと」にする（作り直せば済むので、起動は止めない）。
     @Test
     def testCorruptedPixelsAreRejected(): Unit \ IO + Assert =
         useScratchDir();
@@ -110,7 +110,7 @@ mod TestFontCache {
         // 別のフォントのキャッシュは巻き込まない。
         Assert.assertEq(expected = true, exists(otherFont))
 
-    /// 焼く字の一覧を書き換えたら、前の焼き上がりを読み直さない。
+    /// 用意する字の一覧を書き換えたら、前に生成した物を読み直さない。
     /// 読んでしまうと、足したはずの字が出ないまま気付けない。
     @Test
     def testCharsetChangeChangesKey(): Unit \ IO + Assert =
@@ -120,11 +120,11 @@ mod TestFontCache {
         let all = RenderFontCache.keyOf(bytes, 12.0, None);
         Assert.assertEq(expected = false, a == b);
         Assert.assertEq(expected = false, a == all);
-        // 同じ一覧なら同じ印（毎回焼き直しにならない）。
+        // 同じ一覧なら同じ印（毎回作り直しにならない）。
         Assert.assertEq(expected = a, RenderFontCache.keyOf(bytes, 12.0, Some(Set#{0x3044, 0x3042})))
 
     /// 走査は、そのゲームが出しうる字を拾い、取り込んだライブラリやビルド成果物には入らない。
-    /// 入ると、このゲームが出さない字まで焼いて起動が遅くなる。
+    /// 入ると、このゲームが出さない字まで用意して起動が遅くなる。
     @Test
     def testHarvestReadsProjectTextButNotLibs(): Unit \ IO + Assert =
         let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_used_glyphs_test";
@@ -146,7 +146,7 @@ mod TestFontCache {
                 Assert.assertEq(expected = true, Set.memberOf(0x30, cps))
         }
 
-    /// 何も拾えない場所なら None（＝フォントの字を全部焼く）にする。
+    /// 何も拾えない場所なら None（＝フォントの字を全部用意する）にする。
     @Test
     def testHarvestFallsBackWhenNothingFound(): Unit \ IO + Assert =
         let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_used_glyphs_empty";

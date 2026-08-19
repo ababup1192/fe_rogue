@@ -136,7 +136,7 @@ Rust は 0 行（`main.rs:357` は `EDITOR_ENGINE` を渡すだけ）。web も 
 
 1. `make stage-engine` の実時間（秒）。仮説 167 秒 → 10 秒未満。
    5 秒を切らないなら次の支配項（`chmod -R u+w`・`cp -R agents-pack`・`check-refs`）を測ってから続ける
-2. **バンドルの決定性** — 汚れた作業ツリーと clean clone の 2 条件で焼いた
+2. **バンドルの決定性** — 汚れた作業ツリーと clean clone の 2 条件で生成した
    `<stage>/templates` の `find -type f | sort | shasum` が一致するか。
    **一致 = 症状 2 が消えた証拠**で、時間より重要
 3. `.app` の中から新しいゲームを 1 本産む所要時間と成果物サイズ。
@@ -210,7 +210,7 @@ A2 の手作業は `server/flix.toml` の 1 行 + lib 入れ替え + stage + swa
 ## この形は一般化すべき（シミュレーションの結論）
 
 templates で正しいことは、バンドル全体でも正しい。
-S2 を「**templates の一覧を焼く**」で止めず「**バンドル一式の一覧を焼く**」まで広げれば、
+S2 を「**templates の一覧を生成する**」で止めず「**バンドル一式の一覧を生成する**」まで広げれば、
 C2〜C5 が同時に消える。
 
 - engine が「配る物の定義」を持つ（= 案 C を全面適用）。判定は git + 明示規則、出力はリテラルの一覧
@@ -250,7 +250,7 @@ skills が無事だったのは「ディレクトリ丸ごとだから」では�
 | 物 | 却下理由 |
 |---|---|
 | `bundle.json` | バンドル全体を宣言できない。`bin/flix.jar`（nix 由来）・`bin/flix`（**Studio 由来**）・`engine_full.fpkg`（生成物）・`lib/cache`（Studio 由来）・版付きパスは、いずれも ENGINE の git に存在しない |
-| `BUNDLE.txt` | 「焼き直す手順」を AI に作る。検査が赤くなったとき、AI は高確率で**一覧を手で編集して緑にする**。嘘をつく口を開けるのと同じ |
+| `BUNDLE.txt` | 「作り直す手順」を AI に作る。検査が赤くなったとき、AI は高確率で**一覧を手で編集して緑にする**。嘘をつく口を開けるのと同じ |
 | `templates/MANIFEST` | 読む側が 1 つしかないなら、それは MANIFEST ではない |
 | I2（`git ls-files templates` ⊆ 宣言） | 運搬が `git ls-files templates` そのもの。自分自身との比較でトートロジー |
 | I4 / I5 | 対象が消えた / ⊇ にしか書けず `BUNDLE_REQUIRED` と役割が重複 |
@@ -280,7 +280,7 @@ ENGINE が Studio の配置規約を知ることになり依存が双方向に�
 
 | 経路 | 使う | 理由 |
 |---|---|---|
-| stage（.app を焼く） | **`-c`（追跡のみ）** | 再現性。`.git/info/exclude` のマシン依存も、未追跡の混入も原理ごと消える |
+| stage（.app を作る） | **`-c`（追跡のみ）** | 再現性。`.git/info/exclude` のマシン依存も、未追跡の混入も原理ごと消える |
 | new-game（人がゲームを産む） | **`-co --exclude-standard`** | テンプレを編集中の AI が未コミットの `.flix` を書いた直後に産むと、`-c` では黙って消える |
 
 現在 Studio に入っているスパイクは `-co` なので、**`-c` へ直す**。
@@ -413,7 +413,7 @@ templates 全体      499,851 ファイル / 2.1GB
 
 `.github/workflows/release.yml:52-56, 131` は engine を `actions/checkout` で clean clone し
 `ENGINE="$PWD/engine_repo"` で `make app` する。clean clone に `build/` も未追跡 PNG も無い。
-**出荷される .app は既に 288 ファイルで決定的。** 汚れているのは手元で焼いた .app だけ。
+**出荷される .app は既に 288 ファイルで決定的。** 汚れているのは手元で作った .app だけ。
 
 ## 症状 1（533MB）も既定経路では起きない
 
@@ -433,7 +433,7 @@ Studio の同梱まわりのコミット 12 本は**すべて「運搬が痩せ�
    `.app` から産んだゲームが JDK の無い Mac で動かなくなる。4 本の検査は全部緑
 2. **`.SHELLFLAGS` は CI で効かない。** GNU Make 3.82 以降の機能で、macos-latest の
    `/usr/bin/make` は **3.81**。手元 devbox（4.4.1）では fail-closed、
-   **リリースを焼く CI では fail-open** という最悪の組み合わせ
+   **リリースを作る CI では fail-open** という最悪の組み合わせ
 3. **pathspec の打ち間違いは pipefail でも静か。** `git ls-files -c nosuchdir` は
    終了コード 0・出力ゼロ・メッセージ無し。一時ファイル + **件数の下限検査**でしか止まらない
 4. **`BUNDLE_REQUIRED` の導出化は検査を痩せさせる。** 実測で 44 のうち **14 件が落ち**

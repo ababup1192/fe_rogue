@@ -124,7 +124,7 @@ mod FxDoc {
 
     /// パレット付きの parse。emitter の color に "@名前" と書くと palette から解決する
     /// （ui.json の色方言と同一 — UiDoc.colorOf に一本化）。テーマ切替は「palette を
-    /// 差し替えて parse し直す」だけ（Spec は pure data なので焼き直しが安い）。
+    /// 差し替えて parse し直す」だけ（Spec は pure data なので作り直しが安い）。
     pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(top) => forM (

@@ -13,7 +13,7 @@ mod TownMap {
     pub def origin(): Vec2.Vec2 = { x = 0.0, y = 0.0 }
 
     /// 盤とアトラスからタイル層の宣言を組む。key は素の名前だけ — 盤・色票・sprite の
-    /// Doc を読み直したとき（保存・F1）はエンジンが世代で自動的に焼き直すので、
+    /// Doc を読み直したとき（保存・F1）はエンジンが世代で自動的に作り直すので、
     /// 中身のハッシュやアトラスの key を織り込む必要はない。
     pub def spec(doc: TownMapDoc.Doc, baked: PxSpriteAtlas.Baked): TileLayerSpec =
         { key = "floor",

@@ -80,7 +80,7 @@ skill への「Float32 は慎重に」という追記は不要**。むしろ既�
 |---|---|---|
 | 0 | `bin/lint-f32.py` + `make lint-f32` 配線。この時点では違反 26 件を全部 EXEMPT に入れて緑 | 0.5 |
 | 1 | **alpha 群を縦に貫く** — engine 8 宣言 / `engine_world` の `Render.flix` 10 箇所 + `UiWidget` + `UiShape` + `UiStore` + `UiDoc` / `render_gl` の `Frame`・`Sprite`・**`Render.flix:23`** / `engine_tools` の `SoftRaster.lerp3` 分割 / **`editor_server`（23 件）** / **`bench/gl_parity` + `bench/sprite_stress`（14 件）** / templates 6 本の 51 箇所 | 3 |
-| 2 | 段階 1 で割れた reference の焼き直しと目視（本命は race-starter） | 0.5 |
+| 2 | 段階 1 で割れた reference の作り直しと目視（本命は race-starter） | 0.5 |
 | 3 | **音を縦に貫く** — `Sustain` / `Audio.setVolume,setPitch,setMasterVolume`（eff の op）/ `AudioStreamPlayer` / `LwjglLayer` の `Float32.max` クランプ / templates 4 箇所 | 1 |
 | 4 | シーングラフ `setAlpha` 群（`Rect` / `Arc` / `Polygon` / `drawable/Sprite`） | 0.5 |
 | 5 | lint の EXEMPT を `Color` 関連だけに絞り、pre-commit へ配線 | 0.5 |

@@ -334,7 +334,7 @@ mod RenderSprite {
         vbo
 
     /// 既存のインスタンス VBO へ中身を入れ直す（glBufferData の作り直し —
-    /// 古い領域はドライバが回収する）。焼き直しの多いタイル層が VBO を積み増さないための関数。
+    /// 古い領域はドライバが回収する）。作り直しの多いタイル層が VBO を積み増さないための関数。
     pub def uploadTileInstances(vbo: Int32, instances: List[RenderType.TileInstance]): Unit \ IO =
         let f32 = RenderUtil.f32;
         let count = List.length(instances);
@@ -437,7 +437,7 @@ mod RenderSprite {
     /// projection は起動時に setProjectionMatrix 済みの前提（program ごとに1回）。
     /// texBinds が非空なら各 unit へテクスチャ + sampler を bind し、描画後は使った全 unit
     ///（unit 0 含む）の sampler を解除して unit 0 へ戻す — unit 0 は sprite / tile / static /
-    /// font が glActiveTexture を触らず共用するため、残すとフォント焼き直しやアトラス
+    /// font が glActiveTexture を触らず共用するため、残すとフォント作り直しやアトラス
     /// 差し替えが別 unit へ上がる事故になる。
     pub def drawShaderSurface(program: Int32, vao: Int32,
                               uRectPos: Int32, uRectSize: Int32, uTime: Int32,
@@ -502,7 +502,7 @@ mod RenderSprite {
             drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, texBinds, texSampler,
                               rect, time, blend)
         else {
-            // 1) mask を stencil に焼く（色は書かず内側を 1 に）。この面ぶんだけ使うので毎回 clear。
+            // 1) mask を stencil に描き込む（色は書かず内側を 1 に）。この面ぶんだけ使うので毎回 clear。
             GL11.glEnable(GL11.GL_STENCIL_TEST);
             GL11.glStencilMask(255i32);
             GL11.glClearStencil(0);
@@ -628,7 +628,7 @@ mod RenderSprite {
         GL30.glBindVertexArray(0)
 
     /// スプライト 1 体を maskPolys（スクリーン px の多角形）の内側だけに抜いて描く。
-    /// 手順は drawShaderSurfaceMasked と同じステンシル流用: mask を焼く（色は書かない）→
+    /// 手順は drawShaderSurfaceMasked と同じステンシル流用: mask を描き込む（色は書かない）→
     /// EQUAL テスト付きで instance 1 体だけ描く → 後始末。instData には slot 0 に
     /// 1 体ぶんが書き込み済みの前提（RenderFrame が writeInstAt で書く）。
     /// mask が退化（頂点 3 未満）ならステンシルを触らずそのまま 1 体描く。
@@ -643,7 +643,7 @@ mod RenderSprite {
             drawSpriteInstancedBuf(shader, vao, instanceVbo, texId, multiplyBlendLoc, blend,
                                    instData, 1)
         else {
-            // 1) mask を stencil に焼く（色は書かず内側を 1 に）。この 1 体ぶんだけ使うので毎回 clear。
+            // 1) mask を stencil に描き込む（色は書かず内側を 1 に）。この 1 体ぶんだけ使うので毎回 clear。
             GL11.glEnable(GL11.GL_STENCIL_TEST);
             GL11.glStencilMask(255i32);
             GL11.glClearStencil(0);

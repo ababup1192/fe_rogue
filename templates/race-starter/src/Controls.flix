@@ -118,7 +118,7 @@ mod Controls {
     ///
     /// fx 5 本はどれを保存しても reloadFx（5 本まとめ読み）— 1 本ずつ差し替えるほど
     /// 数が多くないので、配管を 1 種類に保つ。F1 では reloadTheme が同じ物を
-    /// 焼き直すので withoutReloadAll（一括で 5 回読み直さない）。
+    /// 作り直すので withoutReloadAll（一括で 5 回読み直さない）。
     pub def docTable(): List[DocTable.Entry[World.World]] =
         DocTable.row("rules",   RulesDoc.path(),     reloadRules)
             :: DocTable.row("rivals",  RivalsDoc.path(),    reloadRivals)

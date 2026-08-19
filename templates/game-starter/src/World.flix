@@ -12,7 +12,7 @@ mod World {
         keys = KeysDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
-        // ドット絵を 1 枚に焼いたアトラスと、その画素から導いた鍵（下の bakedOf を参照）。
+        // ドット絵を 1 枚にまとめたアトラスと、その画素から導いた鍵（下の bakedOf を参照）。
         atlas = PxSpriteAtlas.Baked,
         atlasKey = String,
         shader = ShaderDoc.Spec,
@@ -56,12 +56,12 @@ mod World {
     /// この名前で待ち合わせる）。
     pub def atlasName(): String = "px"
 
-    /// ドット絵を 1 枚のアトラスに焼き、GPU キャッシュ用の鍵と対で返す。
+    /// ドット絵を 1 枚のアトラスにまとめ、GPU キャッシュ用の鍵と対で返す。
     ///
-    /// **なぜ焼くか**: 画面に出すとき 1 コマ = 1 クアッドで貼れる（PxSprite.drawQuad）。
-    /// 焼かずに描く PxSprite.draw は 1 コマを画素ぶんの四角に開くので、キャラ 1 体なら
+    /// **なぜまとめるか**: 画面に出すとき 1 コマ = 1 クアッドで貼れる（PxSprite.drawQuad）。
+    /// まとめずに描く PxSprite.draw は 1 コマを画素ぶんの四角に開くので、キャラ 1 体なら
     /// どちらでも同じでも、マス目や群れを出した瞬間に組む数の桁が変わる
-    /// （予算と検査は engine の docs/performance.md §9）。焼くのは読み込みの 1 回だけ。
+    /// （予算と検査は engine の docs/performance.md §9）。まとめるのは読み込みの 1 回だけ。
     ///
     /// **なぜ鍵に画素のハッシュを混ぜるか**: Doc や色票を保存し直して絵が変わったとき、
     /// 鍵が同じままだと GPU に古いテクスチャが残って画面が更新されない。
@@ -70,7 +70,7 @@ mod World {
         let h = baked#pixels |> Vector.foldLeft((acc, px) -> acc * 31 + px, 17);
         (baked, "${atlasName()}:${Int32.toString(baked#side)}:${Int32.toString(h)}")
 
-    /// 色か絵が変わったときに、仕上げを掛け直してアトラスを焼き直す。
+    /// 色か絵が変わったときに、仕上げを掛け直してアトラスを作り直す。
     /// テーマにも絵にも触らない更新（位置・時刻）はここを通らない。
     def withShadedSprites(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc, w: World): World =
         let doc = shaded(theme, sprites);

@@ -150,8 +150,8 @@ mod View {
                        item = RawDraw.box({ x = cell * 16.0, y = cell * 12.0 },
                                          ThemeDoc.darken(w#theme#wall, 0.6), zFrameShadow())
                            |> Render.fade(0.45) };
-        // 焼いたアトラスから 1 コマ = 1 クアッドで貼る（PxSprite.draw は 1 コマを画素ぶんの
-        // 四角に開くので、この額縁だけで毎フレーム百個規模になる）。焼く所は World.bakedOf。
+        // 作ったアトラスから 1 コマ = 1 クアッドで貼る（PxSprite.draw は 1 コマを画素ぶんの
+        // 四角に開くので、この額縁だけで毎フレーム百個規模になる）。作る所は World.bakedOf。
         let items = PxSprite.drawQuad(w#sprites, w#atlas, World.atlasName(),
             "frame", "idle", topLeft, false, px(), zFrame());
         if (List.isEmpty(items))

@@ -250,7 +250,7 @@ func measure(gallery string, names []string) map[string]stat {
 			static = asInt(staticKV.fields, "static", 0)
 		}
 		if !items.ok {
-			// 古い engine で焼いた gallery。黙らせないが、落としもしない。
+			// 古い engine で生成した gallery。黙らせないが、落としもしない。
 			reason := ""
 			if staticKV.truthy() {
 				reason = "静的層の申告だけがあり計測がありません（残骸か呼び順の誤り）"
@@ -322,7 +322,7 @@ func (r *Rules) judge(root, galleryDir, baselinePath string, gate bool) (red, no
 			continue
 		}
 		if !s.ok || !s.hasDynamic {
-			note = append(note, fmt.Sprintf("%s: 予算 未計測（古い engine で焼いた絵）", name))
+			note = append(note, fmt.Sprintf("%s: 予算 未計測（古い engine で生成した絵）", name))
 			continue
 		}
 		measured++

@@ -1,10 +1,10 @@
 package migrationnotes
 
 // migrationnotes — 1 つ前のリリースからの非互換と、engine 自身がそれをどう直したかを
-// 1 枚の markdown へ焼く。
+// 1 枚の markdown へ書き出す。
 //
 //	fge migration-notes                  docs/migrations/<VERSION>.auto.md を書く
-//	fge migration-notes --check          書かずに、焼き直しても同じかだけ見る
+//	fge migration-notes --check          書かずに、生成し直しても同じかだけ見る
 //	fge migration-notes --from v0.30.0   比べる相手を指定する（既定は 1 つ前のリリース）
 //	fge migration-notes --root DIR       リポジトリのルートを差し替える
 //
@@ -12,7 +12,7 @@ package migrationnotes
 // 言えない。engine は templates/ を自分で追随させているので、その実際の差分を添えれば
 // 「どう直すか」まで渡せる。人が書くのはここに追随例が 1 つも無かったときだけ。
 //
-// WhyNot: リリースの途中で焼かずに bump で焼くのは、release の中で作ると未コミットの
+// WhyNot: リリースの途中で書き出さずに bump で書き出すのは、release の中で作ると未コミットの
 // 生成物が同梱の zip にだけ入り、タグの中身には入らないため。後からそのバージョンを
 // 取り出しても材料が無い、という形になる。
 //
@@ -231,7 +231,7 @@ func writeBreaking(b *strings.Builder, res apidiff.Result, examples map[string][
 // trimToBudget は、差分の行数が全体の上限を超える非互換の番号を返す（真なら追随例を省く）。
 //
 // WhyNot: 先頭から順に配るのは、途中を飛ばして詰めると同じ材料でも並びで結果が変わり、
-// --check が焼き直しのたびに落ちるため。
+// --check が生成し直すたびに落ちるため。
 func trimToBudget(breaking []apidiff.Change, examples map[string][]string) map[int]bool {
 	trimmed := map[int]bool{}
 	used := 0
@@ -389,7 +389,7 @@ func hunksFor(commits []commit, hunksOf [][]string, c apidiff.Change) ([]string,
 // 呼び出しの直し方が見える例が落ちて、名前がかすっただけの例が残る。
 //
 // WhyNot: 最後にパス名で決めるのは、同じ点の並びが呼ぶたびに変わると
-// --check が焼き直しのたびに落ちるため。
+// --check が生成し直すたびに落ちるため。
 func sortByTeachingPower(hunks []string, c apidiff.Change) {
 	sort.SliceStable(hunks, func(i, j int) bool {
 		si, sj := teachingScore(hunks[i], c), teachingScore(hunks[j], c)

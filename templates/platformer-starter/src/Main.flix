@@ -33,7 +33,7 @@ def main(): Unit \ IO =
                 |> App.addParallaxLayer(0.10, (ctx, w) -> checked_ecast(View.mountains(ctx, w)))
                 |> App.addParallaxLayer(0.18, (ctx, w) -> checked_ecast(View.farHills(ctx, w)))
                 |> App.addParallaxLayer(0.30, (ctx, w) -> checked_ecast(View.forest(ctx, w)))
-                // ドット絵は 1 枚のアトラスに焼いて 1 コマ = 1 クアッドで描く。
+                // ドット絵は 1 枚のアトラスにまとめて 1 コマ = 1 クアッドで描く。
                 |> App.withSpriteAtlases(w ->
                     { texture = World.atlasName(), key = World.atlasKey(w),
                       baked = w#atlas } :: Nil)

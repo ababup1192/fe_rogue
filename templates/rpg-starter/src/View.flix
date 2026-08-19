@@ -360,9 +360,9 @@ mod View {
         // 置き場所は anchor（握るところ）で指すので、中心から anchor へのずれを足して渡す。
         let off = PxSprite.anchorOffsetOf(w#sprites, spec#name, spec#frame, spec#scale);
         let at = { x = spec#center#x + off#x, y = spec#center#y + off#y };
-        // 焼いたアトラスから 1 コマ = 1 クアッドで貼る（街タイルと同じ経路。PxSprite.draw は
+        // 作ったアトラスから 1 コマ = 1 クアッドで貼る（街タイルと同じ経路。PxSprite.draw は
         // 1 コマを画素ぶんの四角に開くので、人と物が増えるほど組む数が伸びる）。
-        // 焼く所は World.bakeCharAtlas。
+        // 作る所は World.bakeCharAtlas。
         let items = PxSprite.drawQuad(w#sprites, w#charAtlas, World.charAtlasName(),
             spec#name, spec#frame, at, spec#flipX, spec#scale, spec#z);
         if (List.isEmpty(items))

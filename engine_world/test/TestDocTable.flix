@@ -39,7 +39,7 @@ mod TestDocTable {
                      |> DocTable.withoutWatch :: Nil;
         Assert.assertEq(expected = Nil, DocTable.reloads(rs) |> List.map(fst))
 
-    /// withoutReloadAll の行は F1 の一括に出ない(別の行が巻き添えで焼き直す Doc)。
+    /// withoutReloadAll の行は F1 の一括に出ない(別の行が巻き添えで作り直す Doc)。
     @Test
     def testRowWithoutReloadAllIsSkippedByReloadAll(): Unit \ {Assert, IO} =
         let rs = DocTable.row("fx", "a.fx.json", w -> checked_ecast(w + 1))

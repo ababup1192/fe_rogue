@@ -1,5 +1,5 @@
 {
-  "note": "lint-style（焼いた PNG を測って画風の軸がズレていないか）の規約データ。この JSON が source of truth で、bin/fge style はこれを読んで動く。",
+  "note": "lint-style（描き出した PNG を測って画風の軸がズレていないか）の規約データ。この JSON が source of truth で、bin/fge style はこれを読んで動く。",
   "softStep": 12,
   "stepEdges": [4, 12, 32],
   "stepLabels": ["1-4", "5-12", "13-32", "33+"],
