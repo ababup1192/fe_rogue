@@ -866,8 +866,10 @@ mod Render {
         // mask はクアッドのローカル px なので zoom で一緒に伸ばす（伸ばさないと型抜きの形だけ
         // 等倍のまま置き去りになる）。空（＝大半）のときは mask を触らない。
         List.map(d -> {
-            let DrawCmd.Drawable.Drawable(_tex, _px, _py, sx, sy, _rot, _cr, _cg, _cb, _a, _cen,
-                                          _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, mask) = d;
+            let DrawCmd.Drawable.Drawable(_tex, _px, _py, sx, sy, _rot,
+                                          _cr, _cg, _cb, _a, _cen,
+                                          _uox, _uoy, _usx, _usy, _z,
+                                          _style, _clip, _blend, mask) = d;
             let zoomed: Vec2.Vec2 = {x = sx * transform#scale#x, y = sy * transform#scale#y};
             if (List.isEmpty(mask))
                 DrawCmd.withScale(zoomed, d)
@@ -970,7 +972,7 @@ mod Render {
         // （SDF 描画では color がそのまま文字色になる）。
         let ds = Text.toDrawables(Text.make(content, fontAtlas, fontSize)
                      |> Text.setWrapWidth(wrapWidth), pos)
-            |> List.map(d -> DrawCmd.withTint(tint, zIndex, d));
+            |> List.map(d -> DrawCmd.withTintAndZIndex(tint, zIndex, d));
         if (rotation == 0.0) ds
         else ds |> List.map(turnGlyph(rotation, fontAtlas#textureSize, pos))
 
@@ -980,12 +982,14 @@ mod Render {
     /// scale × アトラス辺長（Text.toDrawables がそう組んでいる）。
     def turnGlyph(t: Float64, textureSize: Float64, pivot: Vec2.Vec2,
                   d: GameEngine.Drawable): GameEngine.Drawable =
-        let DrawCmd.Drawable.Drawable(_tex, px, py, sx, sy, _rot, _cr, _cg, _cb, _a, _cen,
-                                      _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend, _mask) = d;
+        let DrawCmd.Drawable.Drawable(_tex, px, py, sx, sy, _rot,
+                                      _cr, _cg, _cb, _a, _cen,
+                                      _uox, _uoy, _usx, _usy, _z,
+                                      _style, _clip, _blend, _mask) = d;
         let size = { x = sx * textureSize, y = sy * textureSize };
         let half = Vec2.div(size, 2.0);
         let moved = rotAbout(t, pivot, Vec2.add({x = px, y = py}, half));
-        DrawCmd.withPositionRotation(Vec2.sub(moved, half), radiansOf(t), d)
+        DrawCmd.withPositionAndRotation(Vec2.sub(moved, half), radiansOf(t), d)
 
     def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float64, rotation: Float64,
                     style: Option[GameEngine.BoxStyle], zIndex: Int32, blend: DrawCmd.BlendMode,

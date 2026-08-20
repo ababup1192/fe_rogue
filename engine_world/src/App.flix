@@ -597,10 +597,9 @@ mod App {
         };
         let lifted = items#hud |> List.map(placed ->
             { item = Render.zMapped(ZBand.liftHud, placed#item) | placed });
-        // 片方が空のフレームで List.append にもう片方を丸ごと cons し直させない
-        // （hud 無しのゲームでは world 全件の作り直しが毎フレーム消える）。
+        // hud が空のフレームで List.append に world 全件を cons し直させない。
+        // world 側が空のときの分岐は要らない — append は第 1 引数が空なら O(1) で lifted を返す。
         if (List.isEmpty(lifted)) shifted
-        else if (List.isEmpty(shifted)) lifted
         else List.append(shifted, lifted)
 
     /// camera 無しでも zoom があれば「画面中央の world 点 = design/2」を軸に据える正規化。

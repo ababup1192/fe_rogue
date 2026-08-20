@@ -308,34 +308,35 @@ mod RenderFrame {
         let f32 = RenderUtil.f32;
         // 毎フレーム数千体が通る書き込みなので、要るフィールドは match で一度に受ける
         // （アクセサだと Vec2 / Color の作り直しが 1 体ごとに 3 個増える）。
-        let DrawCmd.Drawable.Drawable(_tex, _px, _py, _dsx, _dsy, rot, colR, colG, colB, alpha,
-                                      _cen, uvoX, uvoY, uvsX, uvsY, _z, style, _clip, _blend,
-                                      _mask) = drawable;
+        // sx / sy は正準名では Drawable の scale — この関数の寸法は引数 sizeX / sizeY を
+        // そのまま使う（scale とテクスチャ寸の掛け算は呼び側が済ませている）。
+        let DrawCmd.Drawable.Drawable(_tex, _px, _py, _sx, _sy, rot,
+                                      cr, cg, cb, a, _cen,
+                                      uox, uoy, usx, usy, _z,
+                                      style, _clip, _blend, _mask) = drawable;
         let c = RenderUtil.cosF(rot);
         let s = RenderUtil.sinF(rot);
-        let sx = sizeX;
-        let sy = sizeY;
-        let tx = posX + sx / 2.0 - c * sx / 2.0 + s * sy / 2.0;
-        let ty = posY + sy / 2.0 - s * sx / 2.0 - c * sy / 2.0;
+        let tx = posX + sizeX / 2.0 - c * sizeX / 2.0 + s * sizeY / 2.0;
+        let ty = posY + sizeY / 2.0 - s * sizeX / 2.0 - c * sizeY / 2.0;
         let base = slot * 38;
-        discard data.put(base + 0, f32(c * sx));
-        discard data.put(base + 1, f32(s * sx));
-        discard data.put(base + 2, f32(-1.0 * s * sy));
-        discard data.put(base + 3, f32(c * sy));
+        discard data.put(base + 0, f32(c * sizeX));
+        discard data.put(base + 1, f32(s * sizeX));
+        discard data.put(base + 2, f32(-1.0 * s * sizeY));
+        discard data.put(base + 3, f32(c * sizeY));
         discard data.put(base + 4, f32(tx));
         discard data.put(base + 5, f32(ty));
-        discard data.put(base + 6, f32(uvoX));
-        discard data.put(base + 7, f32(uvoY));
-        discard data.put(base + 8, f32(uvsX));
-        discard data.put(base + 9, f32(uvsY));
-        discard data.put(base + 10, f32(colR));
-        discard data.put(base + 11, f32(colG));
-        discard data.put(base + 12, f32(colB));
-        discard data.put(base + 13, f32(alpha));
+        discard data.put(base + 6, f32(uox));
+        discard data.put(base + 7, f32(uoy));
+        discard data.put(base + 8, f32(usx));
+        discard data.put(base + 9, f32(usy));
+        discard data.put(base + 10, f32(cr));
+        discard data.put(base + 11, f32(cg));
+        discard data.put(base + 12, f32(cb));
+        discard data.put(base + 13, f32(a));
         discard data.put(base + 14, if (useTex) 1.0f32 else 0.0f32);
         discard data.put(base + 15, if (sdf) 1.0f32 else 0.0f32);
-        discard data.put(base + 18, f32(sx));
-        discard data.put(base + 19, f32(sy));
+        discard data.put(base + 18, f32(sizeX));
+        discard data.put(base + 19, f32(sizeY));
         match style {
             case None =>
                 discard data.put(base + 16, 0.0f32);
@@ -546,12 +547,13 @@ mod RenderFrame {
     /// ゲーム側は普通の画像と同じ uv で書けばよい。ターゲット以外はそのまま返す。
     def targetUvFlipped(targetNames: Set[String],
                         drawable: RenderType.Drawable): RenderType.Drawable =
-        let DrawCmd.Drawable.Drawable(tex, _px, _py, _sx, _sy, _rot, _cr, _cg, _cb, _a, _cen,
-                                      uvoX, uvoY, uvsX, uvsY, _z, _style, _clip, _blend,
-                                      _mask) = drawable;
+        let DrawCmd.Drawable.Drawable(tex, _px, _py, _sx, _sy, _rot,
+                                      _cr, _cg, _cb, _a, _cen,
+                                      uox, uoy, usx, usy, _z,
+                                      _style, _clip, _blend, _mask) = drawable;
         if (Set.memberOf(tex, targetNames))
-            DrawCmd.withUv({ x = uvoX, y = 1.0 - uvoY },
-                           { x = uvsX, y = 0.0 - uvsY }, drawable)
+            DrawCmd.withUv({ x = uox, y = 1.0 - uoy },
+                           { x = usx, y = 0.0 - usy }, drawable)
         else drawable
 
     /// 表示矩形の起点（1 軸ぶん）。flipH / flipV は scale の符号で行うので display が負になるが、
@@ -569,19 +571,20 @@ mod RenderFrame {
                    targetNames: Set[String],
                    warnLog: Ref[Set[String], Static],
                    drawable: RenderType.Drawable): Unit \ IO =
-        let DrawCmd.Drawable.Drawable(tex, posXRaw, posYRaw, sclX, sclY, _rot, _cr, _cg, _cb, _a,
-                                      cen, _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend,
-                                      _mask) = drawable;
+        let DrawCmd.Drawable.Drawable(tex, px, py, sx, sy, _rot,
+                                      _cr, _cg, _cb, _a, cen,
+                                      _uox, _uoy, _usx, _usy, _z,
+                                      _style, _clip, _blend, _mask) = drawable;
         if (String.isEmpty(tex)) {
             pushSpriteItem(st, instData, scaleX, scaleY, 0,
-                           posXRaw, posYRaw, sclX, sclY, drawable, false, false)
+                           px, py, sx, sy, drawable, false, false)
         } else {
             match Map.get(tex, registry) {
                 case Some(texInfo) =>
-                    let displayW = texInfo#width * sclX;
-                    let displayH = texInfo#height * sclY;
-                    let posX = originAxis(cen, posXRaw, displayW);
-                    let posY = originAxis(cen, posYRaw, displayH);
+                    let displayW = texInfo#width * sx;
+                    let displayH = texInfo#height * sy;
+                    let posX = originAxis(cen, px, displayW);
+                    let posY = originAxis(cen, py, displayH);
                     // フォントアトラス (font_*) は SDF テキストとして描く。
                     let isFont = String.startsWith({prefix = "font_"}, tex);
                     let d = targetUvFlipped(targetNames, drawable);
@@ -604,19 +607,20 @@ mod RenderFrame {
                          warnLog: Ref[Set[String], Static],
                          polyUniforms: RenderShader.PolyBatchUniforms,
                          drawable: RenderType.Drawable): Unit \ IO =
-        let DrawCmd.Drawable.Drawable(tex, posXRaw, posYRaw, sclX, sclY, _rot, _cr, _cg, _cb, _a,
-                                      cen, _uox, _uoy, _usx, _usy, _z, _style, _clip, _blend,
-                                      _mask) = drawable;
+        let DrawCmd.Drawable.Drawable(tex, px, py, sx, sy, _rot,
+                                      _cr, _cg, _cb, _a, cen,
+                                      _uox, _uoy, _usx, _usy, _z,
+                                      _style, _clip, _blend, _mask) = drawable;
         if (String.isEmpty(tex)) {
             drawMaskedOne(st, instData, scaleX, scaleY, polyUniforms, 0,
-                          posXRaw, posYRaw, sclX, sclY, drawable, false, false)
+                          px, py, sx, sy, drawable, false, false)
         } else {
             match Map.get(tex, registry) {
                 case Some(texInfo) =>
-                    let displayW = texInfo#width * sclX;
-                    let displayH = texInfo#height * sclY;
-                    let posX = originAxis(cen, posXRaw, displayW);
-                    let posY = originAxis(cen, posYRaw, displayH);
+                    let displayW = texInfo#width * sx;
+                    let displayH = texInfo#height * sy;
+                    let posX = originAxis(cen, px, displayW);
+                    let posY = originAxis(cen, py, displayH);
                     let isFont = String.startsWith({prefix = "font_"}, tex);
                     // uv 反転は emitSprite と同じ（mask は形の変換なので uv には触らない）。
                     let d = targetUvFlipped(targetNames, drawable);
@@ -634,9 +638,10 @@ mod RenderFrame {
                       polyUniforms: RenderShader.PolyBatchUniforms, texId: Int32,
                       posX: Float64, posY: Float64, sizeX: Float64, sizeY: Float64,
                       drawable: RenderType.Drawable, useTex: Bool, sdf: Bool): Unit \ IO =
-        let DrawCmd.Drawable.Drawable(_tex, _px, _py, _sx, _sy, rot, _cr, _cg, _cb, _a, _cen,
-                                      _uox, _uoy, _usx, _usy, _z, _style, clip, blend,
-                                      mask) = drawable;
+        let DrawCmd.Drawable.Drawable(_tex, _px, _py, _sx, _sy, rot,
+                                      _cr, _cg, _cb, _a, _cen,
+                                      _uox, _uoy, _usx, _usy, _z,
+                                      _style, clip, blend, mask) = drawable;
         match clip {
             case None    => setScissorAt(st, 0, 0, 0, 0, 0)
             case Some(r) =>
