@@ -112,10 +112,17 @@ func collectSubs(node any, into map[string]bool) {
 
 // binarySubs は組み上げたバイナリ自身に一覧を言わせる。
 func binarySubs(bin string) (map[string]bool, error) {
-	cmd := exec.Command(bin, "--list")
+	// WhyNot: 絶対パスに直してから渡すのは、下で Dir を移すため。相対パスのままだと
+	// 移した先から解決し直され、バンドルの中のバンドルを探しに行く
+	// (Studio は絶対パスを渡すので踏まず、engine の make bundle-zip だけが踏む)。
+	abs, err := filepath.Abs(bin)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(abs, "--list")
 	// WhyNot: バンドルの中で走らせるのは、engineOnly のサブコマンドが
 	// 「engine のリポかどうか」で一覧から消えるため。配った先と同じ見え方で照合する。
-	cmd.Dir = filepath.Dir(filepath.Dir(bin))
+	cmd.Dir = filepath.Dir(filepath.Dir(abs))
 	stdout, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("%s --list が走りません: %v", bin, err)
