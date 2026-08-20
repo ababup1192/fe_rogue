@@ -684,6 +684,12 @@ prune-stale-tools:
 # WhyNot: 配る前に go-build を通すのは、規約データ (lint-rules) を sync-agents が git の
 # 作業ツリーから配るのに対し、検査の中身はここが bin/dist から配るため。組み直しを忘れると
 # 「宣言はあるのに入口が無い」ゲームができる。Go のビルドキャッシュが効くので数秒。
+#
+# WhyNot: 置き換えを cp の上書きでなく別名 + mv にするのは、macOS が実行ファイルの中身を
+# 同じ inode のまま書き換えられると、その inode について覚えていた署名の検証結果を捨て、
+# 次の実行を即 SIGKILL するため。中身も署名も正しいのに配った先だけが死に、
+# pre-commit がこれを呼ぶ git まで道連れになる (index.lock だけが残る)。
+# mv なら inode が新しくなるので踏まない。
 sync-fge-go: go-build
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください"; exit 1; fi
 	@os=$$(uname -s | tr 'A-Z' 'a-z'); arch=$$(uname -m); ext=""; \
@@ -693,8 +699,10 @@ sync-fge-go: go-build
 	  *) echo "[sync-fge-go] 知らない CPU ($$arch)。bin/dist/ から手で選んでください"; exit 0 ;; esac; \
 	src=$(GO_DIST)/fge-go-$$os-$$arch$$ext; \
 	if [ ! -f "$$src" ]; then echo "[sync-fge-go] $$src がありません (make go-build)"; exit 1; fi; \
-	cp "$$src" "$(GAME)/bin/fge-go$$ext"; \
-	chmod +x "$(GAME)/bin/fge-go$$ext"; \
+	tmp="$(GAME)/bin/.fge-go$$ext.new"; \
+	cp "$$src" "$$tmp"; \
+	chmod +x "$$tmp"; \
+	mv -f "$$tmp" "$(GAME)/bin/fge-go$$ext"; \
 	echo "[sync-fge-go] $$src → $(GAME)/bin/fge-go$$ext"
 
 # 規約の本文は docs/ に 1 つだけ置く。CLAUDE.md は AGENTS.md を import するだけ、
