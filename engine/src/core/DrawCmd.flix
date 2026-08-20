@@ -26,7 +26,36 @@ mod DrawCmd {
     /// stripePeriod は縞の周期 px、stripeWidth は縞 1 本の幅 px。
     /// checker* は塗り領域に重ねる市松のタイル。`checkerCell <= 0` または
     /// `checkerAlpha <= 0` で無効。重なる順は 塗り → 縞 → 市松 → 枠。
-    pub type alias BoxStyle = {
+    ///
+    /// payload は Color を r, g, b のフィールドへ展開してフラットに持つ — Drawable と同じ理由で、
+    /// 毎フレーム数千個作る値ではレコードの入れ子は確保量が大きすぎるため。
+    /// 構築の入口は `makeStyle`（名前付きで安全）と `styleFromParts`（毎フレーム大量に通る
+    /// 変換用 — spec レコードを作らない）と `defaultStyle`（無飾の既定値）。部分更新は
+    /// `withCornerRadius` / `withBorder` / `withStripe` / `withChecker`。位置引数の並びに
+    /// 触るのはこのモジュールの中だけ。毎フレーム大量に通る読み出しだけ、match で
+    /// 全フィールドを一度に受けてよい。分解の写経元（変数名はこの並びで統一する）:
+    ///   let DrawCmd.BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+    ///                                 sr, sg, sb, sa, sw, sp, sd,
+    ///                                 kr, kg, kb, ka, kc) = st;
+    pub enum BoxStyle {
+        case BoxStyle(
+            Float64,                    // cornerRadius
+            Float64,                    // borderWidth
+            Float64, Float64, Float64,  // borderColor.r, g, b
+            Float64,                    // borderAlpha
+            Float64, Float64, Float64,  // stripeColor.r, g, b
+            Float64,                    // stripeAlpha
+            Float64,                    // stripeWidth
+            Float64,                    // stripePeriod
+            Int32,                      // stripeDir: 0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞
+            Float64, Float64, Float64,  // checkerColor.r, g, b
+            Float64,                    // checkerAlpha（0 で無効）
+            Float64                     // checkerCell（セル一辺 px・0 で無効）
+        )
+    }
+
+    /// BoxStyle の全フィールドを名前で持つレコード（`makeStyle` の入力・`styleToSpec` の出力）。
+    pub type alias BoxStyleSpec = {
         cornerRadius = Float64,
         borderWidth  = Float64,
         borderColor  = Color,
@@ -35,27 +64,138 @@ mod DrawCmd {
         stripeAlpha  = Float64,
         stripeWidth  = Float64,
         stripePeriod = Float64,
-        stripeDir    = Int32,   // 縞の向き: 0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞
-        checkerColor = Color,   // 市松タイルの色
-        checkerAlpha = Float64, // 市松タイルの濃さ（0 で無効）
-        checkerCell  = Float64  // 市松のセル一辺 px（0 で無効）
+        stripeDir    = Int32,
+        checkerColor = Color,
+        checkerAlpha = Float64,
+        checkerCell  = Float64
     }
+
+    /// 名前付きで安全に組む入口（テスト・部分上書き・めったに呼ばれない構築用）。
+    /// 毎フレーム大量に通る変換は spec レコードを作らない `styleFromParts` を使う。
+    pub def makeStyle(spec: BoxStyleSpec): BoxStyle =
+        BoxStyle.BoxStyle(
+            spec#cornerRadius,
+            spec#borderWidth,
+            spec#borderColor#r, spec#borderColor#g, spec#borderColor#b,
+            spec#borderAlpha,
+            spec#stripeColor#r, spec#stripeColor#g, spec#stripeColor#b,
+            spec#stripeAlpha,
+            spec#stripeWidth,
+            spec#stripePeriod,
+            spec#stripeDir,
+            spec#checkerColor#r, spec#checkerColor#g, spec#checkerColor#b,
+            spec#checkerAlpha,
+            spec#checkerCell)
+
+    /// 毎フレーム大量に通る変換用の入口。Color は値のまま受けて中で r, g, b に展開する。
+    /// 隣り合う Float64 の取り違えはコンパイルが通ってしまうので、並びはフィールドの
+    /// 宣言順（corner → border → stripe → checker）で固定し、呼び手は名前付きの引数を
+    /// 組めない毎フレーム経路だけに限る。
+    pub def styleFromParts(cornerRadius: Float64, borderWidth: Float64,
+                           borderColor: Color, borderAlpha: Float64,
+                           stripeColor: Color, stripeAlpha: Float64,
+                           stripeWidth: Float64, stripePeriod: Float64, stripeDir: Int32,
+                           checkerColor: Color, checkerAlpha: Float64,
+                           checkerCell: Float64): BoxStyle =
+        BoxStyle.BoxStyle(
+            cornerRadius,
+            borderWidth,
+            borderColor#r, borderColor#g, borderColor#b,
+            borderAlpha,
+            stripeColor#r, stripeColor#g, stripeColor#b,
+            stripeAlpha,
+            stripeWidth,
+            stripePeriod,
+            stripeDir,
+            checkerColor#r, checkerColor#g, checkerColor#b,
+            checkerAlpha,
+            checkerCell)
+
+    /// 全フィールドを名前付きレコードへ展開する（部分更新と、めったに呼ばれない経路の
+    /// 読み出し用）。毎フレーム大量に通る経路ではレコードを作り直すぶん高くつくので、
+    /// そこでは match で直接分解する。
+    pub def styleToSpec(st: BoxStyle): BoxStyleSpec =
+        let BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                              sr, sg, sb, sa, sw, sp, sd,
+                              kr, kg, kb, ka, kc) = st;
+        { cornerRadius = rad,
+          borderWidth  = bw,
+          borderColor  = {r = br, g = bg, b = bb},
+          borderAlpha  = ba,
+          stripeColor  = {r = sr, g = sg, b = sb},
+          stripeAlpha  = sa,
+          stripeWidth  = sw,
+          stripePeriod = sp,
+          stripeDir    = sd,
+          checkerColor = {r = kr, g = kg, b = kb},
+          checkerAlpha = ka,
+          checkerCell  = kc }
 
     /// 何も飾らない素の BoxStyle（枠・縞・市松すべて無効）。色系は塗りと同じ base を入れておく。
     /// フィールドを足すときはここへ既定値を 1 つ足せば、組み立て側は上書きだけで済む。
     pub def defaultStyle(base: Color): BoxStyle =
-        { cornerRadius = 0.0, borderWidth = 0.0, borderColor = base, borderAlpha = 0.0,
-          stripeColor = base, stripeAlpha = 0.0, stripeWidth = 0.0, stripePeriod = 0.0,
-          stripeDir = 0, checkerColor = base, checkerAlpha = 0.0, checkerCell = 0.0 }
+        BoxStyle.BoxStyle(
+            0.0, 0.0,
+            base#r, base#g, base#b, 0.0,
+            base#r, base#g, base#b, 0.0, 0.0, 0.0, 0,
+            base#r, base#g, base#b, 0.0, 0.0)
+
+    /// 枠線の太さ（px）だけ読む（バックエンドのはみ出し見積もり用）。
+    pub def borderWidthOf(st: BoxStyle): Float64 =
+        let BoxStyle.BoxStyle(_rad, bw, _br, _bg, _bb, _ba,
+                              _sr, _sg, _sb, _sa, _sw, _sp, _sd,
+                              _kr, _kg, _kb, _ka, _kc) = st;
+        bw
+
+    // ── BoxStyle の部分更新（元を変えず新しい BoxStyle を返す）─────────
+    // Drawable の with* と同じ理由で match で受けて enum を直接組み直す。
+
+    /// 角丸半径を差し替える。
+    pub def withCornerRadius(radius: Float64, st: BoxStyle): BoxStyle =
+        let BoxStyle.BoxStyle(_rad, bw, br, bg, bb, ba,
+                              sr, sg, sb, sa, sw, sp, sd,
+                              kr, kg, kb, ka, kc) = st;
+        BoxStyle.BoxStyle(radius, bw, br, bg, bb, ba,
+                          sr, sg, sb, sa, sw, sp, sd,
+                          kr, kg, kb, ka, kc)
+
+    /// 枠線（色・太さ・濃さ）を差し替える。
+    pub def withBorder(color: Color, width: Float64, alpha: Float64, st: BoxStyle): BoxStyle =
+        let BoxStyle.BoxStyle(rad, _bw, _br, _bg, _bb, _ba,
+                              sr, sg, sb, sa, sw, sp, sd,
+                              kr, kg, kb, ka, kc) = st;
+        BoxStyle.BoxStyle(rad, width, color#r, color#g, color#b, alpha,
+                          sr, sg, sb, sa, sw, sp, sd,
+                          kr, kg, kb, ka, kc)
+
+    /// 縞（色・濃さ・幅・周期・向き）を差し替える。
+    pub def withStripe(color: Color, alpha: Float64, width: Float64, period: Float64,
+                       dir: Int32, st: BoxStyle): BoxStyle =
+        let BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                              _sr, _sg, _sb, _sa, _sw, _sp, _sd,
+                              kr, kg, kb, ka, kc) = st;
+        BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                          color#r, color#g, color#b, alpha, width, period, dir,
+                          kr, kg, kb, ka, kc)
+
+    /// 市松（色・濃さ・セル一辺）を差し替える。
+    pub def withChecker(color: Color, alpha: Float64, cell: Float64, st: BoxStyle): BoxStyle =
+        let BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                              sr, sg, sb, sa, sw, sp, sd,
+                              _kr, _kg, _kb, _ka, _kc) = st;
+        BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                          sr, sg, sb, sa, sw, sp, sd,
+                          color#r, color#g, color#b, alpha, cell)
 
     /// px の長さを持つフィールド（角丸・枠線幅・縞の幅と周期・市松のセル）を一括で factor 倍する。
     /// zoom やスケール適用が同じ表を見るための共通ヘルパ。
     pub def scalePx(factor: Float64, st: BoxStyle): BoxStyle =
-        { cornerRadius = st#cornerRadius * factor,
-          borderWidth  = st#borderWidth * factor,
-          stripeWidth  = st#stripeWidth * factor,
-          stripePeriod = st#stripePeriod * factor,
-          checkerCell  = st#checkerCell * factor | st }
+        let BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                              sr, sg, sb, sa, sw, sp, sd,
+                              kr, kg, kb, ka, kc) = st;
+        BoxStyle.BoxStyle(rad * factor, bw * factor, br, bg, bb, ba,
+                          sr, sg, sb, sa, sw * factor, sp * factor, sd,
+                          kr, kg, kb, ka, kc * factor)
 
     /// clip 矩形（design px・スクリーン空間）を出力ピクセルの整数矩形 (x0, y0, x1, y1) へ写す
     /// （top-left 原点・floor 量子化）。GL の glScissor と SoftRaster の setClip が同じ画素集合を

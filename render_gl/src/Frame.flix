@@ -360,31 +360,31 @@ mod RenderFrame {
                 discard data.put(base + 36, 0.0f32);
                 discard data.put(base + 37, 0.0f32)
             case Some(st) =>
+                let DrawCmd.BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                                              sr, sg, sb, sa, sw, sp, sd,
+                                              kr, kg, kb, ka, kc) = st;
                 // hatch の有効判定は drawSprite の hatchOn と同式(period<=0 は GLSL の mod が未定義なので無効扱い)。
-                let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0) 1.0f32 else 0.0f32;
-                let bc = st#borderColor;
-                let hc = st#stripeColor;
-                let cc = st#checkerColor;
+                let hatch = if (sw > 0.0 and sa > 0.0 and sp > 0.0) 1.0f32 else 0.0f32;
                 discard data.put(base + 16, 1.0f32);
                 discard data.put(base + 17, hatch);
-                discard data.put(base + 20, f32(st#cornerRadius));
-                discard data.put(base + 21, f32(st#borderWidth));
-                discard data.put(base + 22, f32(bc#r));
-                discard data.put(base + 23, f32(bc#g));
-                discard data.put(base + 24, f32(bc#b));
-                discard data.put(base + 25, f32(st#borderAlpha));
-                discard data.put(base + 26, f32(hc#r));
-                discard data.put(base + 27, f32(hc#g));
-                discard data.put(base + 28, f32(hc#b));
-                discard data.put(base + 29, f32(st#stripeAlpha));
-                discard data.put(base + 30, f32(st#stripeWidth));
-                discard data.put(base + 31, f32(st#stripePeriod));
-                discard data.put(base + 32, Int32.toFloat32(st#stripeDir));
-                discard data.put(base + 33, f32(st#checkerCell));
-                discard data.put(base + 34, f32(cc#r));
-                discard data.put(base + 35, f32(cc#g));
-                discard data.put(base + 36, f32(cc#b));
-                discard data.put(base + 37, f32(st#checkerAlpha))
+                discard data.put(base + 20, f32(rad));
+                discard data.put(base + 21, f32(bw));
+                discard data.put(base + 22, f32(br));
+                discard data.put(base + 23, f32(bg));
+                discard data.put(base + 24, f32(bb));
+                discard data.put(base + 25, f32(ba));
+                discard data.put(base + 26, f32(sr));
+                discard data.put(base + 27, f32(sg));
+                discard data.put(base + 28, f32(sb));
+                discard data.put(base + 29, f32(sa));
+                discard data.put(base + 30, f32(sw));
+                discard data.put(base + 31, f32(sp));
+                discard data.put(base + 32, Int32.toFloat32(sd));
+                discard data.put(base + 33, f32(kc));
+                discard data.put(base + 34, f32(kr));
+                discard data.put(base + 35, f32(kg));
+                discard data.put(base + 36, f32(kb));
+                discard data.put(base + 37, f32(ka))
         }
 
     // ── 詰め込みループの run 状態 ──────────────────────────────

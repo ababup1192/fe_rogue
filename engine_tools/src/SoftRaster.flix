@@ -543,7 +543,7 @@ mod SoftRaster {
             // AA のにじみで縁の画素が塗り範囲よりわずかに外へ出るため 1px 分の余裕を足す。
             // BasicStroke の枠線は中心線基準でさらに半分だけ外へはみ出すのでその分も足す。
             let borderPad = 1.0 + match d#style {
-                case Some(st) => st#borderWidth / 2.0
+                case Some(st) => DrawCmd.borderWidthOf(st) / 2.0
                 case None     => 0.0
             };
             let quad = turnedBounds(d#rotation, { position = topLeft, size = size });
@@ -770,14 +770,16 @@ mod SoftRaster {
         let y = ri(d#position#y * sf);
         let bw = ri(d#scale#x * sf);
         let bh = ri(d#scale#y * sf);
-        let (corner, borderW, borderCol, borderA) = match d#style {
+        // headless の 1 箱ごとの経路なので、レコードへ 1 回展開して読みやすさを取る。
+        let styleSpec = Option.map(DrawCmd.styleToSpec, d#style);
+        let (corner, borderW, borderCol, borderA) = match styleSpec {
             case Some(st) => (st#cornerRadius, st#borderWidth, st#borderColor, st#borderAlpha)
             case None     => (0.0, 0.0, ({r = 1.0, g = 1.0, b = 1.0}: Color), 0.0)
         };
         let arc = ri(corner * 2.0 * sf);
         g.setColor(awtColor(d#color, f32(d#alpha)));
         g.fillRoundRect(x, y, bw, bh, arc, arc);
-        match d#style {
+        match styleSpec {
             case Some(st) => drawBoxOverlays(g, sf, d, st)
             case None     => ()
         };
@@ -789,7 +791,7 @@ mod SoftRaster {
 
     /// 塗りの上に縞と市松を重ねる。box の角丸矩形にクリップして描き、終わったら解除する。
     def drawBoxOverlays(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec,
-                        st: GameEngine.BoxStyle): Unit \ IO =
+                        st: DrawCmd.BoxStyleSpec): Unit \ IO =
         let hasStripe = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0;
         let hasChecker = st#checkerCell > 0.0 and st#checkerAlpha > 0.0;
         if (hasStripe or hasChecker) {
@@ -815,7 +817,7 @@ mod SoftRaster {
     /// 縞を描く。GL シェーダと同じ box 中心原点のローカル座標 p を使い、
     /// mod(hv, period) が [0, width] に入る範囲を線分で塗る（dir 0: p.x−p.y / 1: p.y / 2: p.x）。
     def drawStripes(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec,
-                    st: GameEngine.BoxStyle): Unit \ IO =
+                    st: DrawCmd.BoxStyleSpec): Unit \ IO =
         let bw = d#scale#x * sf;
         let bh = d#scale#y * sf;
         let cx = d#position#x * sf + bw / 2.0;
@@ -851,7 +853,7 @@ mod SoftRaster {
     /// 市松を描く。GL シェーダと同じ box 中心原点でセルを刻み、
     /// floor(p.x/cell) + floor(p.y/cell) が偶数のセルだけ塗る。
     def drawChecker(g: Graphics2D, sf: Float64, d: DrawCmd.DrawableSpec,
-                    st: GameEngine.BoxStyle): Unit \ IO =
+                    st: DrawCmd.BoxStyleSpec): Unit \ IO =
         let bw = d#scale#x * sf;
         let bh = d#scale#y * sf;
         let cx = d#position#x * sf + bw / 2.0;

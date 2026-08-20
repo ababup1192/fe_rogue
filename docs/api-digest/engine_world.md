@@ -1,4 +1,4 @@
-<!-- engine v0.32.0 / 生成: 2026-08-19 -->
+<!-- engine v0.32.0 / 生成: 2026-08-20 -->
 <!-- 生成物: bin/fge api-digest が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -10,7 +10,9 @@
   `pub def path(): String`
 - entries(editor 宣言 id → 表示中パスの列)をエディタが読む形の JSON にする。
   `pub def json(entries: List[(String, List[String])]): String`
-- 毎フレームのシステムから呼ぶ。一覧が前回書いた物(World の activeDocsWritten)と
+- entries の指紋(id とパスを区切り文字で 1 本に綴じた文字列)。step はまずこれで
+  `pub def fingerprint(entries: List[(String, List[String])]): String`
+- 毎フレームのシステムから呼ぶ。一覧の指紋が前回書いた物(World の activeDocsWritten)と
   `pub def step(entries: List[(String, List[String])], w: { activeDocsWritten = String | r }): { activeDocsWritten = String | r } \ Fs.FileWrite`
 
 ## Anim — `engine_world/src/Anim.flix`

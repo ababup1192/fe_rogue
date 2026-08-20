@@ -236,8 +236,8 @@ mod HeadlessRender {
         let spec = DrawCmd.toSpec(d);
         DrawCmd.make({ color = silhouetteInk(), alpha = 1.0, blend = DrawCmd.BlendMode.Normal,
           style = spec#style |> Option.map(st ->
-              { borderColor = silhouetteInk(), stripeColor = silhouetteInk(),
-                checkerColor = silhouetteInk() | st }) | spec })
+              DrawCmd.makeStyle({ borderColor = silhouetteInk(), stripeColor = silhouetteInk(),
+                                  checkerColor = silhouetteInk() | DrawCmd.styleToSpec(st) })) | spec })
 
     /// 多角形を真っ黒の不透明に写す。grad は外す — 頂点ごとの色は面の情報で、
     /// 残すと補間の縁が灰色に出てシルエットの縁が濁る。

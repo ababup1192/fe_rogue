@@ -157,13 +157,12 @@ mod UiExtract {
     /// borderWidth>0 のときだけ borderAlpha=1.0 にして枠を有効化する。
     /// pub なのは UiDoc（Flex 経路）が同じ box 意味論で描くため — BoxComp→Item 変換の唯一の実装。
     pub def boxItem(box: UiWidget.BoxComp, size: Vec2.Vec2): Render.Item =
-        let style = ({
-            cornerRadius = box#cornerRadius,
-            borderWidth  = box#borderWidth,
-            borderColor  = box#borderColor,
-            borderAlpha  = if (box#borderWidth > 0.0) 1.0 else 0.0
-            | DrawCmd.defaultStyle(box#borderColor)
-        }: GameEngine.BoxStyle);
+        // stripe・市松は defaultStyle と同じ無効値のまま。
+        let style = DrawCmd.styleFromParts(
+            box#cornerRadius, box#borderWidth, box#borderColor,
+            if (box#borderWidth > 0.0) 1.0 else 0.0,
+            box#borderColor, 0.0, 0.0, 0.0, 0,
+            box#borderColor, 0.0, 0.0);
         Render.Item.Box({size = size, color = box#color, alpha = box#alpha, rotation = 0.0,
                          style = Some(style), zIndex = box#zIndex,
                          blend = DrawCmd.BlendMode.Normal})

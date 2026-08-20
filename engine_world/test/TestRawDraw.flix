@@ -23,7 +23,7 @@ mod TestRawDraw {
         let d = List.head(drawables);
         Assert.assertEq(expected = (Some((6.0, 6.0)), Some(Some(3.0))),
             (d |> Option.map(x -> (DrawCmd.scaleOf(x)#x, DrawCmd.scaleOf(x)#y)),
-             d |> Option.map(x -> Option.map(s -> s#cornerRadius, DrawCmd.styleOf(x)))))
+             d |> Option.map(x -> Option.map(s -> DrawCmd.styleToSpec(s)#cornerRadius, DrawCmd.styleOf(x)))))
 
     // circleAt: 中心 (10,10)・半径 3 の円は、外接正方形の左上 (7,7) に置かれる。
     @Test

@@ -295,7 +295,7 @@ mod Render {
     pub def rounded(radius: Float64, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ cornerRadius = radius | styleOf(b#style) }) | b })
+                Item.Box({ style = Some(DrawCmd.withCornerRadius(radius, styleOf(b#style))) | b })
             case other => other
         }, item)
 
@@ -466,11 +466,14 @@ mod Render {
         match style {
             case None    => true
             case Some(s) =>
-                Float64.abs(s#cornerRadius) < 0.000001
-                    and Float64.abs(s#borderWidth) < 0.000001
-                    and s#borderAlpha == 0.0
-                    and s#stripeAlpha == 0.0
-                    and s#checkerAlpha == 0.0
+                let DrawCmd.BoxStyle.BoxStyle(rad, bw, _br, _bg, _bb, ba,
+                                              _sr, _sg, _sb, sa, _sw, _sp, _sd,
+                                              _kr, _kg, _kb, ka, _kc) = s;
+                Float64.abs(rad) < 0.000001
+                    and Float64.abs(bw) < 0.000001
+                    and ba == 0.0
+                    and sa == 0.0
+                    and ka == 0.0
         }
 
     /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
@@ -552,8 +555,7 @@ mod Render {
     pub def outline(color: Color, width: Float64, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ borderColor = color, borderWidth = width,
-                                                borderAlpha = 1.0 | styleOf(b#style) }) | b })
+                Item.Box({ style = Some(DrawCmd.withBorder(color, width, 1.0, styleOf(b#style))) | b })
             case other => other
         }, item)
 
@@ -563,9 +565,8 @@ mod Render {
     pub def outlineA(border: { color = Color, alpha = Float64, width = Float64 }, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ borderColor = border#color, borderWidth = border#width,
-                                                borderAlpha = border#alpha
-                                                | styleOf(b#style) }) | b })
+                Item.Box({ style = Some(DrawCmd.withBorder(border#color, border#width, border#alpha,
+                                                           styleOf(b#style))) | b })
             case other => other
         }, item)
 
@@ -574,11 +575,9 @@ mod Render {
                     item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ stripeColor = stripe#color,
-                                                stripeAlpha = stripe#alpha,
-                                                stripeWidth = stripe#width, stripePeriod = stripe#period,
-                                                stripeDir = stripe#dir
-                                                | styleOf(b#style) }) | b })
+                Item.Box({ style = Some(DrawCmd.withStripe(stripe#color, stripe#alpha, stripe#width,
+                                                           stripe#period, stripe#dir,
+                                                           styleOf(b#style))) | b })
             case other => other
         }, item)
 
@@ -586,10 +585,8 @@ mod Render {
     pub def checker(c: { color = Color, alpha = Float64, cell = Float64 }, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ checkerColor = c#color,
-                                                checkerAlpha = c#alpha,
-                                                checkerCell = c#cell
-                                                | styleOf(b#style) }) | b })
+                Item.Box({ style = Some(DrawCmd.withChecker(c#color, c#alpha, c#cell,
+                                                            styleOf(b#style))) | b })
             case other => other
         }, item)
 
@@ -968,11 +965,14 @@ mod Render {
     def textDrawables(content: String, fontAtlas: FontAtlas, fontSize: Float64,
                       tint: Color, rotation: Float64, zIndex: Int32,
                       wrapWidth: Option[Float64], pos: Vec2.Vec2): List[GameEngine.Drawable] =
-        // engine の public 純粋射影に委譲。Drawable の color を tint で上書きして文字色にする
-        // （SDF 描画では color がそのまま文字色になる）。
-        let ds = Text.toDrawables(Text.make(content, fontAtlas, fontSize)
-                     |> Text.setWrapWidth(wrapWidth), pos)
-            |> List.map(d -> DrawCmd.withTintAndZIndex(tint, zIndex, d));
+        // engine の public 純粋射影に委譲。文字色（SDF 描画では color がそのまま文字色）と
+        // zIndex は Text の visual に 1 回だけ書き込む — 出来上がった列を withTintAndZIndex で
+        // map し直すと、文字 1 字につき捨てる Drawable が 1 個ずつ増えるため。
+        let ds = Text.toDrawables(
+            Text.make(content, fontAtlas, fontSize)
+                |> Text.setWrapWidth(wrapWidth)
+                |> Text.mapVisual(v -> v |> Visual.setColor(tint) |> Visual.setZIndex(zIndex)),
+            pos);
         if (rotation == 0.0) ds
         else ds |> List.map(turnGlyph(rotation, fontAtlas#textureSize, pos))
 

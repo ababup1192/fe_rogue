@@ -235,7 +235,8 @@ mod TestAnnotate {
                 match DrawCmd.styleOf(d) {
                     case Some(style) =>
                         Assert.assertEq(expected = (20.0, 20.0, 10.0),
-                            (DrawCmd.scaleOf(d)#x, DrawCmd.scaleOf(d)#y, style#cornerRadius))
+                            (DrawCmd.scaleOf(d)#x, DrawCmd.scaleOf(d)#y,
+                             DrawCmd.styleToSpec(style)#cornerRadius))
                     case None => bug!("円の描画命令には角丸スタイルが付いているはず")
                 }
             case _ => bug!("円 1 個は描画命令 1 件になるはず")

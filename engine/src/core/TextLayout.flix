@@ -22,35 +22,39 @@ mod TextLayout {
         List.foldLeft((acc, a) -> acc + a, 0.0, advances)
 
     /// 改行文字でテキストを行に分ける。
+    /// 蓄積はタプルで持つ（レコードは 1 フィールド 1 オブジェクトで、文字ごとに作り直す
+    /// 蓄積では確保が文字数ぶん積み上がる — layoutPositions も同じ）。
     pub def splitLines(text: String): List[List[Char]] =
         let chars = String.toList(text);
         let result = List.foldLeft((acc, ch) -> {
+            let (lines, current) = acc;
             if (Char.toBmpCodePoint(ch) == 10)
-                {lines = List.reverse(acc#current) :: acc#lines, current = (Nil: List[Char])}
+                (List.reverse(current) :: lines, (Nil: List[Char]))
             else
-                {lines = acc#lines, current = ch :: acc#current}
-        }, {lines = (Nil: List[List[Char]]), current = (Nil: List[Char])}, chars);
-        List.reverse(List.reverse(result#current) :: result#lines)
+                (lines, ch :: current)
+        }, ((Nil: List[List[Char]]), (Nil: List[Char])), chars);
+        let (lines, current) = result;
+        List.reverse(List.reverse(current) :: lines)
 
     /// 各文字を置くペン位置。折り返し幅を超えたら次の行へ送る。
     pub def layoutPositions(advances: List[Float64], wrapWidth: Float64,
                             scale: Float64, lineHeight: Float64): List[(Float64, Float64)] =
         if (wrapWidth <= 0.0) {
             let result = List.foldLeft((acc, adv) -> {
-                let penX = acc#penX;
-                {positions = (penX, 0.0) :: acc#positions, penX = penX + adv}
-            }, {positions = (Nil: List[(Float64, Float64)]), penX = 0.0}, advances);
-            List.reverse(result#positions)
+                let (positions, penX) = acc;
+                ((penX, 0.0) :: positions, penX + adv)
+            }, ((Nil: List[(Float64, Float64)]), 0.0), advances);
+            List.reverse(fst(result))
         } else {
             let result = List.foldLeft((acc, adv) -> {
-                let penX = acc#penX;
-                let penY = acc#penY;
+                let (positions, penX, penY) = acc;
                 let nextX = penX + adv;
                 let px = if (penX > 0.0 and nextX * scale > wrapWidth) 0.0 else penX;
                 let py = if (penX > 0.0 and nextX * scale > wrapWidth) penY + lineHeight else penY;
-                {positions = (px, py) :: acc#positions, penX = px + adv, penY = py}
-            }, {positions = (Nil: List[(Float64, Float64)]), penX = 0.0, penY = 0.0}, advances);
-            List.reverse(result#positions)
+                ((px, py) :: positions, px + adv, py)
+            }, ((Nil: List[(Float64, Float64)]), 0.0, 0.0), advances);
+            let (positions, _, _) = result;
+            List.reverse(positions)
         }
 
     /// 1 文字ぶんの寸法と、アトラス上の切り出し位置。

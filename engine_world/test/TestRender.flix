@@ -64,9 +64,9 @@ mod TestRender {
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d));
         Assert.assertEq(expected = (Some(1.5), Some(0.25), Some(6.0)),
-            (style |> Option.map(s -> s#borderWidth),
-             style |> Option.map(s -> s#stripeAlpha),
-             style |> Option.map(s -> s#stripePeriod)))
+            (style |> Option.map(s -> DrawCmd.styleToSpec(s)#borderWidth),
+             style |> Option.map(s -> DrawCmd.styleToSpec(s)#stripeAlpha),
+             style |> Option.map(s -> DrawCmd.styleToSpec(s)#stripePeriod)))
 
     // striped の dir（0 = 斜め / 1 = 横 / 2 = 縦）がそのまま style の stripeDir に載る。
     @Test
@@ -75,7 +75,7 @@ mod TestRender {
             let item = RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0)
                 |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = dir });
             let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
-            ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d)) |> Option.map(s -> s#stripeDir)
+            ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d)) |> Option.map(s -> DrawCmd.styleToSpec(s)#stripeDir)
         };
         Assert.assertEq(expected = (Some(0), Some(1), Some(2)), (dirOf(0), dirOf(1), dirOf(2)))
 
@@ -87,8 +87,8 @@ mod TestRender {
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> DrawCmd.styleOf(d));
         Assert.assertEq(expected = (Some(0.5), Some(4.0)),
-            (style |> Option.map(s -> s#checkerAlpha),
-             style |> Option.map(s -> s#checkerCell)))
+            (style |> Option.map(s -> DrawCmd.styleToSpec(s)#checkerAlpha),
+             style |> Option.map(s -> DrawCmd.styleToSpec(s)#checkerCell)))
 
     // ── blend（ピクセルの重ね方）──
 

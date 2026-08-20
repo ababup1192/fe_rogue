@@ -23,7 +23,7 @@ mod TestRect {
             |> Rect.setBorderWidth(2.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
         let bw = match DrawCmd.styleOf(d) {
-            case Some(st) => st#borderWidth
+            case Some(st) => DrawCmd.styleToSpec(st)#borderWidth
             case None     => -1.0
         };
         Assert.assertEq(expected = 2.0, bw)
@@ -64,7 +64,7 @@ mod TestRect {
         let rect = Rect.make({x = 100.0, y = 50.0}, black())
             |> Rect.setCornerRadius(6.0);
         let cr = match DrawCmd.styleOf(Rect.toDrawable(rect, {x = 0.0, y = 0.0})) {
-            case Some(st) => st#cornerRadius
+            case Some(st) => DrawCmd.styleToSpec(st)#cornerRadius
             case None     => -1.0
         };
         Assert.assertEq(expected = 6.0, cr)
@@ -91,7 +91,9 @@ mod TestRect {
             |> Rect.setCornerRadius(6.0);
         let d = Rect.toDrawable(rect, {x = 0.0, y = 0.0});
         let info = match DrawCmd.styleOf(d) {
-            case Some(st) => (DrawCmd.colorOf(d)#r, DrawCmd.alphaOf(d), st#borderColor#r, st#borderAlpha)
+            case Some(st) =>
+                let s = DrawCmd.styleToSpec(st);
+                (DrawCmd.colorOf(d)#r, DrawCmd.alphaOf(d), s#borderColor#r, s#borderAlpha)
             case None     => (-1.0, -1.0, -1.0, -1.0)
         };
         Assert.assertEq(expected = (0.2, 0.8, 0.9, 0.5), info)

@@ -141,16 +141,20 @@ mod Text {
         }, chars)
 
     /// (文字, 送り幅) と行番号 y の並びを、y が変わる所で行に区切る。
+    /// 蓄積はタプルで持つ — レコードは 1 フィールド 1 オブジェクトで、文字ごとに
+    /// 作り直す蓄積では確保が文字数ぶん積み上がるため。
     def groupRows(entries: List[((Char, Float64), Float64)]): List[List[(Char, Float64)]] =
         let folded = List.foldLeft((acc, entry) -> {
+            let (accRows, current, rowY) = acc;
             let (charAdv, y) = entry;
-            if (Float64.abs(y - acc#rowY) < 0.001)
-                { rows = acc#rows, current = charAdv :: acc#current, rowY = acc#rowY }
+            if (Float64.abs(y - rowY) < 0.001)
+                (accRows, charAdv :: current, rowY)
             else
-                { rows = List.reverse(acc#current) :: acc#rows, current = charAdv :: Nil, rowY = y }
-        }, { rows = (Nil: List[List[(Char, Float64)]]),
-             current = (Nil: List[(Char, Float64)]), rowY = 0.0 }, entries);
-        List.reverse(List.reverse(folded#current) :: folded#rows)
+                (List.reverse(current) :: accRows, charAdv :: Nil, y)
+        }, ((Nil: List[List[(Char, Float64)]]),
+            (Nil: List[(Char, Float64)]), 0.0), entries);
+        let (accRows, current, _) = folded;
+        List.reverse(List.reverse(current) :: accRows)
 
     /// 行内テキスト幅 (lineWidth) と horizontalAlignment から、グリフ列に適用する
     /// 横方向オフセットを返す。Fill は本実装では Left と同じ扱い（justify は未対応）。
@@ -185,28 +189,27 @@ mod Text {
         let totalHeight = lineHeight * Int32.toFloat64(Int32.max(1, List.length(rows)));
         let blockYOffset = verticalOffsetFor(r#verticalAlignment, totalHeight);
         let result = List.foldLeft((acc, row) -> {
-            let lineIdx = acc#lineIdx;
-            let lineChars = List.map(fst, row);
-            let advances = List.map(snd, row);
-            // 行幅と horizontalAlignment から横オフセット計算
-            let lineWidth = TextLayout.totalAdvance(advances) * scale;
+            let (accRows, lineIdx) = acc;
+            // 行幅と horizontalAlignment から横オフセット計算（足す順は totalAdvance と同じ左から）
+            let lineWidth = List.foldLeft((a, entry) -> a + snd(entry), 0.0, row) * scale;
             let offsetX = horizontalOffsetFor(r#horizontalAlignment, lineWidth);
-            // 行内のペン送りだけ求める（行の割りは visualRows が済ませているので折り返し幅は 0）
-            let positions = TextLayout.layoutPositions(advances, 0.0, scale, lineHeight);
             let yOff = Int32.toFloat64(lineIdx) * lineHeight + blockYOffset;
             let ascentOffset = atlas#ascent * scale;
             let lineGlobalPos = {x = globalPos#x, y = globalPos#y + yOff + ascentOffset};
-            // グリフごとに Drawable を生成
-            let lineDrawables = List.filterMap(pair -> {
-                let (ch, penPos) = pair;
+            // グリフごとに Drawable を生成。ペン位置は行頭 0 から送り幅を足し込むだけ —
+            // layoutPositions をもう一度呼ぶと、文字数ぶんのペン位置リストと文字との zip を
+            // 毎フレーム組み直すことになる（行の割りは visualRows が済ませている）。
+            let folded = List.foldLeft((acc2, entry) -> {
+                let (dsRev, penX) = acc2;
+                let (ch, adv) = entry;
                 let cp = TextLayout.charToCodePoint(ch);
                 match Map.get(cp, atlas#glyphs) {
                     case Some(gm) =>
-                        let qb = TextLayout.glyphQuadBounds(penPos, gm, scale, lineGlobalPos, offsetX);
+                        let qb = TextLayout.glyphQuadBounds((penX, 0.0), gm, scale, lineGlobalPos, offsetX);
                         let w = qb#x1 - qb#x0;
                         let h = qb#y1 - qb#y0;
-                        if (w <= 0.0 or h <= 0.0) None
-                        else Some(DrawCmd.fromParts(
+                        if (w <= 0.0 or h <= 0.0) (dsRev, penX + adv)
+                        else (DrawCmd.fromParts(
                             atlas#textureName,
                             {x = qb#x0, y = qb#y0},
                             {x = w / atlas#textureSize, y = h / atlas#textureSize},
@@ -220,14 +223,14 @@ mod Text {
                             None,
                             None,
                             DrawCmd.BlendMode.Normal,
-                            Nil))
-                    case None => None
+                            Nil) :: dsRev, penX + adv)
+                    case None => (dsRev, penX + adv)
                 }
-            }, List.zip(lineChars, positions));
+            }, ((Nil: List[GameEngine.Drawable]), 0.0), row);
             // 行ごとの列を先頭へ積んで最後に並べ直す。acc へ append すると行数の二乗で割り当てる。
-            {rows = lineDrawables :: acc#rows, lineIdx = lineIdx + 1}
-        }, {rows = (Nil: List[List[GameEngine.Drawable]]), lineIdx = 0}, rows);
-        List.flatten(List.reverse(result#rows))
+            (List.reverse(fst(folded)) :: accRows, lineIdx + 1)
+        }, ((Nil: List[List[GameEngine.Drawable]]), 0), rows);
+        List.flatten(List.reverse(fst(result)))
 
 }
 

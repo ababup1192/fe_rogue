@@ -99,24 +99,27 @@ mod RenderSprite {
         // 角丸＋枠スタイル uniform。Some のとき styleEnabled=1（単色矩形のみシェーダ側で適用）。
         match style {
             case Some(st) =>
+                let DrawCmd.BoxStyle.BoxStyle(rad, bw, br, bg, bb, ba,
+                                              sr, sg, sb, sa, sw, sp, sd,
+                                              kr, kg, kb, ka, kc) = st;
                 GL20.glUniform1i(uniforms#styleEnabled, 1);
                 GL20.glUniform2f(uniforms#rectSize, f32(size#x), f32(size#y));
-                GL20.glUniform1f(uniforms#cornerRadius, f32(st#cornerRadius));
-                GL20.glUniform1f(uniforms#borderWidth, f32(st#borderWidth));
-                GL20.glUniform3f(uniforms#borderColor, f32(st#borderColor#r), f32(st#borderColor#g), f32(st#borderColor#b));
-                GL20.glUniform1f(uniforms#borderAlpha, f32(st#borderAlpha));
+                GL20.glUniform1f(uniforms#cornerRadius, f32(rad));
+                GL20.glUniform1f(uniforms#borderWidth, f32(bw));
+                GL20.glUniform3f(uniforms#borderColor, f32(br), f32(bg), f32(bb));
+                GL20.glUniform1f(uniforms#borderAlpha, f32(ba));
                 // 斜線ハッチ uniform。幅・濃さ・周期がすべて正のときのみ有効化(SoftRaster と同じ判定)。
-                let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0 and st#stripePeriod > 0.0;
+                let hatchOn = sw > 0.0 and sa > 0.0 and sp > 0.0;
                 GL20.glUniform1i(uniforms#hatchEnabled, if (hatchOn) 1 else 0);
-                GL20.glUniform3f(uniforms#hatchColor, f32(st#stripeColor#r), f32(st#stripeColor#g), f32(st#stripeColor#b));
-                GL20.glUniform1f(uniforms#hatchAlpha, f32(st#stripeAlpha));
-                GL20.glUniform1f(uniforms#hatchWidth, f32(st#stripeWidth));
-                GL20.glUniform1f(uniforms#hatchPeriod, f32(st#stripePeriod));
-                GL20.glUniform1i(uniforms#hatchDir, st#stripeDir);
+                GL20.glUniform3f(uniforms#hatchColor, f32(sr), f32(sg), f32(sb));
+                GL20.glUniform1f(uniforms#hatchAlpha, f32(sa));
+                GL20.glUniform1f(uniforms#hatchWidth, f32(sw));
+                GL20.glUniform1f(uniforms#hatchPeriod, f32(sp));
+                GL20.glUniform1i(uniforms#hatchDir, sd);
                 // 市松 uniform。有効判定 (cell>0 かつ alpha>0) はシェーダ側で行う。
-                GL20.glUniform3f(uniforms#checkerColor, f32(st#checkerColor#r), f32(st#checkerColor#g), f32(st#checkerColor#b));
-                GL20.glUniform1f(uniforms#checkerAlpha, f32(st#checkerAlpha));
-                GL20.glUniform1f(uniforms#checkerCell, f32(st#checkerCell))
+                GL20.glUniform3f(uniforms#checkerColor, f32(kr), f32(kg), f32(kb));
+                GL20.glUniform1f(uniforms#checkerAlpha, f32(ka));
+                GL20.glUniform1f(uniforms#checkerCell, f32(kc))
             case None =>
                 GL20.glUniform1i(uniforms#styleEnabled, 0);
                 GL20.glUniform1i(uniforms#hatchEnabled, 0);

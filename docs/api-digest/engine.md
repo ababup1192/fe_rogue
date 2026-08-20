@@ -223,9 +223,27 @@
 - ピクセルの重ね方（ブレンドモード）。
   `pub enum BlendMode with Eq, Order, ToString { case Normal case Add case Multiply }`
 - 角丸＋枠線スタイル。`Drawable.style = Some(..)` かつ texture="" のとき、
-  `pub type alias BoxStyle = { cornerRadius = Float64, borderWidth = Float64, borderColor = Color, borderAlpha = Float64, stripeColor = Color, stripeAlpha = Float64, stripeWidth = Float64, stripePeriod = Float64, stripeDir = Int32, checkerColor = Color, checkerAlpha = Float64, checkerCell = Float64 }`
+  `pub enum BoxStyle { case BoxStyle( Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Int32, Float64, Float64, Float64, Float64, Float64 ) }`
+- BoxStyle の全フィールドを名前で持つレコード（`makeStyle` の入力・`styleToSpec` の出力）。
+  `pub type alias BoxStyleSpec = { cornerRadius = Float64, borderWidth = Float64, borderColor = Color, borderAlpha = Float64, stripeColor = Color, stripeAlpha = Float64, stripeWidth = Float64, stripePeriod = Float64, stripeDir = Int32, checkerColor = Color, checkerAlpha = Float64, checkerCell = Float64 }`
+- 名前付きで安全に組む入口（テスト・部分上書き・めったに呼ばれない構築用）。
+  `pub def makeStyle(spec: BoxStyleSpec): BoxStyle`
+- 毎フレーム大量に通る変換用の入口。Color は値のまま受けて中で r, g, b に展開する。
+  `pub def styleFromParts(cornerRadius: Float64, borderWidth: Float64, borderColor: Color, borderAlpha: Float64, stripeColor: Color, stripeAlpha: Float64, stripeWidth: Float64, stripePeriod: Float64, stripeDir: Int32, checkerColor: Color, checkerAlpha: Float64, checkerCell: Float64): BoxStyle`
+- 全フィールドを名前付きレコードへ展開する（部分更新と、めったに呼ばれない経路の
+  `pub def styleToSpec(st: BoxStyle): BoxStyleSpec`
 - 何も飾らない素の BoxStyle（枠・縞・市松すべて無効）。色系は塗りと同じ base を入れておく。
   `pub def defaultStyle(base: Color): BoxStyle`
+- 枠線の太さ（px）だけ読む（バックエンドのはみ出し見積もり用）。
+  `pub def borderWidthOf(st: BoxStyle): Float64`
+- 角丸半径を差し替える。
+  `pub def withCornerRadius(radius: Float64, st: BoxStyle): BoxStyle`
+- 枠線（色・太さ・濃さ）を差し替える。
+  `pub def withBorder(color: Color, width: Float64, alpha: Float64, st: BoxStyle): BoxStyle`
+- 縞（色・濃さ・幅・周期・向き）を差し替える。
+  `pub def withStripe(color: Color, alpha: Float64, width: Float64, period: Float64, dir: Int32, st: BoxStyle): BoxStyle`
+- 市松（色・濃さ・セル一辺）を差し替える。
+  `pub def withChecker(color: Color, alpha: Float64, cell: Float64, st: BoxStyle): BoxStyle`
 - px の長さを持つフィールド（角丸・枠線幅・縞の幅と周期・市松のセル）を一括で factor 倍する。
   `pub def scalePx(factor: Float64, st: BoxStyle): BoxStyle`
 - clip 矩形（design px・スクリーン空間）を出力ピクセルの整数矩形 (x0, y0, x1, y1) へ写す

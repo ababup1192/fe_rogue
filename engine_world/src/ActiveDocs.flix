@@ -27,17 +27,39 @@ mod ActiveDocs {
             case many       => JArray(List.map(JString, many) |> List.toVector)
         }
 
-    /// 毎フレームのシステムから呼ぶ。一覧が前回書いた物(World の activeDocsWritten)と
-    /// 同じなら何もしない — 場面が変わった瞬間だけ実 IO が走る。書き込みの失敗は握り潰す
-    /// (エディタ向けの補助情報で、書けない環境でもゲーム本体を止める理由にならない)。
-    /// World には `activeDocsWritten = String` の欄を足し、出発点は "" にする。
+    /// entries の指紋(id とパスを区切り文字で 1 本に綴じた文字列)。step はまずこれで
+    /// 前回と見比べ、変わったフレームだけ JSON を組み直す — JSON の組み立て
+    /// (Map・Json の木・整形)を毎フレームやると、名乗りが変わらないフレームでも
+    /// 確保だけが積み上がるため。区切りはパスに現れないタブと改行。
+    pub def fingerprint(entries: List[(String, List[String])]): String =
+        region rc {
+            let sb = StringBuilder.empty(rc);
+            List.forEach(entry -> {
+                let (id, paths) = entry;
+                StringBuilder.append(id, sb);
+                StringBuilder.append("\t", sb);
+                List.forEach(p -> {
+                    StringBuilder.append(p, sb);
+                    StringBuilder.append("\t", sb)
+                }, paths);
+                StringBuilder.append("\n", sb)
+            }, entries);
+            StringBuilder.toString(sb)
+        }
+
+    /// 毎フレームのシステムから呼ぶ。一覧の指紋が前回書いた物(World の activeDocsWritten)と
+    /// 同じなら何もしない — JSON の組み立ても実 IO も、場面が変わった瞬間だけ走る。
+    /// 書き込みの失敗は握り潰す(エディタ向けの補助情報で、書けない環境でも
+    /// ゲーム本体を止める理由にならない)。
+    /// World には `activeDocsWritten = String` の欄を足し、出発点は "" にする
+    /// (中身は指紋 — 書いた JSON そのものではない)。
     pub def step(entries: List[(String, List[String])],
                  w: { activeDocsWritten = String | r }): { activeDocsWritten = String | r } \ Fs.FileWrite =
-        let current = json(entries);
+        let current = fingerprint(entries);
         if (current == w#activeDocsWritten) w
         else {
             run {
-                discard Fs.WriteFile.write({str = current}, path())
+                discard Fs.WriteFile.write({str = json(entries)}, path())
             } with Fs.WriteFile.runWithFileWrite;
             { activeDocsWritten = current | w }
         }
