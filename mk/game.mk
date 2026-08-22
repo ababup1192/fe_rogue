@@ -69,12 +69,16 @@ debug:
 
 # 出力は .test-logs/test.log に落とし、緑なら末尾 5 行だけ見せる。
 # make status が「最後にいつ・緑か赤か」をこの記録から読む。
-# check と同じ常駐を使い回す (JVM の起動と依存解決を払い直さない)。
-# CHECKD=0 make test で素の test。
+#
+# WhyNot: check と同じ常駐に相乗りさせない。常駐の repl は「常駐が全部太りきっても
+# 物理メモリの 33% まで」の約束からヒープに蓋がしてあり (checkd/budget.go)、型検査は
+# その中に収まるが、テストはコード生成と実行まで同じ repl に乗るので収まらない。
+# 16GB・13,000 行での実測: 常駐 8:39 (CPU 49% = GC 待ち) / 素の test 2:20 (CPU 163%)。
+# 常駐に乗せたいときだけ CHECKD=1 make test。
 test:
 	@mkdir -p .test-logs; rm -f .test-logs/test.fail
 	@fge=bin/fge; [ -x "$$fge" ] || fge="$(ENGINE)/bin/fge"; \
-	if [ "$(CHECKD)" != "0" ] && [ -x "$$fge" ]; then \
+	if [ "$(CHECKD)" = "1" ] && [ -x "$$fge" ]; then \
 		"$$fge" checkd --test . > .test-logs/test.log 2>&1; \
 	else \
 		JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test > .test-logs/test.log 2>&1; \
