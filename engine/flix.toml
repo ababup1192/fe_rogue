@@ -1,7 +1,7 @@
 [package]
 name        = "flix_engine_core"
 description = "2D game engine contract layer: the GameEngine.Game/Audio effect contract, shared render types (Drawable/PolygonRenderCmd), foundational types (Vec2/Color/DrawCmd/GpuHandle/FontAtlas), and the scene-graph draw vocabulary — GL-free with no native deps. Backends (render_gl, ...) implement the contract; the App runtime (flix_engine_world) consumes it."
-version     = "0.33.1"
+version     = "0.33.2"
 flix        = "0.75.1"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
