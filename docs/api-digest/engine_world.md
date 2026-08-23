@@ -1,4 +1,4 @@
-<!-- engine v0.33.2 / 生成: 2026-08-22 -->
+<!-- engine v0.33.2 / 生成: 2026-08-23 -->
 <!-- 生成物: bin/fge api-digest が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -202,7 +202,7 @@
   `pub def changedPaths(watch: List[String], prev: Map[String, Int64], current: Map[String, Int64]): List[String]`
 - App を走らせる単一の効果多相ランナー。startup を 1 回だけ畳み込み、いま押されているキーを prev の
   `pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO)`
-- 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
+- 時間スクラブ用に持ち回す直近の World の数（60fps で約 30 秒）。
   `pub def historyLimit(): Int32`
 - リモートコマンドを捌いた後に残る 3 つの進み方。
   `pub enum Branch with Eq, ToString { case Paused case Resuming case Running }`

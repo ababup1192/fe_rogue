@@ -665,10 +665,10 @@ mod App {
                     glyphSeen = None, budgetWarned = false });
         Option.forEach(RemoteDebug.shutdown, bridge)
 
-    /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
+    /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 30 秒）。
     /// World は不変値なので、保持しているのは共有構造への参照だけで軽い。
     /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
-    pub def historyLimit(): Int32 = 300
+    pub def historyLimit(): Int32 = 1800
 
     /// loop が次のフレームへ渡し続ける物。app（不変）は入れない — 状態に混ぜると
     /// 「フレームごとに変わりうる物」に見える。
