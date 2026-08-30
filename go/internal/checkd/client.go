@@ -88,6 +88,10 @@ func clientRun(r *hooks.Rules, out, errOut *strings.Builder, root, pkg, verb str
 		debugLog(errOut, pkg+" は src が symlink → 常駐を使わず素の "+verb+" へ")
 		return runFallback(root, pkg, verb)
 	}
+	if !hooks.DaemonViable(r) {
+		debugLog(errOut, "物理メモリが repl 1 本の予算に足りない → 常駐を使わず素の "+verb+" へ")
+		return runFallback(root, pkg, verb)
+	}
 	d := r.Checkd.Daemon
 	for attempt := 1; attempt <= 2; attempt++ {
 		code, body, err := hooks.AskWithDial(r, pkg, strings.ToUpper(verb),

@@ -224,10 +224,30 @@ func MaxDaemonCount(r *Rules) int {
 	return n
 }
 
+// DaemonViable は常駐を立ててよい機械かを見る。repl 1 本 (heapMinMB + headroom)
+// すら memoryShare の予算に収まらない機械では常駐せず、毎回素の CLI で検査する
+// (3.6GB 級の JVM で小さい機械を圧迫するより、check が 1〜2 分かかる方がまし)。
+// 物理メモリが分からない機械と、環境変数で rssLimit を明示した人は常駐してよい側に倒す。
+func DaemonViable(r *Rules) bool {
+	if os.Getenv(*r.Checkd.Daemon.RSSLimit.EnvVar) != "" {
+		return true
+	}
+	total, ok := MachineMemoryMB()
+	if !ok {
+		return true
+	}
+	budget := float64(total) * *r.Checkd.Daemon.RSSLimit.MemoryShare
+	need := float64(*r.Checkd.Daemon.HeapMinMB + *r.Checkd.Daemon.HeapHeadroomMB)
+	return budget >= need
+}
+
 // tooBusy は起動予約を見送る条件。
 // WhyNot: 無条件に増やさないのは、常駐 1 つが JVM 1 つを抱えたまま眠り続け、
 // 並列のサブエージェントの数だけ立てると機械のメモリが尽きるため。
 func tooBusy(r *Rules, pkg string) bool {
+	if !DaemonViable(r) {
+		return true
+	}
 	stamp := filepath.Join(StateDir(r, pkg), "reserved")
 	if info, err := os.Stat(stamp); err == nil {
 		if time.Since(info.ModTime()).Seconds() < *r.Checkd.ReserveIntervalSec {

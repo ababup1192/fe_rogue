@@ -1,6 +1,7 @@
 package checkd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -125,6 +126,53 @@ func TestRSSLimitNeverBelowFloor(t *testing.T) {
 	if got := rssLimitMB(r); got < *r.Checkd.Daemon.RSSLimit.FloorMB || got < viable {
 		t.Errorf("下限を割っています: %d (floorMB %d / heapMinMB + headroom %d)",
 			got, *r.Checkd.Daemon.RSSLimit.FloorMB, viable)
+	}
+}
+
+// TestDaemonViableRejectsOversizedBudget は repl 1 本の予算すら収まらない機械で
+// 常駐を見送ること (素の CLI へ落ちること) を見る。
+func TestDaemonViableRejectsOversizedBudget(t *testing.T) {
+	r := loadRules(t)
+	big := 1 << 30
+	r.Checkd.Daemon.HeapMinMB = &big
+	if hooks.DaemonViable(r) {
+		t.Error("どんな機械にも収まらない予算なのに常駐しようとしています")
+	}
+	t.Setenv(*r.Checkd.Daemon.RSSLimit.EnvVar, "4096")
+	if !hooks.DaemonViable(r) {
+		t.Error("環境変数で rssLimit を明示したのに常駐が拒まれています")
+	}
+}
+
+// TestWarmTimeoutSecDefaultsWhenMissing は warmTimeoutSec の無い古い hooks.json でも
+// 起動できること (1 リリースの間の軟着陸) を見る。
+func TestWarmTimeoutSecDefaultsWhenMissing(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), hooks.RulesPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc["checkd"].(map[string]any)["daemon"].(map[string]any), "warmTimeoutSec")
+	stripped, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, filepath.Dir(hooks.RulesPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, hooks.RulesPath), stripped, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := hooks.LoadRules(root)
+	if err != nil {
+		t.Fatalf("キー無しで読めるはずが: %v", err)
+	}
+	if got := *r.Checkd.Daemon.WarmTimeoutSec; got != 240 {
+		t.Errorf("既定値 240 になっていません: %v", got)
 	}
 }
 
