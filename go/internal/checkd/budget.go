@@ -42,6 +42,12 @@ func rssLimitMB(r *hooks.Rules) int {
 	if mb < *lim.FloorMB {
 		mb = *lim.FloorMB
 	}
+	// heapMinMB より狭い rssLimit は成立しない — repl がウォームアップできないか、
+	// できても毎回 rssLimit を超えて捨てられて常駐が 1 度も効かない。環境変数で
+	// 狭められても、rssLimit は heapMinMB + heapHeadroomMB を下回らせない。
+	if viable := *r.Checkd.Daemon.HeapMinMB + *r.Checkd.Daemon.HeapHeadroomMB; mb < viable {
+		mb = viable
+	}
 	return mb
 }
 

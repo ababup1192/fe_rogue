@@ -21,7 +21,7 @@
     "errorBlockMaxLines": 15,
     "tailLinesWhenNoBlock": 10,
     "maxDaemons": {
-      "gbPerDaemon": 5,
+      "gbPerDaemon": 8,
       "cap": 4,
       "fallback": 3,
       "envVar": "CHECKD_MAX_DAEMONS"
@@ -29,18 +29,19 @@
     "daemon": {
       "note": "常駐そのものの寿命と使い捨ての条件。rssLimit は「常駐が全部太りきっても物理メモリの memoryShare まで」の 1 つの約束から、maxDaemons と一緒に決まる (台数が 1 でも 2 で割るのは、1 台しか立てない小さい機械でその 1 本に予算を丸ごと渡さないため)。",
       "heapHeadroomMB": 500,
-      "heapMinMB": 768,
+      "heapMinMB": 3072,
       "idleSec": 600,
       "idleEnvVar": "CHECKD_IDLE_SEC",
       "maxChecks": 200,
       "settleSec": 1.0,
       "workTimeoutSec": 900,
+      "warmTimeoutSec": 240,
       "spawnWaitSec": 30,
       "connectTimeoutSec": 5,
       "convTimeoutSec": 30,
       "rssLimit": {
         "memoryShare": 0.33,
-        "minMB": 1024,
+        "minMB": 3584,
         "maxMB": 4096,
         "fallbackMB": 2048,
         "floorMB": 512,

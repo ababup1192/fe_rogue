@@ -84,8 +84,8 @@ func TestScrubDropsAnsiColors(t *testing.T) {
 
 func TestRSSLimitHonorsEnv(t *testing.T) {
 	r := loadRules(t)
-	t.Setenv(*r.Checkd.Daemon.RSSLimit.EnvVar, "3000")
-	if got := rssLimitMB(r); got != 3000 {
+	t.Setenv(*r.Checkd.Daemon.RSSLimit.EnvVar, "5000")
+	if got := rssLimitMB(r); got != 5000 {
 		t.Errorf("環境変数の上書きが効いていません: %d", got)
 	}
 }
@@ -121,8 +121,10 @@ func TestOutOfMemoryFallsBackToPlainCLI(t *testing.T) {
 func TestRSSLimitNeverBelowFloor(t *testing.T) {
 	r := loadRules(t)
 	t.Setenv(*r.Checkd.Daemon.RSSLimit.EnvVar, "1")
-	if got := rssLimitMB(r); got != *r.Checkd.Daemon.RSSLimit.FloorMB {
-		t.Errorf("下限を割っています: %d", got)
+	viable := *r.Checkd.Daemon.HeapMinMB + *r.Checkd.Daemon.HeapHeadroomMB
+	if got := rssLimitMB(r); got < *r.Checkd.Daemon.RSSLimit.FloorMB || got < viable {
+		t.Errorf("下限を割っています: %d (floorMB %d / heapMinMB + headroom %d)",
+			got, *r.Checkd.Daemon.RSSLimit.FloorMB, viable)
 	}
 }
 

@@ -50,6 +50,7 @@ type CheckdDaemon struct {
 	MaxChecks         *int     `json:"maxChecks"`
 	SettleSec         *float64 `json:"settleSec"`
 	WorkTimeoutSec    *float64 `json:"workTimeoutSec"`
+	WarmTimeoutSec    *float64 `json:"warmTimeoutSec"`
 	SpawnWaitSec      *float64 `json:"spawnWaitSec"`
 	ConnectTimeoutSec *float64 `json:"connectTimeoutSec"`
 	ConvTimeoutSec    *float64 `json:"convTimeoutSec"`
@@ -165,6 +166,8 @@ func LoadRules(root string) (*Rules, error) {
 		missing = "checkd.daemon.settleSec"
 	case cd.Daemon.WorkTimeoutSec == nil:
 		missing = "checkd.daemon.workTimeoutSec"
+	case cd.Daemon.WarmTimeoutSec == nil:
+		missing = "checkd.daemon.warmTimeoutSec"
 	case cd.Daemon.SpawnWaitSec == nil:
 		missing = "checkd.daemon.spawnWaitSec"
 	case cd.Daemon.ConnectTimeoutSec == nil:
