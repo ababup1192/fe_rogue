@@ -113,8 +113,8 @@ func LoadRules(root string) (*Rules, error) {
 	}
 	sd, cd := r.SessionDiet, r.Checkd
 	// warmTimeoutSec は 2026-08-30 に足した新キー。欠けキーで止める方針の例外として
-	// 1 リリースの間だけ既定値で軟着陸させる — 古い hooks.json + 新バイナリの
-	// 組み合わせ (バイナリだけ部分更新した clone) を壊さないため。次のリリースで
+	// 1 リリースの間だけ既定値へフォールバックする — 古い hooks.json + 新バイナリの
+	// 組み合わせ (バイナリだけ部分更新した clone) との後方互換のため。次のリリースで
 	// 必須キーへ昇格させ、この既定値を消す。
 	if cd.Daemon.WarmTimeoutSec == nil {
 		v := 240.0

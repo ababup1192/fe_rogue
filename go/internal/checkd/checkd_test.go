@@ -145,7 +145,7 @@ func TestDaemonViableRejectsOversizedBudget(t *testing.T) {
 }
 
 // TestWarmTimeoutSecDefaultsWhenMissing は warmTimeoutSec の無い古い hooks.json でも
-// 起動できること (1 リリースの間の軟着陸) を見る。
+// 起動できること (1 リリースの間の後方互換フォールバック) を見る。
 func TestWarmTimeoutSecDefaultsWhenMissing(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), hooks.RulesPath))
 	if err != nil {
